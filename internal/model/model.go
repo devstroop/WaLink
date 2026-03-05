@@ -2,28 +2,17 @@ package model
 
 import "time"
 
-// AccountStatus represents the lifecycle state of an account.
-type AccountStatus string
-
-const (
-	StatusSleeping   AccountStatus = "sleeping"
-	StatusConnecting AccountStatus = "connecting"
-	StatusActive     AccountStatus = "active"
-	StatusError      AccountStatus = "error"
-)
-
 // ──────────────────────────────────────────────────────
 // Account CRUD
 // ──────────────────────────────────────────────────────
 
 // AccountInfo is the API-facing account representation.
 type AccountInfo struct {
-	ID          string        `json:"id"`
-	PhoneNumber *string       `json:"phone_number"`
-	AccountName string        `json:"account_name"`
-	Status      AccountStatus `json:"status"`
-	Authorized  bool          `json:"authorized"`
-	CreatedAt   time.Time     `json:"created_at"`
+	ID          string    `json:"id"`
+	PhoneNumber *string   `json:"phone_number"`
+	AccountName string    `json:"account_name"`
+	Authorized  bool      `json:"authorized"`
+	CreatedAt   time.Time `json:"created_at"`
 }
 
 // CreateAccountRequest is the JSON body for POST /accounts.
@@ -37,7 +26,6 @@ type CreateAccountResponse struct {
 	ID          string `json:"id"`
 	PhoneNumber string `json:"phone_number"`
 	AccountName string `json:"account_name"`
-	Status      string `json:"status"`
 	CreatedAt   string `json:"created_at"`
 }
 
@@ -67,6 +55,30 @@ type UpdateAccountRequest struct {
 }
 
 // ──────────────────────────────────────────────────────
+// Proxy
+// ──────────────────────────────────────────────────────
+
+// SetProxyRequest is the JSON body for PUT /accounts/{id}/proxy.
+type SetProxyRequest struct {
+	Protocol string `json:"protocol"` // http, https, socks5
+	Host     string `json:"host"`
+	Port     int    `json:"port"`
+	Username string `json:"username,omitempty"`
+	Password string `json:"password,omitempty"`
+	Enabled  *bool  `json:"enabled,omitempty"` // defaults to true
+}
+
+// ProxyConfigResponse is returned when reading proxy config.
+// Password is intentionally omitted.
+type ProxyConfigResponse struct {
+	Protocol string `json:"protocol"`
+	Host     string `json:"host"`
+	Port     int    `json:"port"`
+	Username string `json:"username,omitempty"`
+	Enabled  bool   `json:"enabled"`
+}
+
+// ──────────────────────────────────────────────────────
 // Session
 // ──────────────────────────────────────────────────────
 
@@ -74,7 +86,6 @@ type UpdateAccountRequest struct {
 type WhatsAppStatusResponse struct {
 	AccountID   string  `json:"account_id"`
 	PhoneNumber *string `json:"phone_number"`
-	Status      string  `json:"status"`
 	Authorized  bool    `json:"authorized"`
 }
 

@@ -3,8 +3,6 @@ package service
 import (
 	"testing"
 	"time"
-
-	"github.com/devstroop/walink/internal/model"
 )
 
 func TestNormalizePhone(t *testing.T) {
@@ -64,9 +62,6 @@ func TestNewAccount(t *testing.T) {
 	if acct.DataDir != "/tmp/test" {
 		t.Errorf("expected data dir /tmp/test, got %s", acct.DataDir)
 	}
-	if acct.Status != model.StatusSleeping {
-		t.Errorf("expected status sleeping, got %s", acct.Status)
-	}
 }
 
 func TestAccountInfo(t *testing.T) {
@@ -79,9 +74,6 @@ func TestAccountInfo(t *testing.T) {
 	}
 	if info.AccountName != "info-acct" {
 		t.Errorf("expected name info-acct, got %s", info.AccountName)
-	}
-	if info.Status != model.StatusSleeping {
-		t.Errorf("expected status sleeping, got %s", info.Status)
 	}
 	if info.Authorized {
 		t.Error("expected Authorized=false for new account")
@@ -106,9 +98,6 @@ func TestAccountStatusResponse(t *testing.T) {
 	if resp.AccountID != "sr-id" {
 		t.Errorf("expected account_id sr-id, got %s", resp.AccountID)
 	}
-	if resp.Status != "sleeping" {
-		t.Errorf("expected status sleeping, got %s", resp.Status)
-	}
 	if resp.Authorized {
 		t.Error("expected Authorized=false")
 	}
@@ -121,7 +110,8 @@ func TestAccountDisconnectWhileAlreadySleeping(t *testing.T) {
 	acct := NewAccount("disc-id", "2222222222", "disc", "/tmp/disc", time.Now())
 	// Should not panic when client is nil
 	acct.Disconnect()
-	if acct.Status != model.StatusSleeping {
-		t.Errorf("expected sleeping after disconnect, got %s", acct.Status)
+	// Client should still be nil after disconnect
+	if acct.IsLoggedIn() {
+		t.Error("expected IsLoggedIn=false after disconnect")
 	}
 }

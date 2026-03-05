@@ -34,8 +34,9 @@ type Account struct {
 	PhoneNumber string
 	AccountName string
 	DataDir     string
-	Status      model.AccountStatus
 	CreatedAt   time.Time
+
+	Proxy        *ProxyConfig // nil = direct, set via PUT /accounts/{id}/proxy
 
 	client       *whatsmeow.Client
 	container    *sqlstore.Container
@@ -49,7 +50,6 @@ func NewAccount(id, phone, name, dataDir string, createdAt time.Time) *Account {
 		PhoneNumber:  phone,
 		AccountName:  name,
 		DataDir:      dataDir,
-		Status:       model.StatusSleeping,
 		CreatedAt:    createdAt,
 	}
 }
@@ -59,7 +59,7 @@ func (a *Account) Connect(ctx context.Context) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
-	if a.Status == model.StatusActive && a.client != nil && a.client.IsConnected() {
+	if a.client != nil && a.client.IsConnected() {
 		return nil
 	}
 
@@ -68,11 +68,8 @@ func (a *Account) Connect(ctx context.Context) error {
 	}
 
 	if err := a.client.Connect(); err != nil {
-		a.Status = model.StatusError
 		return fmt.Errorf("connect: %w", err)
 	}
-
-	a.Status = model.StatusActive
 
 	log.Info().Str("account", a.ID).Msg("connected to WhatsApp")
 	return nil
@@ -81,18 +78,14 @@ func (a *Account) Connect(ctx context.Context) error {
 // prepareClient creates the whatsmeow client and store without connecting.
 // Must be called with a.mu held.
 func (a *Account) prepareClient(ctx context.Context) error {
-	a.Status = model.StatusConnecting
-
 	dbPath := filepath.Join(a.DataDir, "whatsmeow.db")
 	if err := os.MkdirAll(a.DataDir, 0o755); err != nil {
-		a.Status = model.StatusError
 		return fmt.Errorf("create data dir: %w", err)
 	}
 
 	logger := waLog.Noop
 	container, err := sqlstore.New(ctx, "sqlite", fmt.Sprintf("file:%s?_pragma=foreign_keys(1)", dbPath), logger)
 	if err != nil {
-		a.Status = model.StatusError
 		return fmt.Errorf("open whatsmeow store: %w", err)
 	}
 	a.container = container
@@ -100,21 +93,24 @@ func (a *Account) prepareClient(ctx context.Context) error {
 	// Get or create device
 	device, err := container.GetFirstDevice(ctx)
 	if err != nil {
-		a.Status = model.StatusError
 		return fmt.Errorf("get device: %w", err)
 	}
 
 	client := whatsmeow.NewClient(device, logger)
-	// Force IPv4 to avoid Windows IPv6 socket permission errors
+	// Build HTTP transport — force IPv4, optionally route through proxy
 	ipv4Dialer := &net.Dialer{}
-	client.SetWebsocketHTTPClient(&http.Client{
-		Transport: &http.Transport{
-			DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-				return ipv4Dialer.DialContext(ctx, "tcp4", addr)
-			},
-			ForceAttemptHTTP2: true,
+	transport := &http.Transport{
+		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+			return ipv4Dialer.DialContext(ctx, "tcp4", addr)
 		},
-	})
+		ForceAttemptHTTP2: true,
+	}
+	if a.Proxy != nil && a.Proxy.Enabled {
+		proxyURL := a.Proxy.URL()
+		transport.Proxy = http.ProxyURL(proxyURL)
+		log.Info().Str("account", a.ID).Str("proxy", proxyURL.Host).Msg("using proxy")
+	}
+	client.SetWebsocketHTTPClient(&http.Client{Transport: transport})
 	a.client = client
 
 	// Event handler
@@ -135,24 +131,17 @@ func (a *Account) Disconnect() {
 		a.client.Disconnect()
 		a.client = nil
 	}
-	a.Status = model.StatusSleeping
 	log.Info().Str("account", a.ID).Msg("disconnected")
 }
 
 // EnsureConnected auto-connects if sleeping and waits until ready.
 func (a *Account) EnsureConnected(ctx context.Context) error {
 	a.mu.RLock()
-	status := a.Status
 	connected := a.client != nil && a.client.IsConnected()
 	a.mu.RUnlock()
 
-	if status == model.StatusActive && connected {
+	if connected {
 		return nil
-	}
-
-	// Dead connection — reconnect
-	if status == model.StatusActive && !connected {
-		a.Disconnect()
 	}
 
 	return a.Connect(ctx)
@@ -168,6 +157,10 @@ func (a *Account) IsLoggedIn() bool {
 // GetQR sets up the client for QR linking. It disconnects any existing session,
 // prepares a fresh client, obtains a QR channel, then connects.
 // whatsmeow requires GetQRChannel to be called before Connect.
+//
+// The returned channel emits QR code events. The caller MUST drain the channel
+// after reading the desired code (call DrainQR) so whatsmeow doesn't disconnect
+// due to a full channel buffer.
 func (a *Account) GetQR(ctx context.Context) (<-chan whatsmeow.QRChannelItem, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -186,7 +179,10 @@ func (a *Account) GetQR(ctx context.Context) (<-chan whatsmeow.QRChannelItem, er
 		return nil, fmt.Errorf("already logged in")
 	}
 
-	ch, err := a.client.GetQRChannel(ctx)
+	// Use a long-lived background context so the QR channel + connection
+	// survive after the HTTP handler returns the QR PNG to the client.
+	qrCtx, _ := context.WithTimeout(context.Background(), 2*time.Minute)
+	ch, err := a.client.GetQRChannel(qrCtx)
 	if err != nil {
 		return nil, fmt.Errorf("get qr channel: %w", err)
 	}
@@ -195,9 +191,16 @@ func (a *Account) GetQR(ctx context.Context) (<-chan whatsmeow.QRChannelItem, er
 		return nil, fmt.Errorf("connect: %w", err)
 	}
 
-	a.Status = model.StatusActive
-
 	return ch, nil
+}
+
+// DrainQR consumes remaining QR channel events in the background so
+// whatsmeow doesn't disconnect due to a full channel buffer.
+func DrainQR(ch <-chan whatsmeow.QRChannelItem) {
+	go func() {
+		for range ch {
+		}
+	}()
 }
 
 // PairPhone requests phone-number pairing and returns the linking code.
@@ -220,20 +223,47 @@ func (a *Account) PairPhone(ctx context.Context, phone string) (string, error) {
 }
 
 // Logout logs out and clears the device store.
+// If the client is connected, it sends a logout to WhatsApp servers first.
+// If the client is nil (sleeping/already disconnected), it clears only local session data.
 func (a *Account) Logout() error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
-	if a.client == nil {
-		return fmt.Errorf("not connected")
+	if a.client != nil {
+		// Connected: tell WhatsApp servers + clear local store
+		err := a.client.Logout(context.Background())
+		a.client.Disconnect()
+		a.client = nil
+		if err != nil {
+			return fmt.Errorf("logout: %w", err)
+		}
+		return nil
 	}
-	err := a.client.Logout(context.Background())
+
+	// Not connected: just wipe local session data so
+	// hasStoredSession() stops returning true.
+	dbPath := filepath.Join(a.DataDir, "whatsmeow.db")
+	if _, err := os.Stat(dbPath); err != nil {
+		// No stored session at all — nothing to do
+		return nil
+	}
+	// Open the store, grab the device, delete it
+	logger := waLog.Noop
+	container, err := sqlstore.New(context.Background(), "sqlite",
+		fmt.Sprintf("file:%s?_pragma=foreign_keys(1)", dbPath), logger)
 	if err != nil {
-		return fmt.Errorf("logout: %w", err)
+		return fmt.Errorf("open store for cleanup: %w", err)
 	}
-	a.client.Disconnect()
-	a.client = nil
-	a.Status = model.StatusSleeping
+	device, err := container.GetFirstDevice(context.Background())
+	if err != nil {
+		return fmt.Errorf("get device for cleanup: %w", err)
+	}
+	if device.ID != nil {
+		if err := device.Delete(context.Background()); err != nil {
+			return fmt.Errorf("delete stored device: %w", err)
+		}
+	}
+	log.Info().Str("account", a.ID).Msg("cleared local session data (was not connected)")
 	return nil
 }
 
@@ -314,8 +344,7 @@ func (a *Account) Info() model.AccountInfo {
 	info := model.AccountInfo{
 		ID:          a.ID,
 		AccountName: a.AccountName,
-		Status:      a.Status,
-		Authorized:  a.client != nil && a.client.IsLoggedIn(),
+		Authorized:  a.hasStoredSession(),
 		CreatedAt:   a.CreatedAt,
 	}
 	if a.PhoneNumber != "" {
@@ -331,13 +360,61 @@ func (a *Account) StatusResponse() model.WhatsAppStatusResponse {
 
 	resp := model.WhatsAppStatusResponse{
 		AccountID:  a.ID,
-		Status:     string(a.Status),
-		Authorized: a.client != nil && a.client.IsLoggedIn(),
+		Authorized: a.hasStoredSession(),
 	}
 	if a.PhoneNumber != "" {
 		resp.PhoneNumber = &a.PhoneNumber
 	}
 	return resp
+}
+
+// IsAuthorized reports whether the account has a valid WhatsApp session.
+func (a *Account) IsAuthorized() bool {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	return a.hasStoredSession()
+}
+
+// HasStoredCredentials reports whether the on-disk whatsmeow store contains
+// device credentials. This does NOT verify they are still valid on the server.
+// Used to decide whether a connect-and-verify is worthwhile.
+func (a *Account) HasStoredCredentials() bool {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+
+	// If we have a live client, it knows
+	if a.client != nil {
+		return a.client.Store.ID != nil
+	}
+	// Probe disk
+	dbPath := filepath.Join(a.DataDir, "whatsmeow.db")
+	if _, err := os.Stat(dbPath); err != nil {
+		return false
+	}
+	logger := waLog.Noop
+	container, err := sqlstore.New(context.Background(), "sqlite",
+		fmt.Sprintf("file:%s?_pragma=foreign_keys(1)&mode=ro", dbPath), logger)
+	if err != nil {
+		return false
+	}
+	device, err := container.GetFirstDevice(context.Background())
+	if err != nil {
+		return false
+	}
+	return device.ID != nil
+}
+
+// hasStoredSession checks whether there is a valid session from a live client.
+// When the client is nil (sleeping), we cannot verify the session against the
+// WhatsApp server, so we conservatively report false. Accounts with stored
+// credentials are verified on startup via DiscoverAccounts, which connects
+// them and lets whatsmeow detect revoked sessions via the LoggedOut event.
+// Must be called with a.mu held.
+func (a *Account) hasStoredSession() bool {
+	if a.client != nil {
+		return a.client.IsLoggedIn()
+	}
+	return false
 }
 
 // Reset clears all session data and re-creates the data directory.
@@ -353,7 +430,6 @@ func (a *Account) Reset() error {
 	if err := os.MkdirAll(a.DataDir, 0o755); err != nil {
 		return fmt.Errorf("recreate data dir: %w", err)
 	}
-	a.Status = model.StatusSleeping
 	return nil
 }
 
@@ -1077,9 +1153,15 @@ func (a *Account) handleEvent(evt interface{}) {
 	case *events.Connected:
 		log.Info().Str("account", a.ID).Msg("whatsmeow connected event")
 	case *events.LoggedOut:
-		log.Warn().Str("account", a.ID).Int("reason", int(v.Reason)).Msg("logged out")
+		log.Warn().Str("account", a.ID).Int("reason", int(v.Reason)).Msg("logged out by phone — cleaning up")
+		// whatsmeow already called Store.Delete() before dispatching this event,
+		// so the session is gone from the SQLite store. We need to tear down the
+		// client so that hasStoredSession() doesn't see a stale in-memory client.
 		a.mu.Lock()
-		a.Status = model.StatusSleeping
+		if a.client != nil {
+			a.client.Disconnect()
+			a.client = nil
+		}
 		a.mu.Unlock()
 	case *events.Disconnected:
 		log.Warn().Str("account", a.ID).Msg("disconnected event")

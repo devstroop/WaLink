@@ -50,9 +50,6 @@ func TestManagerCreateAccount(t *testing.T) {
 	if resp.AccountName != "main" {
 		t.Errorf("expected name main, got %s", resp.AccountName)
 	}
-	if resp.Status != "created" {
-		t.Errorf("expected status created, got %s", resp.Status)
-	}
 	if resp.ID == "" {
 		t.Error("expected non-empty ID")
 	}
@@ -186,7 +183,6 @@ func TestManagerDiscoverAccounts(t *testing.T) {
 	db.CreateAccount(&database.AccountRecord{
 		ID: "pre-existing", PhoneNumber: "4444444444",
 		AccountName: "pre", DataDir: filepath.Join(dir, "accounts", "pre-existing"),
-		Status: "sleeping",
 	})
 
 	cfg := &config.Config{

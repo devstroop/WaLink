@@ -36,6 +36,11 @@ func (a *API) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST "+acct+"/session/pair", a.PairPhone)
 	mux.HandleFunc("DELETE "+acct+"/session", a.DeleteSession)
 
+	// ── Proxy ───────────────────────────────────────
+	mux.HandleFunc("GET "+acct+"/proxy", a.GetProxy)
+	mux.HandleFunc("PUT "+acct+"/proxy", a.SetProxy)
+	mux.HandleFunc("DELETE "+acct+"/proxy", a.DeleteProxy)
+
 	// ── Messaging ───────────────────────────────────
 	mux.HandleFunc("POST "+acct+"/messages", a.SendMessage)
 	mux.HandleFunc("POST "+acct+"/messages/react", a.ReactMessage)

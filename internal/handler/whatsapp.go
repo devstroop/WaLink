@@ -9,17 +9,29 @@ import (
 	qrcode "github.com/skip2/go-qrcode"
 
 	"github.com/devstroop/walink/internal/model"
+	"github.com/devstroop/walink/internal/service"
 )
 
 // ── Session ─────────────────────────────────────────
 
 // GetSession — GET /api/v1/accounts/{account_id}/session
+// If the account has stored credentials but no active connection, this endpoint
+// connects to WhatsApp to verify the session is still valid. A session revoked
+// from the phone will be detected and cleaned up automatically.
 func (a *API) GetSession(w http.ResponseWriter, r *http.Request) {
 	acct := a.mgr.GetAccount(r.PathValue("account_id"))
 	if acct == nil {
 		writeError(w, http.StatusNotFound, "account not found")
 		return
 	}
+
+	// If there's stored session data, connect to verify it's still valid.
+	// A revoked session will trigger the LoggedOut event, clearing stale data.
+	if acct.HasStoredCredentials() && !acct.IsLoggedIn() {
+		_ = acct.EnsureConnected(r.Context())   // best-effort
+		time.Sleep(2 * time.Second)              // give whatsmeow time to auth or fire LoggedOut
+	}
+
 	writeJSON(w, http.StatusOK, acct.StatusResponse())
 }
 
@@ -73,10 +85,16 @@ func (a *API) GetQR(w http.ResponseWriter, r *http.Request) {
 	select {
 	case item := <-ch:
 		if item.Error != nil {
+			service.DrainQR(ch)
 			writeError(w, http.StatusInternalServerError, item.Error.Error())
 			return
 		}
 		if item.Event == "code" {
+			// Start draining remaining QR events AFTER we got our code.
+			// This prevents whatsmeow from disconnecting when the
+			// channel buffer fills up with subsequent codes.
+			service.DrainQR(ch)
+
 			png, err := qrcode.Encode(item.Code, qrcode.Medium, 512)
 			if err != nil {
 				writeError(w, http.StatusInternalServerError, "failed to render QR: "+err.Error())
@@ -87,8 +105,10 @@ func (a *API) GetQR(w http.ResponseWriter, r *http.Request) {
 			w.Write(png)
 			return
 		}
+		service.DrainQR(ch)
 		writeError(w, http.StatusInternalServerError, fmt.Sprintf("unexpected qr event: %s", item.Event))
 	case <-ctx.Done():
+		service.DrainQR(ch)
 		writeError(w, http.StatusGatewayTimeout, "timeout waiting for QR code")
 	}
 }

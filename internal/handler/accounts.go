@@ -42,7 +42,11 @@ func (a *API) DeleteAccount(w http.ResponseWriter, r *http.Request) {
 	deleteData := r.URL.Query().Get("delete_data") == "true"
 	resp, err := a.mgr.DeleteAccount(r.PathValue("account_id"), deleteData)
 	if err != nil {
-		writeError(w, http.StatusNotFound, err.Error())
+		if err.Error() == "account not found" {
+			writeError(w, http.StatusNotFound, err.Error())
+		} else {
+			writeError(w, http.StatusConflict, err.Error())
+		}
 		return
 	}
 	writeJSON(w, http.StatusOK, resp)

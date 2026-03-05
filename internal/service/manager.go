@@ -69,7 +69,6 @@ func (m *AccountManager) CreateAccount(req model.CreateAccountRequest) (*model.C
 		PhoneNumber: phone,
 		AccountName: name,
 		DataDir:     dataDir,
-		Status:      string(model.StatusSleeping),
 	}
 	if err := m.db.CreateAccount(rec); err != nil {
 		return nil, fmt.Errorf("db insert: %w", err)
@@ -85,7 +84,6 @@ func (m *AccountManager) CreateAccount(req model.CreateAccountRequest) (*model.C
 		ID:          id,
 		PhoneNumber: phone,
 		AccountName: name,
-		Status:      "created",
 		CreatedAt:   now.Format(time.RFC3339),
 	}, nil
 }
@@ -111,16 +109,21 @@ func (m *AccountManager) ListAccounts() model.AccountListResponse {
 
 // DeleteAccount removes an account from memory, DB, and optionally disk.
 func (m *AccountManager) DeleteAccount(id string, deleteData bool) (*model.DeleteAccountResponse, error) {
-	m.mu.Lock()
+	m.mu.RLock()
 	acct, ok := m.accounts[id]
-	if ok {
-		delete(m.accounts, id)
-	}
-	m.mu.Unlock()
+	m.mu.RUnlock()
 
 	if !ok {
 		return nil, fmt.Errorf("account not found")
 	}
+
+	if acct.IsAuthorized() {
+		return nil, fmt.Errorf("account is still linked to WhatsApp — unlink the session first (DELETE session)")
+	}
+
+	m.mu.Lock()
+	delete(m.accounts, id)
+	m.mu.Unlock()
 
 	acct.Disconnect()
 
@@ -185,15 +188,61 @@ func (m *AccountManager) UpdatePhoneNumber(id, phone string) error {
 	return nil
 }
 
-// DiscoverAccounts loads all DB accounts into memory (called at startup).
+// UpdateProxyURL is replaced by the ProxyConfig entity - see SetProxy/GetProxy/DeleteProxy.
+
+// SetProxy upserts the proxy config for an account and disconnects so the next connect uses it.
+func (m *AccountManager) SetProxy(id string, cfg *ProxyConfig) error {
+	acct := m.GetAccount(id)
+	if acct == nil {
+		return fmt.Errorf("account not found")
+	}
+	if err := m.db.UpsertProxyConfig(ProxyConfigToDB(id, cfg)); err != nil {
+		return fmt.Errorf("db upsert proxy: %w", err)
+	}
+	acct.Disconnect()
+	acct.mu.Lock()
+	acct.Proxy = cfg
+	acct.mu.Unlock()
+	return nil
+}
+
+// GetProxy returns the proxy config for an account, or nil.
+func (m *AccountManager) GetProxy(id string) (*ProxyConfig, error) {
+	acct := m.GetAccount(id)
+	if acct == nil {
+		return nil, fmt.Errorf("account not found")
+	}
+	acct.mu.RLock()
+	defer acct.mu.RUnlock()
+	return acct.Proxy, nil
+}
+
+// DeleteProxy removes the proxy config and disconnects.
+func (m *AccountManager) DeleteProxy(id string) error {
+	acct := m.GetAccount(id)
+	if acct == nil {
+		return fmt.Errorf("account not found")
+	}
+	if err := m.db.DeleteProxyConfig(id); err != nil {
+		return fmt.Errorf("db delete proxy: %w", err)
+	}
+	acct.Disconnect()
+	acct.mu.Lock()
+	acct.Proxy = nil
+	acct.mu.Unlock()
+	return nil
+}
+
+// DiscoverAccounts loads all DB accounts into memory and verifies any that
+// have stored WhatsApp credentials by connecting to the server. This ensures
+// sessions revoked from the phone while the server was down are detected.
 func (m *AccountManager) DiscoverAccounts(ctx context.Context) error {
-	records, err := m.db.ListAccounts("")
+	records, err := m.db.ListAccounts()
 	if err != nil {
 		return fmt.Errorf("list accounts: %w", err)
 	}
 
 	m.mu.Lock()
-	defer m.mu.Unlock()
 
 	for _, rec := range records {
 		if _, ok := m.accounts[rec.ID]; ok {
@@ -202,11 +251,41 @@ func (m *AccountManager) DiscoverAccounts(ctx context.Context) error {
 
 		created, _ := time.Parse(time.RFC3339, rec.CreatedAt)
 		acct := NewAccount(rec.ID, rec.PhoneNumber, rec.AccountName, rec.DataDir, created)
+
+		// Load proxy config if present
+		proxyCfg, err := m.db.GetProxyConfig(rec.ID)
+		if err != nil {
+			log.Warn().Str("id", rec.ID).Err(err).Msg("failed to load proxy config")
+		} else if proxyCfg != nil {
+			acct.Proxy = ProxyConfigFromDB(proxyCfg)
+		}
+
 		m.accounts[rec.ID] = acct
 		log.Info().Str("id", rec.ID).Str("phone", rec.PhoneNumber).Msg("discovered account")
 	}
 
-	log.Info().Int("count", len(m.accounts)).Msg("accounts loaded")
+	m.mu.Unlock()
+
+	// Verify stored sessions by connecting. If a session was revoked from the
+	// phone while the server was down, whatsmeow will receive a LoggedOut event
+	// and the handler will clear the local session data.
+	m.mu.RLock()
+	var toVerify []*Account
+	for _, acct := range m.accounts {
+		if acct.HasStoredCredentials() {
+			toVerify = append(toVerify, acct)
+		}
+	}
+	m.mu.RUnlock()
+
+	for _, acct := range toVerify {
+		log.Info().Str("id", acct.ID).Msg("verifying stored session")
+		if err := acct.Connect(ctx); err != nil {
+			log.Warn().Str("id", acct.ID).Err(err).Msg("session verification connect failed")
+		}
+	}
+
+	log.Info().Int("count", len(m.accounts)).Int("verified", len(toVerify)).Msg("accounts loaded")
 	return nil
 }
 

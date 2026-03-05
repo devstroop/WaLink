@@ -28,7 +28,6 @@
           "id": { "type": "string", "format": "uuid" },
           "phone_number": { "type": "string", "nullable": true },
           "account_name": { "type": "string" },
-          "status": { "type": "string", "enum": ["sleeping", "connecting", "active", "error"] },
           "authorized": { "type": "boolean" },
           "created_at": { "type": "string", "format": "date-time" }
         }
@@ -54,7 +53,6 @@
           "id": { "type": "string" },
           "phone_number": { "type": "string" },
           "account_name": { "type": "string" },
-          "status": { "type": "string" },
           "created_at": { "type": "string" }
         }
       },
@@ -77,7 +75,6 @@
         "properties": {
           "account_id": { "type": "string" },
           "phone_number": { "type": "string", "nullable": true },
-          "status": { "type": "string" },
           "authorized": { "type": "boolean" }
         }
       },
@@ -90,6 +87,28 @@
         "properties": {
           "message": { "type": "string" },
           "account_id": { "type": "string" }
+        }
+      },
+      "SetProxyRequest": {
+        "type": "object",
+        "required": ["protocol", "host", "port"],
+        "properties": {
+          "protocol": { "type": "string", "enum": ["http", "https", "socks5"], "example": "socks5" },
+          "host": { "type": "string", "example": "proxy.example.com" },
+          "port": { "type": "integer", "example": 1080 },
+          "username": { "type": "string" },
+          "password": { "type": "string" },
+          "enabled": { "type": "boolean", "default": true }
+        }
+      },
+      "ProxyConfigResponse": {
+        "type": "object",
+        "properties": {
+          "protocol": { "type": "string" },
+          "host": { "type": "string" },
+          "port": { "type": "integer" },
+          "username": { "type": "string" },
+          "enabled": { "type": "boolean" }
         }
       },
       "SendMessageRequest": {
@@ -386,6 +405,38 @@
         "responses": {
           "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DeleteAccountResponse" } } } },
           "404": { "description": "Not found" }
+        }
+      }
+    },
+    "/api/v1/accounts/{account_id}/proxy": {
+      "parameters": [{ "$ref": "#/components/parameters/AccountId" }],
+      "get": {
+        "tags": ["Proxy"],
+        "summary": "Get proxy configuration",
+        "operationId": "getProxy",
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ProxyConfigResponse" } } } },
+          "404": { "description": "No proxy configured or account not found" }
+        }
+      },
+      "put": {
+        "tags": ["Proxy"],
+        "summary": "Set proxy configuration",
+        "operationId": "setProxy",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SetProxyRequest" } } } },
+        "responses": {
+          "200": { "description": "Proxy configured", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ProxyConfigResponse" } } } },
+          "400": { "description": "Validation error" },
+          "404": { "description": "Account not found" }
+        }
+      },
+      "delete": {
+        "tags": ["Proxy"],
+        "summary": "Remove proxy configuration",
+        "operationId": "deleteProxy",
+        "responses": {
+          "200": { "description": "Proxy removed" },
+          "404": { "description": "Account not found" }
         }
       }
     },
