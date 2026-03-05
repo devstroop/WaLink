@@ -1,0 +1,531 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "WaLink API",
+    "description": "WhatsApp messaging API powered by whatsmeow",
+    "version": "0.1.0",
+    "license": { "name": "MIT" }
+  },
+  "servers": [{ "url": "http://localhost:3000", "description": "Local" }],
+  "security": [{ "BearerAuth": [] }],
+  "components": {
+    "securitySchemes": {
+      "BearerAuth": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "Authorization",
+        "description": "Enter: Bearer <your-secret-key>"
+      }
+    },
+    "schemas": {
+      "AccountInfo": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "phone_number": { "type": "string", "nullable": true },
+          "account_name": { "type": "string" },
+          "status": { "type": "string", "enum": ["sleeping", "connecting", "active", "error"] },
+          "authorized": { "type": "boolean" },
+          "created_at": { "type": "string", "format": "date-time" }
+        }
+      },
+      "AccountListResponse": {
+        "type": "object",
+        "properties": {
+          "accounts": { "type": "array", "items": { "$ref": "#/components/schemas/AccountInfo" } },
+          "total": { "type": "integer" }
+        }
+      },
+      "CreateAccountRequest": {
+        "type": "object",
+        "required": ["phone_number"],
+        "properties": {
+          "phone_number": { "type": "string", "example": "+919876543210" },
+          "account_name": { "type": "string", "example": "main" },
+          "idle_timeout": { "type": "integer", "example": 300 }
+        }
+      },
+      "CreateAccountResponse": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "phone_number": { "type": "string" },
+          "account_name": { "type": "string" },
+          "status": { "type": "string" },
+          "created_at": { "type": "string" }
+        }
+      },
+      "AccountActionResponse": {
+        "type": "object",
+        "properties": {
+          "message": { "type": "string" },
+          "account_id": { "type": "string" }
+        }
+      },
+      "DeleteAccountResponse": {
+        "type": "object",
+        "properties": {
+          "message": { "type": "string" },
+          "account_id": { "type": "string" },
+          "data_deleted": { "type": "boolean" }
+        }
+      },
+      "AccountConfig": {
+        "type": "object",
+        "properties": {
+          "account_id": { "type": "string" },
+          "account_name": { "type": "string" },
+          "idle_timeout": { "type": "integer" }
+        }
+      },
+      "UpdateAccountConfigRequest": {
+        "type": "object",
+        "properties": {
+          "account_name": { "type": "string" },
+          "idle_timeout": { "type": "integer" }
+        }
+      },
+      "WhatsAppStatusResponse": {
+        "type": "object",
+        "properties": {
+          "account_id": { "type": "string" },
+          "phone_number": { "type": "string", "nullable": true },
+          "status": { "type": "string" },
+          "authorized": { "type": "boolean" }
+        }
+      },
+      "PhoneLinkResponse": {
+        "type": "object",
+        "properties": {
+          "linking_code": { "type": "string" }
+        }
+      },
+      "ChatInfo": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "name": { "type": "string" },
+          "last_message": { "type": "string", "nullable": true },
+          "last_message_sender": { "type": "string", "nullable": true },
+          "timestamp": { "type": "string", "nullable": true },
+          "unread_count": { "type": "integer" },
+          "is_group": { "type": "boolean" }
+        }
+      },
+      "ChatListResponse": {
+        "type": "object",
+        "properties": {
+          "chats": { "type": "array", "items": { "$ref": "#/components/schemas/ChatInfo" } },
+          "total": { "type": "integer" }
+        }
+      },
+      "MessageInfo": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "from_me": { "type": "boolean" },
+          "sender": { "type": "string", "nullable": true },
+          "text": { "type": "string", "nullable": true },
+          "message_type": { "type": "string" },
+          "timestamp": { "type": "string", "nullable": true },
+          "timestamp_unix": { "type": "integer", "nullable": true },
+          "status": { "type": "string", "nullable": true },
+          "media_info": { "type": "string", "nullable": true }
+        }
+      },
+      "MessageListResponse": {
+        "type": "object",
+        "properties": {
+          "chat_id": { "type": "string" },
+          "chat_name": { "type": "string", "nullable": true },
+          "messages": { "type": "array", "items": { "$ref": "#/components/schemas/MessageInfo" } },
+          "total": { "type": "integer" },
+          "has_more": { "type": "boolean" }
+        }
+      },
+      "SendMessageRequest": {
+        "type": "object",
+        "properties": {
+          "text": { "type": "string", "example": "Hello from WaLink!" }
+        }
+      },
+      "SendMessageResponse": {
+        "type": "object",
+        "properties": {
+          "status": { "type": "string" },
+          "message_id": { "type": "string" }
+        }
+      },
+      "TypingRequest": {
+        "type": "object",
+        "required": ["state"],
+        "properties": {
+          "state": { "type": "string", "enum": ["composing", "paused"] }
+        }
+      },
+      "MarkReadRequest": {
+        "type": "object",
+        "required": ["message_ids"],
+        "properties": {
+          "message_ids": { "type": "array", "items": { "type": "string" } }
+        }
+      },
+      "ReactionRequest": {
+        "type": "object",
+        "required": ["emoji"],
+        "properties": {
+          "emoji": { "type": "string", "example": "👍" }
+        }
+      },
+      "ReplyMessageRequest": {
+        "type": "object",
+        "required": ["text"],
+        "properties": {
+          "text": { "type": "string", "example": "This is a reply" }
+        }
+      },
+      "ContactInfo": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "name": { "type": "string", "nullable": true },
+          "push_name": { "type": "string", "nullable": true },
+          "phone": { "type": "string", "nullable": true },
+          "status": { "type": "string", "nullable": true },
+          "is_business": { "type": "boolean" }
+        }
+      },
+      "GroupParticipant": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "name": { "type": "string", "nullable": true },
+          "is_admin": { "type": "boolean" }
+        }
+      },
+      "GroupInfo": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "name": { "type": "string" },
+          "description": { "type": "string", "nullable": true },
+          "created_at": { "type": "string", "nullable": true },
+          "created_by": { "type": "string", "nullable": true },
+          "participant_count": { "type": "integer" },
+          "participants": { "type": "array", "items": { "$ref": "#/components/schemas/GroupParticipant" } },
+          "is_announce": { "type": "boolean" },
+          "is_locked": { "type": "boolean" }
+        }
+      },
+      "HealthResponse": {
+        "type": "object",
+        "properties": {
+          "status": { "type": "string", "example": "ok" }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "error": { "type": "string" }
+        }
+      }
+    }
+  },
+  "paths": {
+    "/api/health": {
+      "get": {
+        "tags": ["Health"],
+        "summary": "Health check",
+        "security": [],
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/HealthResponse" } } } }
+        }
+      }
+    },
+    "/api/ready": {
+      "get": {
+        "tags": ["Health"],
+        "summary": "Readiness check",
+        "security": [],
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/HealthResponse" } } } }
+        }
+      }
+    },
+    "/api/v1/accounts": {
+      "get": {
+        "tags": ["Accounts"],
+        "summary": "List all accounts",
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AccountListResponse" } } } },
+          "401": { "description": "Unauthorized", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+        }
+      },
+      "post": {
+        "tags": ["Accounts"],
+        "summary": "Create a new account",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreateAccountRequest" } } }
+        },
+        "responses": {
+          "201": { "description": "Created", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreateAccountResponse" } } } },
+          "400": { "description": "Bad request", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "401": { "description": "Unauthorized" }
+        }
+      }
+    },
+    "/api/v1/accounts/{account_id}": {
+      "parameters": [{ "name": "account_id", "in": "path", "required": true, "schema": { "type": "string" } }],
+      "get": {
+        "tags": ["Accounts"],
+        "summary": "Get account details",
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AccountInfo" } } } },
+          "404": { "description": "Not found" }
+        }
+      },
+      "delete": {
+        "tags": ["Accounts"],
+        "summary": "Delete an account",
+        "parameters": [{ "name": "delete_data", "in": "query", "schema": { "type": "boolean", "default": false }, "description": "Also delete session data on disk" }],
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DeleteAccountResponse" } } } },
+          "404": { "description": "Not found" }
+        }
+      }
+    },
+    "/api/v1/accounts/{account_id}/config": {
+      "parameters": [{ "name": "account_id", "in": "path", "required": true, "schema": { "type": "string" } }],
+      "get": {
+        "tags": ["Accounts"],
+        "summary": "Get account config",
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AccountConfig" } } } },
+          "404": { "description": "Not found" }
+        }
+      },
+      "put": {
+        "tags": ["Accounts"],
+        "summary": "Update account config",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/UpdateAccountConfigRequest" } } }
+        },
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AccountConfig" } } } },
+          "404": { "description": "Not found" }
+        }
+      }
+    },
+    "/api/v1/accounts/{account_id}/status": {
+      "parameters": [{ "name": "account_id", "in": "path", "required": true, "schema": { "type": "string" } }],
+      "get": {
+        "tags": ["WhatsApp Auth"],
+        "summary": "Get WhatsApp connection status",
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/WhatsAppStatusResponse" } } } },
+          "404": { "description": "Not found" }
+        }
+      }
+    },
+    "/api/v1/accounts/{account_id}/link/qr": {
+      "parameters": [{ "name": "account_id", "in": "path", "required": true, "schema": { "type": "string" } }],
+      "get": {
+        "tags": ["WhatsApp Auth"],
+        "summary": "Get QR code for linking",
+        "description": "Returns a QR code as a PNG image (512x512). The account will be connected automatically. Waits up to 60 seconds.",
+        "responses": {
+          "200": { "description": "QR code PNG image", "content": { "image/png": { "schema": { "type": "string", "format": "binary" } } } },
+          "404": { "description": "Not found" },
+          "409": { "description": "Already logged in" },
+          "504": { "description": "Timeout waiting for QR" }
+        }
+      }
+    },
+    "/api/v1/accounts/{account_id}/link/phone": {
+      "parameters": [{ "name": "account_id", "in": "path", "required": true, "schema": { "type": "string" } }],
+      "post": {
+        "tags": ["WhatsApp Auth"],
+        "summary": "Link via phone number pairing code",
+        "description": "Uses the phone number provided at account creation. No request body needed.",
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PhoneLinkResponse" } } } },
+          "404": { "description": "Not found" }
+        }
+      }
+    },
+    "/api/v1/accounts/{account_id}/unlink": {
+      "parameters": [{ "name": "account_id", "in": "path", "required": true, "schema": { "type": "string" } }],
+      "delete": {
+        "tags": ["WhatsApp Auth"],
+        "summary": "Unlink (logout) from WhatsApp",
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AccountActionResponse" } } } },
+          "404": { "description": "Not found" }
+        }
+      }
+    },
+    "/api/v1/accounts/{account_id}/chats": {
+      "parameters": [{ "name": "account_id", "in": "path", "required": true, "schema": { "type": "string" } }],
+      "get": {
+        "tags": ["Messaging"],
+        "summary": "List chats",
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ChatListResponse" } } } },
+          "404": { "description": "Not found" }
+        }
+      }
+    },
+    "/api/v1/accounts/{account_id}/chats/{chat_id}/messages": {
+      "parameters": [
+        { "name": "account_id", "in": "path", "required": true, "schema": { "type": "string" } },
+        { "name": "chat_id", "in": "path", "required": true, "schema": { "type": "string" } }
+      ],
+      "get": {
+        "tags": ["Messaging"],
+        "summary": "Get messages in a chat",
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/MessageListResponse" } } } },
+          "404": { "description": "Not found" }
+        }
+      },
+      "post": {
+        "tags": ["Messaging"],
+        "summary": "Send a message",
+        "description": "Supports JSON body (text) or multipart/form-data (text + file upload).",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/SendMessageRequest" } },
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "text": { "type": "string" },
+                  "file": { "type": "string", "format": "binary" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SendMessageResponse" } } } },
+          "400": { "description": "Bad request" },
+          "404": { "description": "Not found" }
+        }
+      }
+    },
+    "/api/v1/accounts/{account_id}/chats/{chat_id}/typing": {
+      "parameters": [
+        { "name": "account_id", "in": "path", "required": true, "schema": { "type": "string" } },
+        { "name": "chat_id", "in": "path", "required": true, "schema": { "type": "string" } }
+      ],
+      "post": {
+        "tags": ["Chat Actions"],
+        "summary": "Send typing indicator",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/TypingRequest" } } }
+        },
+        "responses": {
+          "200": { "description": "OK" },
+          "404": { "description": "Not found" }
+        }
+      }
+    },
+    "/api/v1/accounts/{account_id}/chats/{chat_id}/read": {
+      "parameters": [
+        { "name": "account_id", "in": "path", "required": true, "schema": { "type": "string" } },
+        { "name": "chat_id", "in": "path", "required": true, "schema": { "type": "string" } }
+      ],
+      "post": {
+        "tags": ["Chat Actions"],
+        "summary": "Mark messages as read",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/MarkReadRequest" } } }
+        },
+        "responses": {
+          "200": { "description": "OK" },
+          "400": { "description": "Bad request" },
+          "404": { "description": "Not found" }
+        }
+      }
+    },
+    "/api/v1/accounts/{account_id}/chats/{chat_id}/messages/{message_id}/react": {
+      "parameters": [
+        { "name": "account_id", "in": "path", "required": true, "schema": { "type": "string" } },
+        { "name": "chat_id", "in": "path", "required": true, "schema": { "type": "string" } },
+        { "name": "message_id", "in": "path", "required": true, "schema": { "type": "string" } }
+      ],
+      "post": {
+        "tags": ["Chat Actions"],
+        "summary": "React to a message",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ReactionRequest" } } }
+        },
+        "responses": {
+          "200": { "description": "OK" },
+          "404": { "description": "Not found" }
+        }
+      }
+    },
+    "/api/v1/accounts/{account_id}/chats/{chat_id}/messages/{message_id}/reply": {
+      "parameters": [
+        { "name": "account_id", "in": "path", "required": true, "schema": { "type": "string" } },
+        { "name": "chat_id", "in": "path", "required": true, "schema": { "type": "string" } },
+        { "name": "message_id", "in": "path", "required": true, "schema": { "type": "string" } }
+      ],
+      "post": {
+        "tags": ["Chat Actions"],
+        "summary": "Reply to a message",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ReplyMessageRequest" } } }
+        },
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SendMessageResponse" } } } },
+          "404": { "description": "Not found" }
+        }
+      }
+    },
+    "/api/v1/accounts/{account_id}/contacts/{contact_id}": {
+      "parameters": [
+        { "name": "account_id", "in": "path", "required": true, "schema": { "type": "string" } },
+        { "name": "contact_id", "in": "path", "required": true, "schema": { "type": "string" } }
+      ],
+      "get": {
+        "tags": ["Contacts & Groups"],
+        "summary": "Get contact info",
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ContactInfo" } } } },
+          "404": { "description": "Not found" }
+        }
+      }
+    },
+    "/api/v1/accounts/{account_id}/groups/{group_id}": {
+      "parameters": [
+        { "name": "account_id", "in": "path", "required": true, "schema": { "type": "string" } },
+        { "name": "group_id", "in": "path", "required": true, "schema": { "type": "string" } }
+      ],
+      "get": {
+        "tags": ["Contacts & Groups"],
+        "summary": "Get group info",
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/GroupInfo" } } } },
+          "404": { "description": "Not found" }
+        }
+      }
+    }
+  },
+  "tags": [
+    { "name": "Health", "description": "Server health checks" },
+    { "name": "Accounts", "description": "Account CRUD & configuration" },
+    { "name": "WhatsApp Auth", "description": "QR/phone linking & status" },
+    { "name": "Messaging", "description": "Chats & messages" },
+    { "name": "Chat Actions", "description": "Typing, read receipts, reactions, replies" },
+    { "name": "Contacts & Groups", "description": "Contact & group info" }
+  ]
+}

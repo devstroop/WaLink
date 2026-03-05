@@ -1,0 +1,31 @@
+# Binaries
+walink
+walink.exe
+*.exe
+
+# Go build
+/bin/
+/dist/
+
+# Test
+*.test
+*.out
+coverage.html
+
+# IDE
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Data (runtime)
+*.db
+*.db-wal
+*.db-shm
+
+# Config (user-specific)
+config/app.toml
