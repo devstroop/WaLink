@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/itsalfredakku/walink/internal/config"
+	"github.com/devstroop/walink/internal/config"
 )
 
 // Auth returns middleware that validates the Authorization: Bearer <key> header.

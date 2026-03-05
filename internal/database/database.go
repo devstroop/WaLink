@@ -23,7 +23,6 @@ type AccountRecord struct {
 	PhoneNumber string
 	AccountName string
 	DataDir     string
-	IdleTimeout int64
 	Status      string
 	CreatedAt   string
 	UpdatedAt   string
@@ -60,7 +59,6 @@ func (d *DB) migrate() error {
 			phone_number  TEXT NOT NULL UNIQUE,
 			account_name  TEXT NOT NULL DEFAULT '',
 			data_dir      TEXT NOT NULL,
-			idle_timeout  INTEGER NOT NULL DEFAULT 300,
 			status        TEXT NOT NULL DEFAULT 'sleeping',
 			created_at    TEXT NOT NULL DEFAULT (datetime('now')),
 			updated_at    TEXT NOT NULL DEFAULT (datetime('now'))
@@ -76,9 +74,9 @@ func (d *DB) CreateAccount(rec *AccountRecord) error {
 
 	now := time.Now().UTC().Format(time.RFC3339)
 	_, err := d.db.Exec(`
-		INSERT INTO account (id, phone_number, account_name, data_dir, idle_timeout, status, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-		rec.ID, rec.PhoneNumber, rec.AccountName, rec.DataDir, rec.IdleTimeout, rec.Status, now, now,
+		INSERT INTO account (id, phone_number, account_name, data_dir, status, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		rec.ID, rec.PhoneNumber, rec.AccountName, rec.DataDir, rec.Status, now, now,
 	)
 	return err
 }
@@ -89,7 +87,7 @@ func (d *DB) GetAccount(id string) (*AccountRecord, error) {
 	defer d.mu.Unlock()
 
 	row := d.db.QueryRow(
-		`SELECT id, phone_number, account_name, data_dir, idle_timeout, status, created_at, updated_at
+		`SELECT id, phone_number, account_name, data_dir, status, created_at, updated_at
 		 FROM account WHERE id = ?`, id)
 	return scanAccount(row)
 }
@@ -100,7 +98,7 @@ func (d *DB) GetAccountByPhone(phone string) (*AccountRecord, error) {
 	defer d.mu.Unlock()
 
 	row := d.db.QueryRow(
-		`SELECT id, phone_number, account_name, data_dir, idle_timeout, status, created_at, updated_at
+		`SELECT id, phone_number, account_name, data_dir, status, created_at, updated_at
 		 FROM account WHERE phone_number = ?`, phone)
 	return scanAccount(row)
 }
@@ -110,7 +108,7 @@ func (d *DB) ListAccounts(statusFilter string) ([]*AccountRecord, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
-	query := `SELECT id, phone_number, account_name, data_dir, idle_timeout, status, created_at, updated_at FROM account`
+	query := `SELECT id, phone_number, account_name, data_dir, status, created_at, updated_at FROM account`
 	var args []any
 	if statusFilter != "" {
 		query += ` WHERE status = ?`
@@ -127,7 +125,7 @@ func (d *DB) ListAccounts(statusFilter string) ([]*AccountRecord, error) {
 	var out []*AccountRecord
 	for rows.Next() {
 		var r AccountRecord
-		if err := rows.Scan(&r.ID, &r.PhoneNumber, &r.AccountName, &r.DataDir, &r.IdleTimeout, &r.Status, &r.CreatedAt, &r.UpdatedAt); err != nil {
+		if err := rows.Scan(&r.ID, &r.PhoneNumber, &r.AccountName, &r.DataDir, &r.Status, &r.CreatedAt, &r.UpdatedAt); err != nil {
 			return nil, err
 		}
 		out = append(out, &r)
@@ -153,6 +151,15 @@ func (d *DB) UpdateAccountName(id, name string) error {
 	return err
 }
 
+// UpdatePhoneNumber sets an account's phone number.
+func (d *DB) UpdatePhoneNumber(id, phone string) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	_, err := d.db.Exec(`UPDATE account SET phone_number = ?, updated_at = datetime('now') WHERE id = ?`, phone, id)
+	return err
+}
+
 // DeleteAccount removes the account row.
 func (d *DB) DeleteAccount(id string) error {
 	d.mu.Lock()
@@ -164,7 +171,7 @@ func (d *DB) DeleteAccount(id string) error {
 
 func scanAccount(row *sql.Row) (*AccountRecord, error) {
 	var r AccountRecord
-	err := row.Scan(&r.ID, &r.PhoneNumber, &r.AccountName, &r.DataDir, &r.IdleTimeout, &r.Status, &r.CreatedAt, &r.UpdatedAt)
+	err := row.Scan(&r.ID, &r.PhoneNumber, &r.AccountName, &r.DataDir, &r.Status, &r.CreatedAt, &r.UpdatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}

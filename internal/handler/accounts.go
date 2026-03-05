@@ -3,7 +3,7 @@ package handler
 import (
 	"net/http"
 
-	"github.com/itsalfredakku/walink/internal/model"
+	"github.com/devstroop/walink/internal/model"
 )
 
 // ListAccounts — GET /api/v1/accounts
@@ -48,46 +48,32 @@ func (a *API) DeleteAccount(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, resp)
 }
 
-// GetConfig — GET /api/v1/accounts/{account_id}/config
-func (a *API) GetConfig(w http.ResponseWriter, r *http.Request) {
-	acct := a.mgr.GetAccount(r.PathValue("account_id"))
-	if acct == nil {
-		writeError(w, http.StatusNotFound, "account not found")
-		return
-	}
-	acct.TouchActivity()
-	writeJSON(w, http.StatusOK, model.AccountConfig{
-		AccountID:   acct.ID,
-		AccountName: acct.AccountName,
-		IdleTimeout: acct.IdleTimeout,
-	})
-}
-
-// UpdateConfig — PUT /api/v1/accounts/{account_id}/config
-func (a *API) UpdateConfig(w http.ResponseWriter, r *http.Request) {
+// UpdateAccount — PATCH /api/v1/accounts/{account_id}
+func (a *API) UpdateAccount(w http.ResponseWriter, r *http.Request) {
 	acct := a.mgr.GetAccount(r.PathValue("account_id"))
 	if acct == nil {
 		writeError(w, http.StatusNotFound, "account not found")
 		return
 	}
 
-	var req model.UpdateAccountConfigRequest
+	var req model.UpdateAccountRequest
 	if err := readJSON(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid json: "+err.Error())
 		return
 	}
 
-	acct.TouchActivity()
 	if req.AccountName != nil {
-		acct.AccountName = *req.AccountName
+		if err := a.mgr.UpdateAccountName(acct.ID, *req.AccountName); err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
 	}
-	if req.IdleTimeout != nil {
-		acct.IdleTimeout = *req.IdleTimeout
+	if req.PhoneNumber != nil {
+		if err := a.mgr.UpdatePhoneNumber(acct.ID, *req.PhoneNumber); err != nil {
+			writeError(w, http.StatusConflict, err.Error())
+			return
+		}
 	}
 
-	writeJSON(w, http.StatusOK, model.AccountConfig{
-		AccountID:   acct.ID,
-		AccountName: acct.AccountName,
-		IdleTimeout: acct.IdleTimeout,
-	})
+	writeJSON(w, http.StatusOK, acct.Info())
 }

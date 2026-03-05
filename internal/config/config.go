@@ -51,12 +51,7 @@ type LimitsConfig struct {
 }
 
 type AccountsConfig struct {
-	BaseDirectory string                `toml:"base_directory"`
-	Defaults      AccountDefaultsConfig `toml:"defaults"`
-}
-
-type AccountDefaultsConfig struct {
-	IdleTimeout int64 `toml:"idle_timeout"`
+	BaseDirectory string `toml:"base_directory"`
 }
 
 type WebhookConfig struct {
@@ -119,9 +114,7 @@ func defaults() *Config {
 			RequestTimeoutMs:      30000,
 			MaxUploadSize:         10 * 1024 * 1024,
 		},
-		Accounts: AccountsConfig{
-			Defaults: AccountDefaultsConfig{IdleTimeout: 300},
-		},
+		Accounts: AccountsConfig{},
 		Webhooks: WebhookConfig{
 			TimeoutMs:  5000,
 			RetryCount: 3,

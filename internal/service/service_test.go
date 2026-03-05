@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/itsalfredakku/walink/internal/model"
+	"github.com/devstroop/walink/internal/model"
 )
 
 func TestNormalizePhone(t *testing.T) {
@@ -50,7 +50,7 @@ func TestNewUUID(t *testing.T) {
 
 func TestNewAccount(t *testing.T) {
 	now := time.Now()
-	acct := NewAccount("test-id", "919876543210", "main", "/tmp/test", 300, now)
+	acct := NewAccount("test-id", "919876543210", "main", "/tmp/test", now)
 
 	if acct.ID != "test-id" {
 		t.Errorf("expected ID test-id, got %s", acct.ID)
@@ -64,9 +64,6 @@ func TestNewAccount(t *testing.T) {
 	if acct.DataDir != "/tmp/test" {
 		t.Errorf("expected data dir /tmp/test, got %s", acct.DataDir)
 	}
-	if acct.IdleTimeout != 300 {
-		t.Errorf("expected idle_timeout 300, got %d", acct.IdleTimeout)
-	}
 	if acct.Status != model.StatusSleeping {
 		t.Errorf("expected status sleeping, got %s", acct.Status)
 	}
@@ -74,7 +71,7 @@ func TestNewAccount(t *testing.T) {
 
 func TestAccountInfo(t *testing.T) {
 	now := time.Now()
-	acct := NewAccount("info-id", "1234567890", "info-acct", "/tmp/info", 60, now)
+	acct := NewAccount("info-id", "1234567890", "info-acct", "/tmp/info", now)
 
 	info := acct.Info()
 	if info.ID != "info-id" {
@@ -95,7 +92,7 @@ func TestAccountInfo(t *testing.T) {
 }
 
 func TestAccountInfoNoPhone(t *testing.T) {
-	acct := NewAccount("no-phone", "", "nophone", "/tmp/np", 300, time.Now())
+	acct := NewAccount("no-phone", "", "nophone", "/tmp/np", time.Now())
 	info := acct.Info()
 	if info.PhoneNumber != nil {
 		t.Errorf("expected nil phone, got %v", info.PhoneNumber)
@@ -103,7 +100,7 @@ func TestAccountInfoNoPhone(t *testing.T) {
 }
 
 func TestAccountStatusResponse(t *testing.T) {
-	acct := NewAccount("sr-id", "5551234567", "sr", "/tmp/sr", 300, time.Now())
+	acct := NewAccount("sr-id", "5551234567", "sr", "/tmp/sr", time.Now())
 	resp := acct.StatusResponse()
 
 	if resp.AccountID != "sr-id" {
@@ -120,24 +117,8 @@ func TestAccountStatusResponse(t *testing.T) {
 	}
 }
 
-func TestAccountTouchActivity(t *testing.T) {
-	acct := NewAccount("touch-id", "1111111111", "touch", "/tmp/touch", 300, time.Now())
-
-	before := acct.lastActivity
-	time.Sleep(10 * time.Millisecond)
-	acct.TouchActivity()
-
-	acct.mu.RLock()
-	after := acct.lastActivity
-	acct.mu.RUnlock()
-
-	if !after.After(before) {
-		t.Error("expected lastActivity to advance after TouchActivity")
-	}
-}
-
 func TestAccountDisconnectWhileAlreadySleeping(t *testing.T) {
-	acct := NewAccount("disc-id", "2222222222", "disc", "/tmp/disc", 300, time.Now())
+	acct := NewAccount("disc-id", "2222222222", "disc", "/tmp/disc", time.Now())
 	// Should not panic when client is nil
 	acct.Disconnect()
 	if acct.Status != model.StatusSleeping {

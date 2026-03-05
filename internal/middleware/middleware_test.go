@@ -5,7 +5,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/itsalfredakku/walink/internal/config"
+	"github.com/devstroop/walink/internal/config"
 )
 
 var okHandler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

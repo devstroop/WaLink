@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/itsalfredakku/walink/internal/model"
+	"github.com/devstroop/walink/internal/model"
 )
 
 func TestHealth(t *testing.T) {
@@ -27,23 +27,6 @@ func TestHealth(t *testing.T) {
 	json.NewDecoder(w.Body).Decode(&body)
 	if body["status"] != "ok" {
 		t.Errorf("expected status ok, got %s", body["status"])
-	}
-}
-
-func TestReady(t *testing.T) {
-	req := httptest.NewRequest("GET", "/api/ready", nil)
-	w := httptest.NewRecorder()
-
-	Ready(w, req)
-
-	if w.Code != http.StatusOK {
-		t.Errorf("expected 200, got %d", w.Code)
-	}
-
-	var body map[string]string
-	json.NewDecoder(w.Body).Decode(&body)
-	if body["status"] != "ready" {
-		t.Errorf("expected status ready, got %s", body["status"])
 	}
 }
 

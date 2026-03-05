@@ -3,7 +3,7 @@
   "info": {
     "title": "WaLink API",
     "description": "WhatsApp messaging API powered by whatsmeow",
-    "version": "0.1.0",
+    "version": "0.2.0",
     "license": { "name": "MIT" }
   },
   "servers": [{ "url": "http://localhost:3000", "description": "Local" }],
@@ -16,6 +16,10 @@
         "name": "Authorization",
         "description": "Enter: Bearer <your-secret-key>"
       }
+    },
+    "parameters": {
+      "AccountId": { "name": "account_id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } },
+      "JID": { "name": "jid", "in": "path", "required": true, "schema": { "type": "string" }, "description": "WhatsApp JID (e.g. 919876543210@s.whatsapp.net)" }
     },
     "schemas": {
       "AccountInfo": {
@@ -41,8 +45,7 @@
         "required": ["phone_number"],
         "properties": {
           "phone_number": { "type": "string", "example": "+919876543210" },
-          "account_name": { "type": "string", "example": "main" },
-          "idle_timeout": { "type": "integer", "example": 300 }
+          "account_name": { "type": "string", "example": "main" }
         }
       },
       "CreateAccountResponse": {
@@ -55,11 +58,10 @@
           "created_at": { "type": "string" }
         }
       },
-      "AccountActionResponse": {
+      "UpdateAccountRequest": {
         "type": "object",
         "properties": {
-          "message": { "type": "string" },
-          "account_id": { "type": "string" }
+          "account_name": { "type": "string" }
         }
       },
       "DeleteAccountResponse": {
@@ -70,22 +72,7 @@
           "data_deleted": { "type": "boolean" }
         }
       },
-      "AccountConfig": {
-        "type": "object",
-        "properties": {
-          "account_id": { "type": "string" },
-          "account_name": { "type": "string" },
-          "idle_timeout": { "type": "integer" }
-        }
-      },
-      "UpdateAccountConfigRequest": {
-        "type": "object",
-        "properties": {
-          "account_name": { "type": "string" },
-          "idle_timeout": { "type": "integer" }
-        }
-      },
-      "WhatsAppStatusResponse": {
+      "SessionStatus": {
         "type": "object",
         "properties": {
           "account_id": { "type": "string" },
@@ -96,8 +83,54 @@
       },
       "PhoneLinkResponse": {
         "type": "object",
+        "properties": { "linking_code": { "type": "string" } }
+      },
+      "AccountActionResponse": {
+        "type": "object",
         "properties": {
-          "linking_code": { "type": "string" }
+          "message": { "type": "string" },
+          "account_id": { "type": "string" }
+        }
+      },
+      "SendMessageRequest": {
+        "type": "object",
+        "required": ["chat"],
+        "properties": {
+          "chat": { "type": "string", "example": "919876543210@s.whatsapp.net" },
+          "text": { "type": "string", "example": "Hello from WaLink!" }
+        }
+      },
+      "SendMessageResponse": {
+        "type": "object",
+        "properties": {
+          "status": { "type": "string" },
+          "message_id": { "type": "string" }
+        }
+      },
+      "ReactionRequest": {
+        "type": "object",
+        "required": ["chat", "message_id", "emoji"],
+        "properties": {
+          "chat": { "type": "string" },
+          "message_id": { "type": "string" },
+          "emoji": { "type": "string", "example": "\ud83d\udc4d" }
+        }
+      },
+      "ReplyMessageRequest": {
+        "type": "object",
+        "required": ["chat", "message_id", "text"],
+        "properties": {
+          "chat": { "type": "string" },
+          "message_id": { "type": "string" },
+          "text": { "type": "string" }
+        }
+      },
+      "MarkReadRequest": {
+        "type": "object",
+        "required": ["chat", "message_ids"],
+        "properties": {
+          "chat": { "type": "string" },
+          "message_ids": { "type": "array", "items": { "type": "string" } }
         }
       },
       "ChatInfo": {
@@ -143,47 +176,6 @@
           "has_more": { "type": "boolean" }
         }
       },
-      "SendMessageRequest": {
-        "type": "object",
-        "properties": {
-          "text": { "type": "string", "example": "Hello from WaLink!" }
-        }
-      },
-      "SendMessageResponse": {
-        "type": "object",
-        "properties": {
-          "status": { "type": "string" },
-          "message_id": { "type": "string" }
-        }
-      },
-      "TypingRequest": {
-        "type": "object",
-        "required": ["state"],
-        "properties": {
-          "state": { "type": "string", "enum": ["composing", "paused"] }
-        }
-      },
-      "MarkReadRequest": {
-        "type": "object",
-        "required": ["message_ids"],
-        "properties": {
-          "message_ids": { "type": "array", "items": { "type": "string" } }
-        }
-      },
-      "ReactionRequest": {
-        "type": "object",
-        "required": ["emoji"],
-        "properties": {
-          "emoji": { "type": "string", "example": "👍" }
-        }
-      },
-      "ReplyMessageRequest": {
-        "type": "object",
-        "required": ["text"],
-        "properties": {
-          "text": { "type": "string", "example": "This is a reply" }
-        }
-      },
       "ContactInfo": {
         "type": "object",
         "properties": {
@@ -214,20 +206,127 @@
           "participant_count": { "type": "integer" },
           "participants": { "type": "array", "items": { "$ref": "#/components/schemas/GroupParticipant" } },
           "is_announce": { "type": "boolean" },
-          "is_locked": { "type": "boolean" }
+          "is_locked": { "type": "boolean" },
+          "invite_link": { "type": "string", "nullable": true }
+        }
+      },
+      "GroupListResponse": {
+        "type": "object",
+        "properties": {
+          "groups": { "type": "array", "items": { "$ref": "#/components/schemas/GroupInfo" } },
+          "total": { "type": "integer" }
+        }
+      },
+      "CreateGroupRequest": {
+        "type": "object",
+        "required": ["name"],
+        "properties": {
+          "name": { "type": "string", "maxLength": 25 },
+          "participants": { "type": "array", "items": { "type": "string" } }
+        }
+      },
+      "UpdateGroupRequest": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string" },
+          "description": { "type": "string" },
+          "locked": { "type": "boolean" },
+          "announce": { "type": "boolean" }
+        }
+      },
+      "GroupParticipantsRequest": {
+        "type": "object",
+        "required": ["participants", "action"],
+        "properties": {
+          "participants": { "type": "array", "items": { "type": "string" } },
+          "action": { "type": "string", "enum": ["add", "remove", "promote", "demote"] }
+        }
+      },
+      "GroupInviteLinkResponse": {
+        "type": "object",
+        "properties": { "invite_link": { "type": "string" } }
+      },
+      "PresenceRequest": {
+        "type": "object",
+        "required": ["state"],
+        "properties": {
+          "state": { "type": "string", "enum": ["composing", "paused", "available", "unavailable"] },
+          "chat": { "type": "string", "description": "JID for chat-level typing. Omit for global presence." }
+        }
+      },
+      "ProfileResponse": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "phone_number": { "type": "string", "nullable": true },
+          "about": { "type": "string", "nullable": true },
+          "picture_url": { "type": "string", "nullable": true }
+        }
+      },
+      "UpdateProfileRequest": {
+        "type": "object",
+        "properties": {
+          "about": { "type": "string" }
+        }
+      },
+      "PrivacySettings": {
+        "type": "object",
+        "properties": {
+          "group_add": { "type": "string" },
+          "last_seen": { "type": "string" },
+          "status": { "type": "string" },
+          "profile": { "type": "string" },
+          "read_receipts": { "type": "string" },
+          "online": { "type": "string" },
+          "call_add": { "type": "string" }
+        }
+      },
+      "UpdatePrivacyRequest": {
+        "type": "object",
+        "properties": {
+          "group_add": { "type": "string", "enum": ["all", "contacts", "contact_blacklist", "none"] },
+          "last_seen": { "type": "string", "enum": ["all", "contacts", "contact_blacklist", "none"] },
+          "status": { "type": "string", "enum": ["all", "contacts", "contact_blacklist", "none"] },
+          "profile": { "type": "string", "enum": ["all", "contacts", "contact_blacklist", "none"] },
+          "read_receipts": { "type": "string", "enum": ["all", "none"] },
+          "online": { "type": "string", "enum": ["all", "match_last_seen"] },
+          "call_add": { "type": "string", "enum": ["all", "known"] }
+        }
+      },
+      "NewsletterInfo": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "name": { "type": "string" },
+          "description": { "type": "string", "nullable": true },
+          "subscriber_count": { "type": "integer" },
+          "role": { "type": "string", "nullable": true },
+          "muted": { "type": "boolean" },
+          "picture_url": { "type": "string", "nullable": true }
+        }
+      },
+      "NewsletterListResponse": {
+        "type": "object",
+        "properties": {
+          "newsletters": { "type": "array", "items": { "$ref": "#/components/schemas/NewsletterInfo" } },
+          "total": { "type": "integer" }
+        }
+      },
+      "CreateNewsletterRequest": {
+        "type": "object",
+        "required": ["name"],
+        "properties": {
+          "name": { "type": "string" },
+          "description": { "type": "string" }
         }
       },
       "HealthResponse": {
         "type": "object",
-        "properties": {
-          "status": { "type": "string", "example": "ok" }
-        }
+        "properties": { "status": { "type": "string", "example": "ok" } }
       },
       "ErrorResponse": {
         "type": "object",
-        "properties": {
-          "error": { "type": "string" }
-        }
+        "properties": { "error": { "type": "string" } }
       }
     }
   },
@@ -242,41 +341,27 @@
         }
       }
     },
-    "/api/ready": {
-      "get": {
-        "tags": ["Health"],
-        "summary": "Readiness check",
-        "security": [],
-        "responses": {
-          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/HealthResponse" } } } }
-        }
-      }
-    },
     "/api/v1/accounts": {
       "get": {
         "tags": ["Accounts"],
         "summary": "List all accounts",
         "responses": {
-          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AccountListResponse" } } } },
-          "401": { "description": "Unauthorized", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AccountListResponse" } } } }
         }
       },
       "post": {
         "tags": ["Accounts"],
         "summary": "Create a new account",
-        "requestBody": {
-          "required": true,
-          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreateAccountRequest" } } }
-        },
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreateAccountRequest" } } } },
         "responses": {
           "201": { "description": "Created", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreateAccountResponse" } } } },
-          "400": { "description": "Bad request", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
-          "401": { "description": "Unauthorized" }
+          "400": { "description": "Bad request" },
+          "409": { "description": "Phone already exists" }
         }
       }
     },
     "/api/v1/accounts/{account_id}": {
-      "parameters": [{ "name": "account_id", "in": "path", "required": true, "schema": { "type": "string" } }],
+      "parameters": [{ "$ref": "#/components/parameters/AccountId" }],
       "get": {
         "tags": ["Accounts"],
         "summary": "Get account details",
@@ -285,115 +370,76 @@
           "404": { "description": "Not found" }
         }
       },
+      "patch": {
+        "tags": ["Accounts"],
+        "summary": "Update account",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/UpdateAccountRequest" } } } },
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AccountInfo" } } } },
+          "404": { "description": "Not found" }
+        }
+      },
       "delete": {
         "tags": ["Accounts"],
         "summary": "Delete an account",
-        "parameters": [{ "name": "delete_data", "in": "query", "schema": { "type": "boolean", "default": false }, "description": "Also delete session data on disk" }],
+        "parameters": [{ "name": "delete_data", "in": "query", "schema": { "type": "boolean", "default": false } }],
         "responses": {
           "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DeleteAccountResponse" } } } },
           "404": { "description": "Not found" }
         }
       }
     },
-    "/api/v1/accounts/{account_id}/config": {
-      "parameters": [{ "name": "account_id", "in": "path", "required": true, "schema": { "type": "string" } }],
+    "/api/v1/accounts/{account_id}/session": {
+      "parameters": [{ "$ref": "#/components/parameters/AccountId" }],
       "get": {
-        "tags": ["Accounts"],
-        "summary": "Get account config",
+        "tags": ["Session"],
+        "summary": "Get WhatsApp session status",
         "responses": {
-          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AccountConfig" } } } },
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SessionStatus" } } } },
           "404": { "description": "Not found" }
         }
       },
-      "put": {
-        "tags": ["Accounts"],
-        "summary": "Update account config",
-        "requestBody": {
-          "required": true,
-          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/UpdateAccountConfigRequest" } } }
-        },
-        "responses": {
-          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AccountConfig" } } } },
-          "404": { "description": "Not found" }
-        }
-      }
-    },
-    "/api/v1/accounts/{account_id}/status": {
-      "parameters": [{ "name": "account_id", "in": "path", "required": true, "schema": { "type": "string" } }],
-      "get": {
-        "tags": ["WhatsApp Auth"],
-        "summary": "Get WhatsApp connection status",
-        "responses": {
-          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/WhatsAppStatusResponse" } } } },
-          "404": { "description": "Not found" }
-        }
-      }
-    },
-    "/api/v1/accounts/{account_id}/link/qr": {
-      "parameters": [{ "name": "account_id", "in": "path", "required": true, "schema": { "type": "string" } }],
-      "get": {
-        "tags": ["WhatsApp Auth"],
-        "summary": "Get QR code for linking",
-        "description": "Returns a QR code as a PNG image (512x512). The account will be connected automatically. Waits up to 60 seconds.",
-        "responses": {
-          "200": { "description": "QR code PNG image", "content": { "image/png": { "schema": { "type": "string", "format": "binary" } } } },
-          "404": { "description": "Not found" },
-          "409": { "description": "Already logged in" },
-          "504": { "description": "Timeout waiting for QR" }
-        }
-      }
-    },
-    "/api/v1/accounts/{account_id}/link/phone": {
-      "parameters": [{ "name": "account_id", "in": "path", "required": true, "schema": { "type": "string" } }],
-      "post": {
-        "tags": ["WhatsApp Auth"],
-        "summary": "Link via phone number pairing code",
-        "description": "Uses the phone number provided at account creation. No request body needed.",
-        "responses": {
-          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PhoneLinkResponse" } } } },
-          "404": { "description": "Not found" }
-        }
-      }
-    },
-    "/api/v1/accounts/{account_id}/unlink": {
-      "parameters": [{ "name": "account_id", "in": "path", "required": true, "schema": { "type": "string" } }],
       "delete": {
-        "tags": ["WhatsApp Auth"],
-        "summary": "Unlink (logout) from WhatsApp",
+        "tags": ["Session"],
+        "summary": "Logout / unlink WhatsApp session",
         "responses": {
           "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AccountActionResponse" } } } },
           "404": { "description": "Not found" }
         }
       }
     },
-    "/api/v1/accounts/{account_id}/chats": {
-      "parameters": [{ "name": "account_id", "in": "path", "required": true, "schema": { "type": "string" } }],
+    "/api/v1/accounts/{account_id}/session/qr": {
+      "parameters": [{ "$ref": "#/components/parameters/AccountId" }],
       "get": {
-        "tags": ["Messaging"],
-        "summary": "List chats",
+        "tags": ["Session"],
+        "summary": "Get QR code for linking",
+        "description": "Returns a 512x512 PNG image. Waits up to 60s for QR generation.",
         "responses": {
-          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ChatListResponse" } } } },
+          "200": { "description": "QR code PNG", "content": { "image/png": { "schema": { "type": "string", "format": "binary" } } } },
+          "404": { "description": "Not found" },
+          "409": { "description": "Already logged in" },
+          "504": { "description": "Timeout" }
+        }
+      }
+    },
+    "/api/v1/accounts/{account_id}/session/pair": {
+      "parameters": [{ "$ref": "#/components/parameters/AccountId" }],
+      "post": {
+        "tags": ["Session"],
+        "summary": "Link via phone number pairing code",
+        "description": "Uses the phone number provided at account creation.",
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PhoneLinkResponse" } } } },
           "404": { "description": "Not found" }
         }
       }
     },
-    "/api/v1/accounts/{account_id}/chats/{chat_id}/messages": {
-      "parameters": [
-        { "name": "account_id", "in": "path", "required": true, "schema": { "type": "string" } },
-        { "name": "chat_id", "in": "path", "required": true, "schema": { "type": "string" } }
-      ],
-      "get": {
-        "tags": ["Messaging"],
-        "summary": "Get messages in a chat",
-        "responses": {
-          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/MessageListResponse" } } } },
-          "404": { "description": "Not found" }
-        }
-      },
+    "/api/v1/accounts/{account_id}/messages": {
+      "parameters": [{ "$ref": "#/components/parameters/AccountId" }],
       "post": {
         "tags": ["Messaging"],
         "summary": "Send a message",
-        "description": "Supports JSON body (text) or multipart/form-data (text + file upload).",
+        "description": "Send text (JSON) or text+file (multipart/form-data). Chat JID in body.",
         "requestBody": {
           "required": true,
           "content": {
@@ -401,7 +447,9 @@
             "multipart/form-data": {
               "schema": {
                 "type": "object",
+                "required": ["chat"],
                 "properties": {
+                  "chat": { "type": "string" },
                   "text": { "type": "string" },
                   "file": { "type": "string", "format": "binary" }
                 }
@@ -416,36 +464,36 @@
         }
       }
     },
-    "/api/v1/accounts/{account_id}/chats/{chat_id}/typing": {
-      "parameters": [
-        { "name": "account_id", "in": "path", "required": true, "schema": { "type": "string" } },
-        { "name": "chat_id", "in": "path", "required": true, "schema": { "type": "string" } }
-      ],
+    "/api/v1/accounts/{account_id}/messages/react": {
+      "parameters": [{ "$ref": "#/components/parameters/AccountId" }],
       "post": {
-        "tags": ["Chat Actions"],
-        "summary": "Send typing indicator",
-        "requestBody": {
-          "required": true,
-          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/TypingRequest" } } }
-        },
+        "tags": ["Messaging"],
+        "summary": "React to a message",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ReactionRequest" } } } },
         "responses": {
           "200": { "description": "OK" },
           "404": { "description": "Not found" }
         }
       }
     },
-    "/api/v1/accounts/{account_id}/chats/{chat_id}/read": {
-      "parameters": [
-        { "name": "account_id", "in": "path", "required": true, "schema": { "type": "string" } },
-        { "name": "chat_id", "in": "path", "required": true, "schema": { "type": "string" } }
-      ],
+    "/api/v1/accounts/{account_id}/messages/reply": {
+      "parameters": [{ "$ref": "#/components/parameters/AccountId" }],
       "post": {
-        "tags": ["Chat Actions"],
+        "tags": ["Messaging"],
+        "summary": "Reply to a message",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ReplyMessageRequest" } } } },
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SendMessageResponse" } } } },
+          "404": { "description": "Not found" }
+        }
+      }
+    },
+    "/api/v1/accounts/{account_id}/messages/read": {
+      "parameters": [{ "$ref": "#/components/parameters/AccountId" }],
+      "post": {
+        "tags": ["Messaging"],
         "summary": "Mark messages as read",
-        "requestBody": {
-          "required": true,
-          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/MarkReadRequest" } } }
-        },
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/MarkReadRequest" } } } },
         "responses": {
           "200": { "description": "OK" },
           "400": { "description": "Bad request" },
@@ -453,51 +501,32 @@
         }
       }
     },
-    "/api/v1/accounts/{account_id}/chats/{chat_id}/messages/{message_id}/react": {
-      "parameters": [
-        { "name": "account_id", "in": "path", "required": true, "schema": { "type": "string" } },
-        { "name": "chat_id", "in": "path", "required": true, "schema": { "type": "string" } },
-        { "name": "message_id", "in": "path", "required": true, "schema": { "type": "string" } }
-      ],
-      "post": {
-        "tags": ["Chat Actions"],
-        "summary": "React to a message",
-        "requestBody": {
-          "required": true,
-          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ReactionRequest" } } }
-        },
-        "responses": {
-          "200": { "description": "OK" },
-          "404": { "description": "Not found" }
-        }
-      }
-    },
-    "/api/v1/accounts/{account_id}/chats/{chat_id}/messages/{message_id}/reply": {
-      "parameters": [
-        { "name": "account_id", "in": "path", "required": true, "schema": { "type": "string" } },
-        { "name": "chat_id", "in": "path", "required": true, "schema": { "type": "string" } },
-        { "name": "message_id", "in": "path", "required": true, "schema": { "type": "string" } }
-      ],
-      "post": {
-        "tags": ["Chat Actions"],
-        "summary": "Reply to a message",
-        "requestBody": {
-          "required": true,
-          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ReplyMessageRequest" } } }
-        },
-        "responses": {
-          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SendMessageResponse" } } } },
-          "404": { "description": "Not found" }
-        }
-      }
-    },
-    "/api/v1/accounts/{account_id}/contacts/{contact_id}": {
-      "parameters": [
-        { "name": "account_id", "in": "path", "required": true, "schema": { "type": "string" } },
-        { "name": "contact_id", "in": "path", "required": true, "schema": { "type": "string" } }
-      ],
+    "/api/v1/accounts/{account_id}/chats": {
+      "parameters": [{ "$ref": "#/components/parameters/AccountId" }],
       "get": {
-        "tags": ["Contacts & Groups"],
+        "tags": ["Chats"],
+        "summary": "List chats",
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ChatListResponse" } } } },
+          "404": { "description": "Not found" }
+        }
+      }
+    },
+    "/api/v1/accounts/{account_id}/chats/{jid}/messages": {
+      "parameters": [{ "$ref": "#/components/parameters/AccountId" }, { "$ref": "#/components/parameters/JID" }],
+      "get": {
+        "tags": ["Chats"],
+        "summary": "Get messages in a chat (stub)",
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/MessageListResponse" } } } },
+          "404": { "description": "Not found" }
+        }
+      }
+    },
+    "/api/v1/accounts/{account_id}/contacts/{jid}": {
+      "parameters": [{ "$ref": "#/components/parameters/AccountId" }, { "$ref": "#/components/parameters/JID" }],
+      "get": {
+        "tags": ["Contacts"],
         "summary": "Get contact info",
         "responses": {
           "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ContactInfo" } } } },
@@ -505,27 +534,196 @@
         }
       }
     },
-    "/api/v1/accounts/{account_id}/groups/{group_id}": {
-      "parameters": [
-        { "name": "account_id", "in": "path", "required": true, "schema": { "type": "string" } },
-        { "name": "group_id", "in": "path", "required": true, "schema": { "type": "string" } }
-      ],
+    "/api/v1/accounts/{account_id}/groups": {
+      "parameters": [{ "$ref": "#/components/parameters/AccountId" }],
       "get": {
-        "tags": ["Contacts & Groups"],
+        "tags": ["Groups"],
+        "summary": "List joined groups",
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/GroupListResponse" } } } },
+          "404": { "description": "Not found" }
+        }
+      },
+      "post": {
+        "tags": ["Groups"],
+        "summary": "Create a group",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreateGroupRequest" } } } },
+        "responses": {
+          "201": { "description": "Created", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/GroupInfo" } } } },
+          "400": { "description": "Bad request" },
+          "404": { "description": "Not found" }
+        }
+      }
+    },
+    "/api/v1/accounts/{account_id}/groups/{jid}": {
+      "parameters": [{ "$ref": "#/components/parameters/AccountId" }, { "$ref": "#/components/parameters/JID" }],
+      "get": {
+        "tags": ["Groups"],
         "summary": "Get group info",
         "responses": {
           "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/GroupInfo" } } } },
+          "404": { "description": "Not found" }
+        }
+      },
+      "patch": {
+        "tags": ["Groups"],
+        "summary": "Update group settings",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/UpdateGroupRequest" } } } },
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/GroupInfo" } } } },
+          "404": { "description": "Not found" }
+        }
+      },
+      "delete": {
+        "tags": ["Groups"],
+        "summary": "Leave group",
+        "responses": {
+          "200": { "description": "OK" },
+          "404": { "description": "Not found" }
+        }
+      }
+    },
+    "/api/v1/accounts/{account_id}/groups/{jid}/invite": {
+      "parameters": [{ "$ref": "#/components/parameters/AccountId" }, { "$ref": "#/components/parameters/JID" }],
+      "get": {
+        "tags": ["Groups"],
+        "summary": "Get group invite link",
+        "parameters": [{ "name": "reset", "in": "query", "schema": { "type": "boolean", "default": false } }],
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/GroupInviteLinkResponse" } } } },
+          "404": { "description": "Not found" }
+        }
+      }
+    },
+    "/api/v1/accounts/{account_id}/groups/{jid}/participants": {
+      "parameters": [{ "$ref": "#/components/parameters/AccountId" }, { "$ref": "#/components/parameters/JID" }],
+      "post": {
+        "tags": ["Groups"],
+        "summary": "Add/remove/promote/demote participants",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/GroupParticipantsRequest" } } } },
+        "responses": {
+          "200": { "description": "OK" },
+          "400": { "description": "Bad request" },
+          "404": { "description": "Not found" }
+        }
+      }
+    },
+    "/api/v1/accounts/{account_id}/presence": {
+      "parameters": [{ "$ref": "#/components/parameters/AccountId" }],
+      "post": {
+        "tags": ["Presence"],
+        "summary": "Set presence or typing indicator",
+        "description": "With 'chat': sends typing (composing/paused). Without: sets global presence (available/unavailable).",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PresenceRequest" } } } },
+        "responses": {
+          "200": { "description": "OK" },
+          "404": { "description": "Not found" }
+        }
+      }
+    },
+    "/api/v1/accounts/{account_id}/profile": {
+      "parameters": [{ "$ref": "#/components/parameters/AccountId" }],
+      "get": {
+        "tags": ["Profile"],
+        "summary": "Get own profile",
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ProfileResponse" } } } },
+          "404": { "description": "Not found" }
+        }
+      },
+      "patch": {
+        "tags": ["Profile"],
+        "summary": "Update profile (about text)",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/UpdateProfileRequest" } } } },
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ProfileResponse" } } } },
+          "404": { "description": "Not found" }
+        }
+      }
+    },
+    "/api/v1/accounts/{account_id}/privacy": {
+      "parameters": [{ "$ref": "#/components/parameters/AccountId" }],
+      "get": {
+        "tags": ["Privacy"],
+        "summary": "Get privacy settings",
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PrivacySettings" } } } },
+          "404": { "description": "Not found" }
+        }
+      },
+      "patch": {
+        "tags": ["Privacy"],
+        "summary": "Update privacy settings",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/UpdatePrivacyRequest" } } } },
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PrivacySettings" } } } },
+          "404": { "description": "Not found" }
+        }
+      }
+    },
+    "/api/v1/accounts/{account_id}/newsletters": {
+      "parameters": [{ "$ref": "#/components/parameters/AccountId" }],
+      "get": {
+        "tags": ["Newsletters"],
+        "summary": "List subscribed newsletters",
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/NewsletterListResponse" } } } },
+          "404": { "description": "Not found" }
+        }
+      },
+      "post": {
+        "tags": ["Newsletters"],
+        "summary": "Create a newsletter",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreateNewsletterRequest" } } } },
+        "responses": {
+          "201": { "description": "Created", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/NewsletterInfo" } } } },
+          "400": { "description": "Bad request" },
+          "404": { "description": "Not found" }
+        }
+      }
+    },
+    "/api/v1/accounts/{account_id}/newsletters/{jid}": {
+      "parameters": [{ "$ref": "#/components/parameters/AccountId" }, { "$ref": "#/components/parameters/JID" }],
+      "get": {
+        "tags": ["Newsletters"],
+        "summary": "Get newsletter info",
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/NewsletterInfo" } } } },
+          "404": { "description": "Not found" }
+        }
+      }
+    },
+    "/api/v1/accounts/{account_id}/newsletters/{jid}/follow": {
+      "parameters": [{ "$ref": "#/components/parameters/AccountId" }, { "$ref": "#/components/parameters/JID" }],
+      "post": {
+        "tags": ["Newsletters"],
+        "summary": "Follow (subscribe to) a newsletter",
+        "responses": {
+          "200": { "description": "OK" },
+          "404": { "description": "Not found" }
+        }
+      },
+      "delete": {
+        "tags": ["Newsletters"],
+        "summary": "Unfollow a newsletter",
+        "responses": {
+          "200": { "description": "OK" },
           "404": { "description": "Not found" }
         }
       }
     }
   },
   "tags": [
-    { "name": "Health", "description": "Server health checks" },
-    { "name": "Accounts", "description": "Account CRUD & configuration" },
-    { "name": "WhatsApp Auth", "description": "QR/phone linking & status" },
-    { "name": "Messaging", "description": "Chats & messages" },
-    { "name": "Chat Actions", "description": "Typing, read receipts, reactions, replies" },
-    { "name": "Contacts & Groups", "description": "Contact & group info" }
+    { "name": "Health", "description": "Server health" },
+    { "name": "Accounts", "description": "Account CRUD" },
+    { "name": "Session", "description": "WhatsApp session lifecycle (QR, pair, logout)" },
+    { "name": "Messaging", "description": "Send messages, react, reply, mark read" },
+    { "name": "Chats", "description": "Chat listing and message history" },
+    { "name": "Contacts", "description": "Contact information" },
+    { "name": "Groups", "description": "Group management (create, update, participants, invite)" },
+    { "name": "Presence", "description": "Online status and typing indicators" },
+    { "name": "Profile", "description": "Own profile (about, picture)" },
+    { "name": "Privacy", "description": "Privacy settings (last seen, read receipts, etc.)" },
+    { "name": "Newsletters", "description": "Newsletter/channel management" }
   ]
 }

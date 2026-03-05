@@ -10,9 +10,9 @@ import (
 
 	"github.com/rs/zerolog/log"
 
-	"github.com/itsalfredakku/walink/internal/config"
-	"github.com/itsalfredakku/walink/internal/database"
-	"github.com/itsalfredakku/walink/internal/model"
+	"github.com/devstroop/walink/internal/config"
+	"github.com/devstroop/walink/internal/database"
+	"github.com/devstroop/walink/internal/model"
 )
 
 // AccountManager manages the lifecycle of all WhatsApp accounts.
@@ -63,25 +63,19 @@ func (m *AccountManager) CreateAccount(req model.CreateAccountRequest) (*model.C
 		name = "unknown"
 	}
 
-	idleTimeout := m.cfg.Accounts.Defaults.IdleTimeout
-	if req.IdleTimeout != nil {
-		idleTimeout = *req.IdleTimeout
-	}
-
 	now := time.Now().UTC()
 	rec := &database.AccountRecord{
 		ID:          id,
 		PhoneNumber: phone,
 		AccountName: name,
 		DataDir:     dataDir,
-		IdleTimeout: idleTimeout,
 		Status:      string(model.StatusSleeping),
 	}
 	if err := m.db.CreateAccount(rec); err != nil {
 		return nil, fmt.Errorf("db insert: %w", err)
 	}
 
-	acct := NewAccount(id, phone, name, dataDir, idleTimeout, now)
+	acct := NewAccount(id, phone, name, dataDir, now)
 
 	m.mu.Lock()
 	m.accounts[id] = acct
@@ -154,6 +148,43 @@ func (m *AccountManager) ConnectAccount(ctx context.Context, id string) error {
 	return acct.EnsureConnected(ctx)
 }
 
+// UpdateAccountName updates the display name in memory and DB.
+func (m *AccountManager) UpdateAccountName(id, name string) error {
+	acct := m.GetAccount(id)
+	if acct == nil {
+		return fmt.Errorf("account not found")
+	}
+	if err := m.db.UpdateAccountName(id, name); err != nil {
+		return fmt.Errorf("db update name: %w", err)
+	}
+	acct.AccountName = name
+	return nil
+}
+
+// UpdatePhoneNumber updates the phone number in memory and DB.
+func (m *AccountManager) UpdatePhoneNumber(id, phone string) error {
+	phone = NormalizePhone(phone)
+	if len(phone) < 7 || len(phone) > 15 {
+		return fmt.Errorf("invalid phone number: must be 7-15 digits")
+	}
+	acct := m.GetAccount(id)
+	if acct == nil {
+		return fmt.Errorf("account not found")
+	}
+	existing, err := m.db.GetAccountByPhone(phone)
+	if err != nil {
+		return fmt.Errorf("db lookup: %w", err)
+	}
+	if existing != nil && existing.ID != id {
+		return fmt.Errorf("phone number '%s' already exists", phone)
+	}
+	if err := m.db.UpdatePhoneNumber(id, phone); err != nil {
+		return fmt.Errorf("db update phone: %w", err)
+	}
+	acct.PhoneNumber = phone
+	return nil
+}
+
 // DiscoverAccounts loads all DB accounts into memory (called at startup).
 func (m *AccountManager) DiscoverAccounts(ctx context.Context) error {
 	records, err := m.db.ListAccounts("")
@@ -170,7 +201,7 @@ func (m *AccountManager) DiscoverAccounts(ctx context.Context) error {
 		}
 
 		created, _ := time.Parse(time.RFC3339, rec.CreatedAt)
-		acct := NewAccount(rec.ID, rec.PhoneNumber, rec.AccountName, rec.DataDir, rec.IdleTimeout, created)
+		acct := NewAccount(rec.ID, rec.PhoneNumber, rec.AccountName, rec.DataDir, created)
 		m.accounts[rec.ID] = acct
 		log.Info().Str("id", rec.ID).Str("phone", rec.PhoneNumber).Msg("discovered account")
 	}

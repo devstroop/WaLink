@@ -5,9 +5,9 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/itsalfredakku/walink/internal/config"
-	"github.com/itsalfredakku/walink/internal/database"
-	"github.com/itsalfredakku/walink/internal/model"
+	"github.com/devstroop/walink/internal/config"
+	"github.com/devstroop/walink/internal/database"
+	"github.com/devstroop/walink/internal/model"
 )
 
 func setupManager(t *testing.T) *AccountManager {
@@ -24,7 +24,6 @@ func setupManager(t *testing.T) *AccountManager {
 	cfg := &config.Config{
 		Accounts: config.AccountsConfig{
 			BaseDirectory: filepath.Join(dir, "accounts"),
-			Defaults:      config.AccountDefaultsConfig{IdleTimeout: 300},
 		},
 	}
 
@@ -187,13 +186,12 @@ func TestManagerDiscoverAccounts(t *testing.T) {
 	db.CreateAccount(&database.AccountRecord{
 		ID: "pre-existing", PhoneNumber: "4444444444",
 		AccountName: "pre", DataDir: filepath.Join(dir, "accounts", "pre-existing"),
-		IdleTimeout: 300, Status: "sleeping",
+		Status: "sleeping",
 	})
 
 	cfg := &config.Config{
 		Accounts: config.AccountsConfig{
 			BaseDirectory: filepath.Join(dir, "accounts"),
-			Defaults:      config.AccountDefaultsConfig{IdleTimeout: 300},
 		},
 	}
 
@@ -212,21 +210,4 @@ func TestManagerDiscoverAccounts(t *testing.T) {
 	}
 }
 
-func TestManagerCreateAccountCustomIdleTimeout(t *testing.T) {
-	mgr := setupManager(t)
 
-	timeout := int64(600)
-	resp, err := mgr.CreateAccount(model.CreateAccountRequest{
-		PhoneNumber: "7777777777",
-		AccountName: "custom-timeout",
-		IdleTimeout: &timeout,
-	})
-	if err != nil {
-		t.Fatalf("CreateAccount: %v", err)
-	}
-
-	acct := mgr.GetAccount(resp.ID)
-	if acct.IdleTimeout != 600 {
-		t.Errorf("expected idle_timeout 600, got %d", acct.IdleTimeout)
-	}
-}

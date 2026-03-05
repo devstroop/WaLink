@@ -18,9 +18,6 @@ func TestDefaults(t *testing.T) {
 	if cfg.Logging.Level != "info" {
 		t.Errorf("expected log level info, got %s", cfg.Logging.Level)
 	}
-	if cfg.Accounts.Defaults.IdleTimeout != 300 {
-		t.Errorf("expected idle_timeout 300, got %d", cfg.Accounts.Defaults.IdleTimeout)
-	}
 	if cfg.Limits.MaxUploadSize != 10*1024*1024 {
 		t.Errorf("expected max_upload_size 10MB, got %d", cfg.Limits.MaxUploadSize)
 	}
@@ -50,9 +47,6 @@ secret_key = "test-key"
 
 [logging]
 level = "debug"
-
-[accounts.defaults]
-idle_timeout = 600
 `
 	configPath := filepath.Join(configDir, "app.toml")
 	os.WriteFile(configPath, []byte(content), 0o644)
@@ -78,9 +72,6 @@ idle_timeout = 600
 	}
 	if cfg.Logging.Level != "debug" {
 		t.Errorf("expected log level debug, got %s", cfg.Logging.Level)
-	}
-	if cfg.Accounts.Defaults.IdleTimeout != 600 {
-		t.Errorf("expected idle_timeout 600, got %d", cfg.Accounts.Defaults.IdleTimeout)
 	}
 
 	// Defaults should still be applied for unset fields

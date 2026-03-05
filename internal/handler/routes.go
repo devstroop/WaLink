@@ -3,7 +3,7 @@ package handler
 import (
 	"net/http"
 
-	"github.com/itsalfredakku/walink/internal/service"
+	"github.com/devstroop/walink/internal/service"
 )
 
 // API groups all route handlers.
@@ -20,35 +20,59 @@ func NewAPI(mgr *service.AccountManager) *API {
 // All paths are under /api/v1/accounts.
 func (a *API) RegisterRoutes(mux *http.ServeMux) {
 	base := "/api/v1/accounts"
+	acct := base + "/{account_id}"
 
-	// Account CRUD
+	// ── Account CRUD ────────────────────────────────
 	mux.HandleFunc("GET "+base, a.ListAccounts)
 	mux.HandleFunc("POST "+base, a.CreateAccount)
-	mux.HandleFunc("GET "+base+"/{account_id}", a.GetAccount)
-	mux.HandleFunc("DELETE "+base+"/{account_id}", a.DeleteAccount)
+	mux.HandleFunc("GET "+acct, a.GetAccount)
+	mux.HandleFunc("PATCH "+acct, a.UpdateAccount)
+	mux.HandleFunc("DELETE "+acct, a.DeleteAccount)
 
-	// Account config
-	mux.HandleFunc("GET "+base+"/{account_id}/config", a.GetConfig)
-	mux.HandleFunc("PUT "+base+"/{account_id}/config", a.UpdateConfig)
+	// ── Session (auth/linking lifecycle) ────────────
+	mux.HandleFunc("GET "+acct+"/session", a.GetSession)
+	mux.HandleFunc("POST "+acct+"/session/connect", a.ConnectSession)
+	mux.HandleFunc("GET "+acct+"/session/qr", a.GetQR)
+	mux.HandleFunc("POST "+acct+"/session/pair", a.PairPhone)
+	mux.HandleFunc("DELETE "+acct+"/session", a.DeleteSession)
 
-	// WhatsApp auth & linking
-	mux.HandleFunc("GET "+base+"/{account_id}/status", a.GetStatus)
-	mux.HandleFunc("GET "+base+"/{account_id}/link/qr", a.GetQR)
-	mux.HandleFunc("POST "+base+"/{account_id}/link/phone", a.LinkPhone)
-	mux.HandleFunc("DELETE "+base+"/{account_id}/unlink", a.Unlink)
+	// ── Messaging ───────────────────────────────────
+	mux.HandleFunc("POST "+acct+"/messages", a.SendMessage)
+	mux.HandleFunc("POST "+acct+"/messages/react", a.ReactMessage)
+	mux.HandleFunc("POST "+acct+"/messages/reply", a.ReplyMessage)
+	mux.HandleFunc("POST "+acct+"/messages/read", a.MarkRead)
 
-	// Chats & messages
-	mux.HandleFunc("GET "+base+"/{account_id}/chats", a.ListChats)
-	mux.HandleFunc("GET "+base+"/{account_id}/chats/{chat_id}/messages", a.GetMessages)
-	mux.HandleFunc("POST "+base+"/{account_id}/chats/{chat_id}/messages", a.SendMessage)
+	// ── Chats ───────────────────────────────────────
+	mux.HandleFunc("GET "+acct+"/chats", a.ListChats)
+	mux.HandleFunc("GET "+acct+"/chats/{jid}/messages", a.GetMessages)
 
-	// Chat actions
-	mux.HandleFunc("POST "+base+"/{account_id}/chats/{chat_id}/typing", a.SendTyping)
-	mux.HandleFunc("POST "+base+"/{account_id}/chats/{chat_id}/read", a.MarkRead)
-	mux.HandleFunc("POST "+base+"/{account_id}/chats/{chat_id}/messages/{message_id}/react", a.ReactMessage)
-	mux.HandleFunc("POST "+base+"/{account_id}/chats/{chat_id}/messages/{message_id}/reply", a.ReplyMessage)
+	// ── Contacts ────────────────────────────────────
+	mux.HandleFunc("GET "+acct+"/contacts/{jid}", a.GetContact)
 
-	// Contacts & groups
-	mux.HandleFunc("GET "+base+"/{account_id}/contacts/{contact_id}", a.GetContact)
-	mux.HandleFunc("GET "+base+"/{account_id}/groups/{group_id}", a.GetGroup)
+	// ── Groups ──────────────────────────────────────
+	mux.HandleFunc("GET "+acct+"/groups", a.ListGroups)
+	mux.HandleFunc("POST "+acct+"/groups", a.CreateGroup)
+	mux.HandleFunc("GET "+acct+"/groups/{jid}", a.GetGroup)
+	mux.HandleFunc("PATCH "+acct+"/groups/{jid}", a.UpdateGroup)
+	mux.HandleFunc("DELETE "+acct+"/groups/{jid}", a.LeaveGroup)
+	mux.HandleFunc("GET "+acct+"/groups/{jid}/invite", a.GetGroupInvite)
+	mux.HandleFunc("POST "+acct+"/groups/{jid}/participants", a.UpdateGroupParticipants)
+
+	// ── Presence ────────────────────────────────────
+	mux.HandleFunc("POST "+acct+"/presence", a.SendPresence)
+
+	// ── Profile ─────────────────────────────────────
+	mux.HandleFunc("GET "+acct+"/profile", a.GetProfile)
+	mux.HandleFunc("PATCH "+acct+"/profile", a.UpdateProfile)
+
+	// ── Privacy ─────────────────────────────────────
+	mux.HandleFunc("GET "+acct+"/privacy", a.GetPrivacy)
+	mux.HandleFunc("PATCH "+acct+"/privacy", a.UpdatePrivacy)
+
+	// ── Newsletters ─────────────────────────────────
+	mux.HandleFunc("GET "+acct+"/newsletters", a.ListNewsletters)
+	mux.HandleFunc("POST "+acct+"/newsletters", a.CreateNewsletter)
+	mux.HandleFunc("GET "+acct+"/newsletters/{jid}", a.GetNewsletter)
+	mux.HandleFunc("POST "+acct+"/newsletters/{jid}/follow", a.FollowNewsletter)
+	mux.HandleFunc("DELETE "+acct+"/newsletters/{jid}/follow", a.UnfollowNewsletter)
 }

@@ -1,4 +1,4 @@
-module github.com/itsalfredakku/walink
+module github.com/devstroop/walink
 
 go 1.25.0
 

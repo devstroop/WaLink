@@ -13,7 +13,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/rs/zerolog/log"
 
-	"github.com/itsalfredakku/walink/internal/model"
+	"github.com/devstroop/walink/internal/model"
 
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/proto/waCommon"
@@ -34,28 +34,23 @@ type Account struct {
 	PhoneNumber string
 	AccountName string
 	DataDir     string
-	IdleTimeout int64 // seconds; 0 = never sleep
 	Status      model.AccountStatus
 	CreatedAt   time.Time
 
 	client       *whatsmeow.Client
 	container    *sqlstore.Container
-	lastActivity time.Time
-	idleCancel   context.CancelFunc
 	eventCh      chan any
 }
 
 // NewAccount constructs an Account (not yet connected).
-func NewAccount(id, phone, name, dataDir string, idleTimeout int64, createdAt time.Time) *Account {
+func NewAccount(id, phone, name, dataDir string, createdAt time.Time) *Account {
 	return &Account{
 		ID:           id,
 		PhoneNumber:  phone,
 		AccountName:  name,
 		DataDir:      dataDir,
-		IdleTimeout:  idleTimeout,
 		Status:       model.StatusSleeping,
 		CreatedAt:    createdAt,
-		lastActivity: time.Now(),
 	}
 }
 
@@ -78,8 +73,6 @@ func (a *Account) Connect(ctx context.Context) error {
 	}
 
 	a.Status = model.StatusActive
-	a.lastActivity = time.Now()
-	a.startIdleTimer()
 
 	log.Info().Str("account", a.ID).Msg("connected to WhatsApp")
 	return nil
@@ -138,8 +131,6 @@ func (a *Account) Disconnect() {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
-	a.stopIdleTimer()
-
 	if a.client != nil {
 		a.client.Disconnect()
 		a.client = nil
@@ -156,7 +147,6 @@ func (a *Account) EnsureConnected(ctx context.Context) error {
 	a.mu.RUnlock()
 
 	if status == model.StatusActive && connected {
-		a.TouchActivity()
 		return nil
 	}
 
@@ -166,13 +156,6 @@ func (a *Account) EnsureConnected(ctx context.Context) error {
 	}
 
 	return a.Connect(ctx)
-}
-
-// TouchActivity resets the idle timer.
-func (a *Account) TouchActivity() {
-	a.mu.Lock()
-	a.lastActivity = time.Now()
-	a.mu.Unlock()
 }
 
 // IsLoggedIn returns true if whatsmeow has a valid session.
@@ -213,8 +196,6 @@ func (a *Account) GetQR(ctx context.Context) (<-chan whatsmeow.QRChannelItem, er
 	}
 
 	a.Status = model.StatusActive
-	a.lastActivity = time.Now()
-	a.startIdleTimer()
 
 	return ch, nil
 }
@@ -227,7 +208,7 @@ func (a *Account) PairPhone(ctx context.Context, phone string) (string, error) {
 	if a.client == nil {
 		return "", fmt.Errorf("client not connected")
 	}
-	if a.client.IsLoggedIn() {
+	if a.client.Store.ID != nil {
 		return "", fmt.Errorf("already logged in")
 	}
 
@@ -280,7 +261,6 @@ func (a *Account) SendMessage(ctx context.Context, jid string, text string) (str
 		return "", fmt.Errorf("send: %w", err)
 	}
 
-	a.TouchActivity()
 	return resp.ID, nil
 }
 
@@ -323,7 +303,6 @@ func (a *Account) SendMedia(ctx context.Context, jid string, data []byte, filena
 		return "", fmt.Errorf("send media: %w", err)
 	}
 
-	a.TouchActivity()
 	return resp.ID, nil
 }
 
@@ -407,7 +386,6 @@ func (a *Account) SendChatPresence(ctx context.Context, jid string, state string
 		return fmt.Errorf("send presence: %w", err)
 	}
 
-	a.TouchActivity()
 	return nil
 }
 
@@ -430,7 +408,6 @@ func (a *Account) MarkRead(ctx context.Context, chatJID string, messageIDs []str
 		return fmt.Errorf("mark read: %w", err)
 	}
 
-	a.TouchActivity()
 	return nil
 }
 
@@ -465,7 +442,6 @@ func (a *Account) SendReaction(ctx context.Context, chatJID, messageID, emoji st
 		return fmt.Errorf("send reaction: %w", err)
 	}
 
-	a.TouchActivity()
 	return nil
 }
 
@@ -499,7 +475,6 @@ func (a *Account) SendReply(ctx context.Context, chatJID, messageID, text string
 		return "", fmt.Errorf("send reply: %w", err)
 	}
 
-	a.TouchActivity()
 	return resp.ID, nil
 }
 
@@ -534,7 +509,6 @@ func (a *Account) GetContactInfo(ctx context.Context, contactJID string) (model.
 		result.IsBusiness = true
 	}
 
-	a.TouchActivity()
 	return result, nil
 }
 
@@ -558,6 +532,445 @@ func (a *Account) GetGroupInfo(ctx context.Context, groupJID string) (model.Grou
 		return model.GroupInfo{}, fmt.Errorf("get group info: %w", err)
 	}
 
+	return groupInfoToModel(gi), nil
+}
+
+// ListGroups returns all joined groups.
+func (a *Account) ListGroups(ctx context.Context) ([]model.GroupInfo, error) {
+	a.mu.RLock()
+	client := a.client
+	a.mu.RUnlock()
+
+	if client == nil || !client.IsConnected() {
+		return nil, fmt.Errorf("not connected")
+	}
+
+	groups, err := client.GetJoinedGroups(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("get joined groups: %w", err)
+	}
+
+	result := make([]model.GroupInfo, len(groups))
+	for i, gi := range groups {
+		result[i] = groupInfoToModel(gi)
+	}
+	return result, nil
+}
+
+// CreateGroup creates a new WhatsApp group.
+func (a *Account) CreateGroup(ctx context.Context, name string, participants []string) (model.GroupInfo, error) {
+	a.mu.RLock()
+	client := a.client
+	a.mu.RUnlock()
+
+	if client == nil || !client.IsConnected() {
+		return model.GroupInfo{}, fmt.Errorf("not connected")
+	}
+
+	jids := make([]types.JID, len(participants))
+	for i, p := range participants {
+		j, err := types.ParseJID(p)
+		if err != nil {
+			return model.GroupInfo{}, fmt.Errorf("invalid participant jid %q: %w", p, err)
+		}
+		jids[i] = j
+	}
+
+	gi, err := client.CreateGroup(ctx, whatsmeow.ReqCreateGroup{
+		Name:         name,
+		Participants: jids,
+	})
+	if err != nil {
+		return model.GroupInfo{}, fmt.Errorf("create group: %w", err)
+	}
+
+	return groupInfoToModel(gi), nil
+}
+
+// LeaveGroup leaves a WhatsApp group.
+func (a *Account) LeaveGroup(ctx context.Context, groupJID string) error {
+	a.mu.RLock()
+	client := a.client
+	a.mu.RUnlock()
+
+	if client == nil || !client.IsConnected() {
+		return fmt.Errorf("not connected")
+	}
+
+	jid, err := types.ParseJID(groupJID)
+	if err != nil {
+		return fmt.Errorf("invalid jid %q: %w", groupJID, err)
+	}
+
+	return client.LeaveGroup(ctx, jid)
+}
+
+// UpdateGroup updates group settings (name, description, locked, announce).
+func (a *Account) UpdateGroup(ctx context.Context, groupJID string, req model.UpdateGroupRequest) error {
+	a.mu.RLock()
+	client := a.client
+	a.mu.RUnlock()
+
+	if client == nil || !client.IsConnected() {
+		return fmt.Errorf("not connected")
+	}
+
+	jid, err := types.ParseJID(groupJID)
+	if err != nil {
+		return fmt.Errorf("invalid jid %q: %w", groupJID, err)
+	}
+
+	if req.Name != nil {
+		if err := client.SetGroupName(ctx, jid, *req.Name); err != nil {
+			return fmt.Errorf("set group name: %w", err)
+		}
+	}
+	if req.Description != nil {
+		if err := client.SetGroupTopic(ctx, jid, "", "", *req.Description); err != nil {
+			return fmt.Errorf("set group topic: %w", err)
+		}
+	}
+	if req.Locked != nil {
+		if err := client.SetGroupLocked(ctx, jid, *req.Locked); err != nil {
+			return fmt.Errorf("set group locked: %w", err)
+		}
+	}
+	if req.Announce != nil {
+		if err := client.SetGroupAnnounce(ctx, jid, *req.Announce); err != nil {
+			return fmt.Errorf("set group announce: %w", err)
+		}
+	}
+	return nil
+}
+
+// UpdateGroupParticipants adds/removes/promotes/demotes group members.
+func (a *Account) UpdateGroupParticipants(ctx context.Context, groupJID string, participants []string, action string) error {
+	a.mu.RLock()
+	client := a.client
+	a.mu.RUnlock()
+
+	if client == nil || !client.IsConnected() {
+		return fmt.Errorf("not connected")
+	}
+
+	jid, err := types.ParseJID(groupJID)
+	if err != nil {
+		return fmt.Errorf("invalid jid %q: %w", groupJID, err)
+	}
+
+	jids := make([]types.JID, len(participants))
+	for i, p := range participants {
+		j, err := types.ParseJID(p)
+		if err != nil {
+			return fmt.Errorf("invalid participant jid %q: %w", p, err)
+		}
+		jids[i] = j
+	}
+
+	var change whatsmeow.ParticipantChange
+	switch action {
+	case "add":
+		change = whatsmeow.ParticipantChangeAdd
+	case "remove":
+		change = whatsmeow.ParticipantChangeRemove
+	case "promote":
+		change = whatsmeow.ParticipantChangePromote
+	case "demote":
+		change = whatsmeow.ParticipantChangeDemote
+	default:
+		return fmt.Errorf("invalid action %q: must be add, remove, promote, or demote", action)
+	}
+
+	_, err = client.UpdateGroupParticipants(ctx, jid, jids, change)
+	return err
+}
+
+// GetGroupInviteLink returns the group's invite link.
+func (a *Account) GetGroupInviteLink(ctx context.Context, groupJID string, reset bool) (string, error) {
+	a.mu.RLock()
+	client := a.client
+	a.mu.RUnlock()
+
+	if client == nil || !client.IsConnected() {
+		return "", fmt.Errorf("not connected")
+	}
+
+	jid, err := types.ParseJID(groupJID)
+	if err != nil {
+		return "", fmt.Errorf("invalid jid %q: %w", groupJID, err)
+	}
+
+	return client.GetGroupInviteLink(ctx, jid, reset)
+}
+
+// ── Presence ────────────────────────────────────────
+
+// SendPresence sets global online/offline presence.
+func (a *Account) SendPresence(ctx context.Context, state string) error {
+	a.mu.RLock()
+	client := a.client
+	a.mu.RUnlock()
+
+	if client == nil || !client.IsConnected() {
+		return fmt.Errorf("not connected")
+	}
+
+	var p types.Presence
+	switch state {
+	case "available":
+		p = types.PresenceAvailable
+	case "unavailable":
+		p = types.PresenceUnavailable
+	default:
+		return fmt.Errorf("invalid state %q: must be available or unavailable", state)
+	}
+	return client.SendPresence(ctx, p)
+}
+
+// ── Profile ─────────────────────────────────────────
+
+// GetProfile returns the account's own profile info.
+func (a *Account) GetProfile(ctx context.Context) (model.ProfileResponse, error) {
+	a.mu.RLock()
+	client := a.client
+	a.mu.RUnlock()
+
+	if client == nil || !client.IsConnected() {
+		return model.ProfileResponse{}, fmt.Errorf("not connected")
+	}
+
+	resp := model.ProfileResponse{ID: a.ID}
+	if a.PhoneNumber != "" {
+		resp.PhoneNumber = &a.PhoneNumber
+	}
+
+	// Try to get own profile picture
+	if client.Store.ID != nil {
+		pic, err := client.GetProfilePictureInfo(ctx, *client.Store.ID, &whatsmeow.GetProfilePictureParams{Preview: false})
+		if err == nil && pic != nil {
+			resp.PictureURL = &pic.URL
+		}
+	}
+
+	return resp, nil
+}
+
+// SetStatusMessage sets the "About" text.
+func (a *Account) SetStatusMessage(ctx context.Context, about string) error {
+	a.mu.RLock()
+	client := a.client
+	a.mu.RUnlock()
+
+	if client == nil || !client.IsConnected() {
+		return fmt.Errorf("not connected")
+	}
+
+	return client.SetStatusMessage(ctx, about)
+}
+
+// ── Privacy ─────────────────────────────────────────
+
+// GetPrivacySettings returns current privacy settings.
+func (a *Account) GetPrivacySettings(ctx context.Context) (model.PrivacySettings, error) {
+	a.mu.RLock()
+	client := a.client
+	a.mu.RUnlock()
+
+	if client == nil || !client.IsConnected() {
+		return model.PrivacySettings{}, fmt.Errorf("not connected")
+	}
+
+	ps := client.GetPrivacySettings(ctx)
+	return model.PrivacySettings{
+		GroupAdd:     string(ps.GroupAdd),
+		LastSeen:     string(ps.LastSeen),
+		Status:       string(ps.Status),
+		Profile:      string(ps.Profile),
+		ReadReceipts: string(ps.ReadReceipts),
+		Online:       string(ps.Online),
+		CallAdd:      string(ps.CallAdd),
+	}, nil
+}
+
+// SetPrivacySetting updates a single privacy setting.
+func (a *Account) SetPrivacySetting(ctx context.Context, name string, value string) error {
+	a.mu.RLock()
+	client := a.client
+	a.mu.RUnlock()
+
+	if client == nil || !client.IsConnected() {
+		return fmt.Errorf("not connected")
+	}
+
+	settingMap := map[string]types.PrivacySettingType{
+		"group_add":     types.PrivacySettingTypeGroupAdd,
+		"last_seen":     types.PrivacySettingTypeLastSeen,
+		"status":        types.PrivacySettingTypeStatus,
+		"profile":       types.PrivacySettingTypeProfile,
+		"read_receipts": types.PrivacySettingTypeReadReceipts,
+		"online":        types.PrivacySettingTypeOnline,
+		"call_add":      types.PrivacySettingTypeCallAdd,
+	}
+
+	settingType, ok := settingMap[name]
+	if !ok {
+		return fmt.Errorf("unknown privacy setting %q", name)
+	}
+
+	_, err := client.SetPrivacySetting(ctx, settingType, types.PrivacySetting(value))
+	return err
+}
+
+// ── Newsletters ─────────────────────────────────────
+
+// ListNewsletters returns all subscribed newsletters.
+func (a *Account) ListNewsletters(ctx context.Context) ([]model.NewsletterInfo, error) {
+	a.mu.RLock()
+	client := a.client
+	a.mu.RUnlock()
+
+	if client == nil || !client.IsConnected() {
+		return nil, fmt.Errorf("not connected")
+	}
+
+	newsletters, err := client.GetSubscribedNewsletters(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("get newsletters: %w", err)
+	}
+
+	result := make([]model.NewsletterInfo, len(newsletters))
+	for i, nl := range newsletters {
+		info := model.NewsletterInfo{
+			ID:              nl.ID.String(),
+			Name:            nl.ThreadMeta.Name.Text,
+			SubscriberCount: nl.ThreadMeta.SubscriberCount,
+		}
+		if nl.ThreadMeta.Description.Text != "" {
+			desc := nl.ThreadMeta.Description.Text
+			info.Description = &desc
+		}
+		if nl.ViewerMeta != nil {
+			role := string(nl.ViewerMeta.Role)
+			info.Role = &role
+			info.Muted = nl.ViewerMeta.Mute == "on"
+		}
+		if nl.ThreadMeta.Picture != nil && nl.ThreadMeta.Picture.URL != "" {
+			info.PictureURL = &nl.ThreadMeta.Picture.URL
+		}
+		result[i] = info
+	}
+	return result, nil
+}
+
+// GetNewsletterInfo fetches newsletter details.
+func (a *Account) GetNewsletterInfo(ctx context.Context, newsletterJID string) (model.NewsletterInfo, error) {
+	a.mu.RLock()
+	client := a.client
+	a.mu.RUnlock()
+
+	if client == nil || !client.IsConnected() {
+		return model.NewsletterInfo{}, fmt.Errorf("not connected")
+	}
+
+	jid, err := types.ParseJID(newsletterJID)
+	if err != nil {
+		return model.NewsletterInfo{}, fmt.Errorf("invalid jid %q: %w", newsletterJID, err)
+	}
+
+	nl, err := client.GetNewsletterInfo(ctx, jid)
+	if err != nil {
+		return model.NewsletterInfo{}, fmt.Errorf("get newsletter: %w", err)
+	}
+
+	info := model.NewsletterInfo{
+		ID:              nl.ID.String(),
+		Name:            nl.ThreadMeta.Name.Text,
+		SubscriberCount: nl.ThreadMeta.SubscriberCount,
+	}
+	if nl.ThreadMeta.Description.Text != "" {
+		desc := nl.ThreadMeta.Description.Text
+		info.Description = &desc
+	}
+	if nl.ViewerMeta != nil {
+		role := string(nl.ViewerMeta.Role)
+		info.Role = &role
+		info.Muted = nl.ViewerMeta.Mute == "on"
+	}
+	if nl.ThreadMeta.Picture != nil && nl.ThreadMeta.Picture.URL != "" {
+		info.PictureURL = &nl.ThreadMeta.Picture.URL
+	}
+	return info, nil
+}
+
+// CreateNewsletter creates a new newsletter/channel.
+func (a *Account) CreateNewsletter(ctx context.Context, name, description string) (model.NewsletterInfo, error) {
+	a.mu.RLock()
+	client := a.client
+	a.mu.RUnlock()
+
+	if client == nil || !client.IsConnected() {
+		return model.NewsletterInfo{}, fmt.Errorf("not connected")
+	}
+
+	nl, err := client.CreateNewsletter(ctx, whatsmeow.CreateNewsletterParams{
+		Name:        name,
+		Description: description,
+	})
+	if err != nil {
+		return model.NewsletterInfo{}, fmt.Errorf("create newsletter: %w", err)
+	}
+
+	info := model.NewsletterInfo{
+		ID:              nl.ID.String(),
+		Name:            nl.ThreadMeta.Name.Text,
+		SubscriberCount: nl.ThreadMeta.SubscriberCount,
+	}
+	if nl.ThreadMeta.Description.Text != "" {
+		desc := nl.ThreadMeta.Description.Text
+		info.Description = &desc
+	}
+	return info, nil
+}
+
+// FollowNewsletter subscribes to a newsletter.
+func (a *Account) FollowNewsletter(ctx context.Context, newsletterJID string) error {
+	a.mu.RLock()
+	client := a.client
+	a.mu.RUnlock()
+
+	if client == nil || !client.IsConnected() {
+		return fmt.Errorf("not connected")
+	}
+
+	jid, err := types.ParseJID(newsletterJID)
+	if err != nil {
+		return fmt.Errorf("invalid jid %q: %w", newsletterJID, err)
+	}
+
+	return client.FollowNewsletter(ctx, jid)
+}
+
+// UnfollowNewsletter unsubscribes from a newsletter.
+func (a *Account) UnfollowNewsletter(ctx context.Context, newsletterJID string) error {
+	a.mu.RLock()
+	client := a.client
+	a.mu.RUnlock()
+
+	if client == nil || !client.IsConnected() {
+		return fmt.Errorf("not connected")
+	}
+
+	jid, err := types.ParseJID(newsletterJID)
+	if err != nil {
+		return fmt.Errorf("invalid jid %q: %w", newsletterJID, err)
+	}
+
+	return client.UnfollowNewsletter(ctx, jid)
+}
+
+// ── helpers ─────────────────────────────────────────
+
+func groupInfoToModel(gi *types.GroupInfo) model.GroupInfo {
 	participants := make([]model.GroupParticipant, len(gi.Participants))
 	for i, p := range gi.Participants {
 		gp := model.GroupParticipant{
@@ -586,9 +999,7 @@ func (a *Account) GetGroupInfo(ctx context.Context, groupJID string) (model.Grou
 	if gi.Topic != "" {
 		result.Description = &gi.Topic
 	}
-
-	a.TouchActivity()
-	return result, nil
+	return result
 }
 
 // ListChats returns known contacts as chat entries from the whatsmeow store.
@@ -601,31 +1012,53 @@ func (a *Account) ListChats(ctx context.Context) ([]model.ChatInfo, error) {
 		return nil, fmt.Errorf("not connected")
 	}
 
+	seen := make(map[string]bool)
+	var chats []model.ChatInfo
+
+	// 1. Groups from server (always available)
+	groups, err := client.GetJoinedGroups(ctx)
+	if err != nil {
+		log.Warn().Err(err).Msg("failed to fetch groups from server")
+	} else {
+		for _, g := range groups {
+			id := g.JID.String()
+			seen[id] = true
+			chats = append(chats, model.ChatInfo{
+				ID:      id,
+				Name:    g.GroupName.Name,
+				IsGroup: true,
+			})
+		}
+	}
+
+	// 2. Contacts from local store (populated via history sync)
 	contacts, err := client.Store.Contacts.GetAllContacts(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("get contacts: %w", err)
+		log.Warn().Err(err).Msg("failed to fetch contacts from store")
+	} else {
+		for jid, info := range contacts {
+			id := jid.String()
+			if seen[id] {
+				continue
+			}
+			name := info.PushName
+			if info.FullName != "" {
+				name = info.FullName
+			}
+			if info.BusinessName != "" {
+				name = info.BusinessName
+			}
+			if name == "" {
+				name = jid.User
+			}
+			chats = append(chats, model.ChatInfo{
+				ID:      id,
+				Name:    name,
+				IsGroup: jid.Server == types.GroupServer,
+			})
+		}
 	}
 
-	chats := make([]model.ChatInfo, 0, len(contacts))
-	for jid, info := range contacts {
-		name := info.PushName
-		if info.FullName != "" {
-			name = info.FullName
-		}
-		if info.BusinessName != "" {
-			name = info.BusinessName
-		}
-		if name == "" {
-			name = jid.User
-		}
-		chats = append(chats, model.ChatInfo{
-			ID:      jid.String(),
-			Name:    name,
-			IsGroup: jid.Server == types.GroupServer,
-		})
-	}
-
-	a.TouchActivity()
 	return chats, nil
 }
 
@@ -650,45 +1083,6 @@ func (a *Account) handleEvent(evt interface{}) {
 		a.mu.Unlock()
 	case *events.Disconnected:
 		log.Warn().Str("account", a.ID).Msg("disconnected event")
-	}
-}
-
-func (a *Account) startIdleTimer() {
-	if a.IdleTimeout <= 0 {
-		return
-	}
-	a.stopIdleTimer()
-
-	ctx, cancel := context.WithCancel(context.Background())
-	a.idleCancel = cancel
-
-	go func() {
-		ticker := time.NewTicker(30 * time.Second)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-ticker.C:
-				a.mu.RLock()
-				idle := time.Since(a.lastActivity)
-				timeout := time.Duration(a.IdleTimeout) * time.Second
-				a.mu.RUnlock()
-
-				if idle >= timeout {
-					log.Info().Str("account", a.ID).Dur("idle", idle).Msg("idle timeout → disconnecting")
-					a.Disconnect()
-					return
-				}
-			}
-		}
-	}()
-}
-
-func (a *Account) stopIdleTimer() {
-	if a.idleCancel != nil {
-		a.idleCancel()
-		a.idleCancel = nil
 	}
 }
 
