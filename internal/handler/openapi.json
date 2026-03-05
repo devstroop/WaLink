@@ -5,11 +5,11 @@
     "version": "0.4.0",
     "description": "Multi-account WhatsApp integration via whatsmeow."
   },
-  "servers": [{ "url": "http://localhost:8080" }],
-  "security": [{ "ApiKey": [] }],
+  "servers": [{ "url": "/" }],
+  "security": [{ "BearerAuth": [] }],
   "components": {
     "securitySchemes": {
-      "ApiKey": { "type": "apiKey", "in": "header", "name": "X-API-Key" }
+      "BearerAuth": { "type": "http", "scheme": "bearer" }
     },
     "parameters": {
       "AccountId": { "name": "account_id", "in": "path", "required": true, "schema": { "type": "string" } },
