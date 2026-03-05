@@ -165,7 +165,9 @@ func (m *AccountManager) UpdateAccountName(id, name string) error {
 	if err := m.db.UpdateAccountName(id, name); err != nil {
 		return fmt.Errorf("db update name: %w", err)
 	}
+	acct.mu.Lock()
 	acct.AccountName = name
+	acct.mu.Unlock()
 	return nil
 }
 
@@ -189,7 +191,9 @@ func (m *AccountManager) UpdatePhoneNumber(id, phone string) error {
 	if err := m.db.UpdatePhoneNumber(id, phone); err != nil {
 		return fmt.Errorf("db update phone: %w", err)
 	}
+	acct.mu.Lock()
 	acct.PhoneNumber = phone
+	acct.mu.Unlock()
 	return nil
 }
 

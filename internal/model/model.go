@@ -131,12 +131,16 @@ type MarkReadRequest struct {
 
 // ChatInfo represents a single chat in the chat list.
 type ChatInfo struct {
-	ID       string `json:"id"`
-	Name     string `json:"name"`
-	IsGroup  bool   `json:"is_group"`
-	Pinned   bool   `json:"pinned"`
-	Muted    bool   `json:"muted"`
-	Archived bool   `json:"archived"`
+	ID           string  `json:"id"`
+	Name         string  `json:"name"`
+	IsGroup      bool    `json:"is_group"`
+	LastMessage  *string `json:"last_message"`
+	LastSender   *string `json:"last_sender,omitempty"`
+	Timestamp    *string `json:"timestamp"`
+	UnreadCount  int     `json:"unread_count"`
+	Pinned       bool    `json:"pinned"`
+	Muted        bool    `json:"muted"`
+	Archived     bool    `json:"archived"`
 }
 
 // ChatListResponse is the response for GET /accounts/{id}/chats.
@@ -313,10 +317,42 @@ type PresenceRequest struct {
 
 // ProfileResponse is returned for GET /accounts/{id}/profile.
 type ProfileResponse struct {
-	ID          string  `json:"id"`
-	PhoneNumber *string `json:"phone_number"`
-	About       *string `json:"about"`
-	PictureURL  *string `json:"picture_url"`
+	ID           string  `json:"id"`
+	PhoneNumber  *string `json:"phone_number"`
+	PushName     *string `json:"push_name"`
+	BusinessName *string `json:"business_name,omitempty"`
+	VerifiedName *string `json:"verified_name,omitempty"`
+	About        *string `json:"about"`
+	PictureURL   *string `json:"picture_url"`
+
+	// Business-only fields (populated when account is WhatsApp Business).
+	IsBusiness       bool                  `json:"is_business"`
+	Description      *string               `json:"description,omitempty"`
+	Address          *string               `json:"address,omitempty"`
+	Email            *string               `json:"email,omitempty"`
+	Categories       []ProfileCategory     `json:"categories,omitempty"`
+	BusinessHours    *BusinessHoursInfo    `json:"business_hours,omitempty"`
+	ProfileOptions   map[string]string     `json:"profile_options,omitempty"`
+}
+
+// ProfileCategory is a WhatsApp Business category.
+type ProfileCategory struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+// BusinessHoursInfo contains business operating hours.
+type BusinessHoursInfo struct {
+	Timezone string               `json:"timezone"`
+	Config   []BusinessHoursSlot  `json:"config"`
+}
+
+// BusinessHoursSlot is a single day/slot of business hours.
+type BusinessHoursSlot struct {
+	DayOfWeek string `json:"day_of_week"`
+	Mode      string `json:"mode"`
+	OpenTime  string `json:"open_time,omitempty"`
+	CloseTime string `json:"close_time,omitempty"`
 }
 
 // UpdateProfileRequest is the JSON body for PATCH /accounts/{id}/profile.

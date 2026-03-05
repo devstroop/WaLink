@@ -52,7 +52,8 @@
       "UpdateAccountRequest": {
         "type": "object",
         "properties": {
-          "account_name": { "type": "string" }
+          "account_name": { "type": "string" },
+          "phone_number": { "type": "string" }
         }
       },
       "DeleteAccountResponse": {
@@ -170,7 +171,8 @@
           "full_name": { "type": "string" },
           "first_name": { "type": "string" },
           "business_name": { "type": "string" },
-          "phone": { "type": "string", "nullable": true }
+          "phone": { "type": "string", "nullable": true },
+          "picture_url": { "type": "string", "nullable": true }
         }
       },
       "ContactListResponse": {
@@ -273,8 +275,41 @@
         "properties": {
           "id": { "type": "string" },
           "phone_number": { "type": "string", "nullable": true },
-          "about": { "type": "string", "nullable": true },
-          "picture_url": { "type": "string", "nullable": true }
+          "push_name": { "type": "string", "nullable": true, "description": "Display name set by the user" },
+          "business_name": { "type": "string", "nullable": true, "description": "Business name (if business account)" },
+          "verified_name": { "type": "string", "nullable": true, "description": "Verified business name (if verified)" },
+          "about": { "type": "string", "nullable": true, "description": "Status / about text" },
+          "picture_url": { "type": "string", "nullable": true, "description": "Profile picture URL" },
+          "is_business": { "type": "boolean", "description": "True if account is WhatsApp Business" },
+          "description": { "type": "string", "nullable": true, "description": "Business description" },
+          "address": { "type": "string", "nullable": true, "description": "Business address" },
+          "email": { "type": "string", "nullable": true, "description": "Business email" },
+          "categories": { "type": "array", "items": { "$ref": "#/components/schemas/ProfileCategory" }, "description": "Business categories" },
+          "business_hours": { "$ref": "#/components/schemas/BusinessHoursInfo", "nullable": true },
+          "profile_options": { "type": "object", "additionalProperties": { "type": "string" }, "description": "Extra business profile options (cart_enabled, etc.)" }
+        }
+      },
+      "ProfileCategory": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "name": { "type": "string" }
+        }
+      },
+      "BusinessHoursInfo": {
+        "type": "object",
+        "properties": {
+          "timezone": { "type": "string", "example": "Asia/Kolkata" },
+          "config": { "type": "array", "items": { "$ref": "#/components/schemas/BusinessHoursSlot" } }
+        }
+      },
+      "BusinessHoursSlot": {
+        "type": "object",
+        "properties": {
+          "day_of_week": { "type": "string", "example": "mon" },
+          "mode": { "type": "string", "enum": ["open_24h", "specific_hours", "appointment_only"] },
+          "open_time": { "type": "string", "example": "09:00" },
+          "close_time": { "type": "string", "example": "18:00" }
         }
       },
       "UpdateProfileRequest": {
@@ -286,6 +321,44 @@
       "HealthResponse": {
         "type": "object",
         "properties": { "status": { "type": "string", "example": "ok" } }
+      },
+      "MessageInfo": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "chat_jid": { "type": "string" },
+          "sender_jid": { "type": "string" },
+          "from_me": { "type": "boolean" },
+          "type": { "type": "string" },
+          "body": { "type": "string" },
+          "media_type": { "type": "string" },
+          "timestamp": { "type": "string", "format": "date-time" }
+        }
+      },
+      "MessageListResponse": {
+        "type": "object",
+        "properties": {
+          "messages": { "type": "array", "items": { "$ref": "#/components/schemas/MessageInfo" } },
+          "count": { "type": "integer" }
+        }
+      },
+      "SetWebhookRequest": {
+        "type": "object",
+        "required": ["url"],
+        "properties": {
+          "url": { "type": "string", "format": "uri", "example": "https://example.com/webhook" },
+          "secret": { "type": "string", "description": "HMAC signing secret" },
+          "events": { "type": "array", "items": { "type": "string" }, "description": "Event types to subscribe to (empty = all)" },
+          "enabled": { "type": "boolean", "default": true }
+        }
+      },
+      "WebhookConfigResponse": {
+        "type": "object",
+        "properties": {
+          "url": { "type": "string" },
+          "events": { "type": "array", "items": { "type": "string" } },
+          "enabled": { "type": "boolean" }
+        }
       },
       "ErrorResponse": {
         "type": "object",
@@ -428,6 +501,20 @@
     },
     "/api/v1/accounts/{account_id}/messages": {
       "parameters": [{ "$ref": "#/components/parameters/AccountId" }],
+      "get": {
+        "tags": ["Messaging"],
+        "summary": "List stored messages for a chat",
+        "parameters": [
+          { "name": "chat", "in": "query", "required": true, "schema": { "type": "string" }, "description": "Chat JID to list messages for" },
+          { "name": "limit", "in": "query", "schema": { "type": "integer", "default": 50 }, "description": "Max messages to return" },
+          { "name": "before", "in": "query", "schema": { "type": "string", "format": "date-time" }, "description": "RFC3339 cursor for pagination" }
+        ],
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/MessageListResponse" } } } },
+          "400": { "description": "Missing chat parameter" },
+          "404": { "description": "Account not found" }
+        }
+      },
       "post": {
         "tags": ["Messaging"],
         "summary": "Send a message",
@@ -651,6 +738,35 @@
           "404": { "description": "Not found" }
         }
       }
+    },
+    "/api/v1/accounts/{account_id}/webhook": {
+      "parameters": [{ "$ref": "#/components/parameters/AccountId" }],
+      "get": {
+        "tags": ["Webhook"],
+        "summary": "Get webhook configuration",
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/WebhookConfigResponse" } } } },
+          "404": { "description": "No webhook configured or account not found" }
+        }
+      },
+      "put": {
+        "tags": ["Webhook"],
+        "summary": "Set or update webhook configuration",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SetWebhookRequest" } } } },
+        "responses": {
+          "200": { "description": "Webhook configured", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/WebhookConfigResponse" } } } },
+          "400": { "description": "Validation error" },
+          "404": { "description": "Account not found" }
+        }
+      },
+      "delete": {
+        "tags": ["Webhook"],
+        "summary": "Remove webhook configuration",
+        "responses": {
+          "200": { "description": "Webhook removed" },
+          "404": { "description": "Account not found" }
+        }
+      }
     }
   },
   "tags": [
@@ -663,6 +779,7 @@
     { "name": "Contacts", "description": "Contact listing and verification" },
     { "name": "Groups", "description": "Group management (create, update, participants, invite)" },
     { "name": "Presence", "description": "Online status and typing indicators" },
-    { "name": "Profile", "description": "Own profile (about, picture)" }
+    { "name": "Profile", "description": "Own profile (about, picture)" },
+    { "name": "Webhook", "description": "Webhook configuration for event delivery" }
   ]
 }

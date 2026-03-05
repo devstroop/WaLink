@@ -519,6 +519,15 @@ func (a *API) SendPresence(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Validate state
+	switch req.State {
+	case "composing", "paused", "available", "unavailable":
+		// ok
+	default:
+		writeError(w, http.StatusBadRequest, "invalid state: must be one of composing, paused, available, unavailable")
+		return
+	}
+
 	// Chat-level typing indicator
 	if req.Chat != nil && *req.Chat != "" {
 		if err := acct.SendChatPresence(r.Context(), *req.Chat, req.State); err != nil {

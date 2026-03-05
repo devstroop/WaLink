@@ -302,6 +302,80 @@ func (d *DB) DeleteProxyConfig(accountID string) error {
 
 // ─── Message CRUD ───────────────────────────────────────────
 
+// LastMessageInfo holds the latest message summary for a single chat.
+type LastMessageInfo struct {
+	ChatJID   string
+	Body      string
+	SenderJID string
+	FromMe    bool
+	Timestamp string // RFC3339
+}
+
+// GetLastMessagePerChat returns the most recent message for each chat belonging to accountID.
+func (d *DB) GetLastMessagePerChat(accountID string) (map[string]*LastMessageInfo, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	rows, err := d.db.Query(`
+		SELECT m.chat_jid, m.body, m.sender_jid, m.from_me, m.timestamp
+		FROM message m
+		INNER JOIN (
+			SELECT chat_jid, MAX(timestamp) AS max_ts
+			FROM message
+			WHERE account_id = ?
+			GROUP BY chat_jid
+		) latest ON m.chat_jid = latest.chat_jid AND m.timestamp = latest.max_ts AND m.account_id = ?
+	`, accountID, accountID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	result := make(map[string]*LastMessageInfo)
+	for rows.Next() {
+		var lm LastMessageInfo
+		if err := rows.Scan(&lm.ChatJID, &lm.Body, &lm.SenderJID, &lm.FromMe, &lm.Timestamp); err != nil {
+			return nil, err
+		}
+		result[lm.ChatJID] = &lm
+	}
+	return result, rows.Err()
+}
+
+// GetUnreadCountPerChat returns the number of unread (not from_me, not yet read-receipted) messages per chat.
+// For now we approximate "unread" as messages from others received after the latest outgoing or read-marked message.
+func (d *DB) GetUnreadCountPerChat(accountID string) (map[string]int, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	rows, err := d.db.Query(`
+		SELECT chat_jid, COUNT(*) AS cnt
+		FROM message
+		WHERE account_id = ? AND from_me = 0
+		  AND timestamp > COALESCE(
+		    (SELECT MAX(m2.timestamp) FROM message m2
+		     WHERE m2.account_id = message.account_id
+		       AND m2.chat_jid  = message.chat_jid
+		       AND m2.from_me = 1), '')
+		GROUP BY chat_jid
+	`, accountID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	result := make(map[string]int)
+	for rows.Next() {
+		var jid string
+		var cnt int
+		if err := rows.Scan(&jid, &cnt); err != nil {
+			return nil, err
+		}
+		result[jid] = cnt
+	}
+	return result, rows.Err()
+}
+
 // InsertMessage stores a message row (idempotent — ignores duplicates).
 func (d *DB) InsertMessage(rec *MessageRecord) error {
 	d.mu.Lock()

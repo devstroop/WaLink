@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -189,17 +190,30 @@ func (a *Account) GetQR(ctx context.Context) (<-chan whatsmeow.QRChannelItem, er
 
 	// Use a long-lived background context so the QR channel + connection
 	// survive after the HTTP handler returns the QR PNG to the client.
-	qrCtx, _ := context.WithTimeout(context.Background(), 2*time.Minute)
+	qrCtx, qrCancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	ch, err := a.client.GetQRChannel(qrCtx)
 	if err != nil {
+		qrCancel()
 		return nil, fmt.Errorf("get qr channel: %w", err)
 	}
 
 	if err := a.client.Connect(); err != nil {
+		qrCancel()
 		return nil, fmt.Errorf("connect: %w", err)
 	}
 
-	return ch, nil
+	// Cancel the context after the QR channel is drained (in DrainQR).
+	// Wrap the channel so cancel is called when done.
+	wrapped := make(chan whatsmeow.QRChannelItem, 1)
+	go func() {
+		defer qrCancel()
+		for item := range ch {
+			wrapped <- item
+		}
+		close(wrapped)
+	}()
+
+	return wrapped, nil
 }
 
 // DrainQR consumes remaining QR channel events in the background so
@@ -826,8 +840,19 @@ func (a *Account) GetProfile(ctx context.Context) (model.ProfileResponse, error)
 		resp.PhoneNumber = &a.PhoneNumber
 	}
 
+	// Push name and business name from the local store.
+	if pn := client.Store.PushName; pn != "" {
+		resp.PushName = &pn
+	}
+	if bn := client.Store.BusinessName; bn != "" {
+		resp.BusinessName = &bn
+	}
+
 	if client.Store.ID != nil {
-		ownJID := *client.Store.ID
+		// Use ToNonAD() to strip the device suffix — whatsmeow's
+		// GetUserInfo keys the response map by the bare JID, so a
+		// lookup with the device-scoped JID would silently miss.
+		ownJID := client.Store.ID.ToNonAD()
 
 		// Profile picture
 		pic, err := client.GetProfilePictureInfo(ctx, ownJID, &whatsmeow.GetProfilePictureParams{Preview: false})
@@ -835,11 +860,69 @@ func (a *Account) GetProfile(ctx context.Context) (model.ProfileResponse, error)
 			resp.PictureURL = &pic.URL
 		}
 
-		// About / status text via GetUserInfo
+		// About / status text + verified business name via GetUserInfo.
+		// The response may be keyed by a LID JID rather than the phone JID,
+		// so iterate the map instead of doing a direct lookup.
 		userInfo, err := client.GetUserInfo(ctx, []types.JID{ownJID})
 		if err == nil {
-			if info, ok := userInfo[ownJID]; ok && info.Status != "" {
-				resp.About = &info.Status
+			for _, info := range userInfo {
+				if info.Status != "" {
+					resp.About = &info.Status
+				}
+				if info.VerifiedName != nil && info.VerifiedName.Details != nil {
+					if vn := info.VerifiedName.Details.GetVerifiedName(); vn != "" {
+						resp.VerifiedName = &vn
+					}
+				}
+				break
+			}
+		}
+
+		// Business profile (address, email, categories, hours, description).
+		// Only returns data for WhatsApp Business accounts.
+		bizProfile, err := client.GetBusinessProfile(ctx, ownJID)
+		if err == nil && bizProfile != nil {
+			resp.IsBusiness = true
+			if bizProfile.Address != "" {
+				resp.Address = &bizProfile.Address
+			}
+			if bizProfile.Email != "" {
+				resp.Email = &bizProfile.Email
+			}
+			if desc, ok := bizProfile.ProfileOptions["description"]; ok && desc != "" {
+				resp.Description = &desc
+			}
+			if len(bizProfile.Categories) > 0 {
+				cats := make([]model.ProfileCategory, len(bizProfile.Categories))
+				for i, c := range bizProfile.Categories {
+					cats[i] = model.ProfileCategory{ID: c.ID, Name: c.Name}
+				}
+				resp.Categories = cats
+			}
+			if len(bizProfile.BusinessHours) > 0 {
+				slots := make([]model.BusinessHoursSlot, len(bizProfile.BusinessHours))
+				for i, h := range bizProfile.BusinessHours {
+					slots[i] = model.BusinessHoursSlot{
+						DayOfWeek: h.DayOfWeek,
+						Mode:      h.Mode,
+						OpenTime:  h.OpenTime,
+						CloseTime: h.CloseTime,
+					}
+				}
+				resp.BusinessHours = &model.BusinessHoursInfo{
+					Timezone: bizProfile.BusinessHoursTimeZone,
+					Config:   slots,
+				}
+			}
+			// Forward any remaining profile options (e.g. cart_enabled, catalog, etc.)
+			opts := make(map[string]string)
+			for k, v := range bizProfile.ProfileOptions {
+				if k != "description" {
+					opts[k] = v
+				}
+			}
+			if len(opts) > 0 {
+				resp.ProfileOptions = opts
 			}
 		}
 	}
@@ -1026,7 +1109,8 @@ func (a *Account) DownloadMedia(ctx context.Context, msg *waE2E.Message) ([]byte
 	return data, nil
 }
 
-// ListChats returns known contacts and groups from the whatsmeow store.
+// ListChats returns known contacts and groups from the whatsmeow store,
+// enriched with last message, unread count, and sorted by most recent activity.
 func (a *Account) ListChats(ctx context.Context) ([]model.ChatInfo, error) {
 	a.mu.RLock()
 	client := a.client
@@ -1036,10 +1120,32 @@ func (a *Account) ListChats(ctx context.Context) ([]model.ChatInfo, error) {
 		return nil, fmt.Errorf("not connected")
 	}
 
+	// Pre-fetch last message and unread counts from our message DB.
+	var lastMsgs map[string]*database.LastMessageInfo
+	var unreadCounts map[string]int
+	if a.db != nil {
+		var err error
+		lastMsgs, err = a.db.GetLastMessagePerChat(a.ID)
+		if err != nil {
+			log.Warn().Err(err).Msg("failed to fetch last messages")
+		}
+		unreadCounts, err = a.db.GetUnreadCountPerChat(a.ID)
+		if err != nil {
+			log.Warn().Err(err).Msg("failed to fetch unread counts")
+		}
+	}
+	if lastMsgs == nil {
+		lastMsgs = make(map[string]*database.LastMessageInfo)
+	}
+	if unreadCounts == nil {
+		unreadCounts = make(map[string]int)
+	}
+
 	seen := make(map[string]bool)
 	var chats []model.ChatInfo
 
 	// Helper to enrich a chat entry with local settings (pinned/muted/archived)
+	// and last message / unread count.
 	enrich := func(chat *model.ChatInfo, jid types.JID) {
 		settings, err := client.Store.ChatSettings.GetChatSettings(ctx, jid)
 		if err == nil && settings.Found {
@@ -1047,6 +1153,14 @@ func (a *Account) ListChats(ctx context.Context) ([]model.ChatInfo, error) {
 			chat.Archived = settings.Archived
 			chat.Muted = !settings.MutedUntil.IsZero()
 		}
+		if lm, ok := lastMsgs[chat.ID]; ok {
+			chat.LastMessage = &lm.Body
+			chat.Timestamp = &lm.Timestamp
+			if chat.IsGroup && !lm.FromMe {
+				chat.LastSender = &lm.SenderJID
+			}
+		}
+		chat.UnreadCount = unreadCounts[chat.ID]
 	}
 
 	// 1. Groups from server
@@ -1096,6 +1210,23 @@ func (a *Account) ListChats(ctx context.Context) ([]model.ChatInfo, error) {
 			chats = append(chats, chat)
 		}
 	}
+
+	// Sort: pinned first, then by timestamp descending (most recent first).
+	sort.Slice(chats, func(i, j int) bool {
+		// Pinned chats always come first.
+		if chats[i].Pinned != chats[j].Pinned {
+			return chats[i].Pinned
+		}
+		// Then by timestamp descending (string comparison works for RFC3339).
+		ti, tj := "", ""
+		if chats[i].Timestamp != nil {
+			ti = *chats[i].Timestamp
+		}
+		if chats[j].Timestamp != nil {
+			tj = *chats[j].Timestamp
+		}
+		return ti > tj
+	})
 
 	return chats, nil
 }
