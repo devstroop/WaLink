@@ -845,163 +845,6 @@ func (a *Account) SetStatusMessage(ctx context.Context, about string) error {
 	return client.SetStatusMessage(ctx, about)
 }
 
-// ── Privacy ─────────────────────────────────────────
-
-// GetPrivacySettings returns current privacy settings.
-func (a *Account) GetPrivacySettings(ctx context.Context) (model.PrivacySettings, error) {
-	a.mu.RLock()
-	client := a.client
-	a.mu.RUnlock()
-
-	if client == nil || !client.IsConnected() {
-		return model.PrivacySettings{}, fmt.Errorf("not connected")
-	}
-
-	ps := client.GetPrivacySettings(ctx)
-	return model.PrivacySettings{
-		GroupAdd:     string(ps.GroupAdd),
-		LastSeen:     string(ps.LastSeen),
-		Status:       string(ps.Status),
-		Profile:      string(ps.Profile),
-		ReadReceipts: string(ps.ReadReceipts),
-		Online:       string(ps.Online),
-		CallAdd:      string(ps.CallAdd),
-	}, nil
-}
-
-// SetPrivacySetting updates a single privacy setting.
-func (a *Account) SetPrivacySetting(ctx context.Context, name string, value string) error {
-	a.mu.RLock()
-	client := a.client
-	a.mu.RUnlock()
-
-	if client == nil || !client.IsConnected() {
-		return fmt.Errorf("not connected")
-	}
-
-	settingMap := map[string]types.PrivacySettingType{
-		"group_add":     types.PrivacySettingTypeGroupAdd,
-		"last_seen":     types.PrivacySettingTypeLastSeen,
-		"status":        types.PrivacySettingTypeStatus,
-		"profile":       types.PrivacySettingTypeProfile,
-		"read_receipts": types.PrivacySettingTypeReadReceipts,
-		"online":        types.PrivacySettingTypeOnline,
-		"call_add":      types.PrivacySettingTypeCallAdd,
-	}
-
-	settingType, ok := settingMap[name]
-	if !ok {
-		return fmt.Errorf("unknown privacy setting %q", name)
-	}
-
-	_, err := client.SetPrivacySetting(ctx, settingType, types.PrivacySetting(value))
-	return err
-}
-
-// ── Newsletters ─────────────────────────────────────
-
-// ListNewsletters returns all subscribed newsletters.
-func (a *Account) ListNewsletters(ctx context.Context) ([]model.NewsletterInfo, error) {
-	a.mu.RLock()
-	client := a.client
-	a.mu.RUnlock()
-
-	if client == nil || !client.IsConnected() {
-		return nil, fmt.Errorf("not connected")
-	}
-
-	newsletters, err := client.GetSubscribedNewsletters(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("get newsletters: %w", err)
-	}
-
-	result := make([]model.NewsletterInfo, len(newsletters))
-	for i, nl := range newsletters {
-		result[i] = newsletterToModel(nl)
-	}
-	return result, nil
-}
-
-// GetNewsletterInfo fetches newsletter details.
-func (a *Account) GetNewsletterInfo(ctx context.Context, newsletterJID string) (model.NewsletterInfo, error) {
-	a.mu.RLock()
-	client := a.client
-	a.mu.RUnlock()
-
-	if client == nil || !client.IsConnected() {
-		return model.NewsletterInfo{}, fmt.Errorf("not connected")
-	}
-
-	jid, err := types.ParseJID(newsletterJID)
-	if err != nil {
-		return model.NewsletterInfo{}, fmt.Errorf("invalid jid %q: %w", newsletterJID, err)
-	}
-
-	nl, err := client.GetNewsletterInfo(ctx, jid)
-	if err != nil {
-		return model.NewsletterInfo{}, fmt.Errorf("get newsletter: %w", err)
-	}
-
-	return newsletterToModel(nl), nil
-}
-
-// CreateNewsletter creates a new newsletter/channel.
-func (a *Account) CreateNewsletter(ctx context.Context, name, description string) (model.NewsletterInfo, error) {
-	a.mu.RLock()
-	client := a.client
-	a.mu.RUnlock()
-
-	if client == nil || !client.IsConnected() {
-		return model.NewsletterInfo{}, fmt.Errorf("not connected")
-	}
-
-	nl, err := client.CreateNewsletter(ctx, whatsmeow.CreateNewsletterParams{
-		Name:        name,
-		Description: description,
-	})
-	if err != nil {
-		return model.NewsletterInfo{}, fmt.Errorf("create newsletter: %w", err)
-	}
-
-	return newsletterToModel(nl), nil
-}
-
-// FollowNewsletter subscribes to a newsletter.
-func (a *Account) FollowNewsletter(ctx context.Context, newsletterJID string) error {
-	a.mu.RLock()
-	client := a.client
-	a.mu.RUnlock()
-
-	if client == nil || !client.IsConnected() {
-		return fmt.Errorf("not connected")
-	}
-
-	jid, err := types.ParseJID(newsletterJID)
-	if err != nil {
-		return fmt.Errorf("invalid jid %q: %w", newsletterJID, err)
-	}
-
-	return client.FollowNewsletter(ctx, jid)
-}
-
-// UnfollowNewsletter unsubscribes from a newsletter.
-func (a *Account) UnfollowNewsletter(ctx context.Context, newsletterJID string) error {
-	a.mu.RLock()
-	client := a.client
-	a.mu.RUnlock()
-
-	if client == nil || !client.IsConnected() {
-		return fmt.Errorf("not connected")
-	}
-
-	jid, err := types.ParseJID(newsletterJID)
-	if err != nil {
-		return fmt.Errorf("invalid jid %q: %w", newsletterJID, err)
-	}
-
-	return client.UnfollowNewsletter(ctx, jid)
-}
-
 // ── helpers ─────────────────────────────────────────
 
 func groupInfoToModel(gi *types.GroupInfo) model.GroupInfo {
@@ -1036,25 +879,91 @@ func groupInfoToModel(gi *types.GroupInfo) model.GroupInfo {
 	return result
 }
 
-func newsletterToModel(nl *types.NewsletterMetadata) model.NewsletterInfo {
-	info := model.NewsletterInfo{
-		ID:              nl.ID.String(),
-		Name:            nl.ThreadMeta.Name.Text,
-		SubscriberCount: nl.ThreadMeta.SubscriberCount,
+// ListContacts returns all contacts from the whatsmeow store.
+func (a *Account) ListContacts(ctx context.Context) ([]model.ContactInfo, error) {
+	a.mu.RLock()
+	client := a.client
+	a.mu.RUnlock()
+
+	if client == nil {
+		return nil, fmt.Errorf("not connected")
 	}
-	if nl.ThreadMeta.Description.Text != "" {
-		desc := nl.ThreadMeta.Description.Text
-		info.Description = &desc
+
+	contacts, err := client.Store.Contacts.GetAllContacts(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("get contacts: %w", err)
 	}
-	if nl.ViewerMeta != nil {
-		role := string(nl.ViewerMeta.Role)
-		info.Role = &role
-		info.Muted = nl.ViewerMeta.Mute == "on"
+
+	result := make([]model.ContactInfo, 0, len(contacts))
+	for jid, info := range contacts {
+		ci := model.ContactInfo{
+			ID:           jid.String(),
+			PushName:     info.PushName,
+			FullName:     info.FullName,
+			FirstName:    info.FirstName,
+			BusinessName: info.BusinessName,
+		}
+		if jid.Server == types.DefaultUserServer {
+			phone := jid.User
+			ci.Phone = &phone
+		}
+		result = append(result, ci)
 	}
-	if nl.ThreadMeta.Picture != nil && nl.ThreadMeta.Picture.URL != "" {
-		info.PictureURL = &nl.ThreadMeta.Picture.URL
+	return result, nil
+}
+
+// CheckContacts checks which phone numbers are registered on WhatsApp.
+func (a *Account) CheckContacts(ctx context.Context, phones []string) ([]model.CheckContactResult, error) {
+	a.mu.RLock()
+	client := a.client
+	a.mu.RUnlock()
+
+	if client == nil || !client.IsConnected() {
+		return nil, fmt.Errorf("not connected")
 	}
-	return info
+
+	resp, err := client.IsOnWhatsApp(ctx, phones)
+	if err != nil {
+		return nil, fmt.Errorf("check contacts: %w", err)
+	}
+
+	results := make([]model.CheckContactResult, len(resp))
+	for i, r := range resp {
+		results[i] = model.CheckContactResult{
+			Phone:      r.Query,
+			OnWhatsApp: r.IsIn,
+		}
+		if r.IsIn {
+			results[i].JID = r.JID.String()
+		}
+	}
+	return results, nil
+}
+
+// RevokeMessage revokes (deletes for everyone) a previously sent message.
+func (a *Account) RevokeMessage(ctx context.Context, chatJID, messageID string) (model.RevokeMessageResponse, error) {
+	a.mu.RLock()
+	client := a.client
+	a.mu.RUnlock()
+
+	if client == nil || !client.IsConnected() {
+		return model.RevokeMessageResponse{}, fmt.Errorf("not connected")
+	}
+
+	target, err := types.ParseJID(chatJID)
+	if err != nil {
+		return model.RevokeMessageResponse{}, fmt.Errorf("invalid jid %q: %w", chatJID, err)
+	}
+
+	resp, err := client.RevokeMessage(ctx, target, types.MessageID(messageID))
+	if err != nil {
+		return model.RevokeMessageResponse{}, fmt.Errorf("revoke: %w", err)
+	}
+
+	return model.RevokeMessageResponse{
+		Revoked:   true,
+		Timestamp: resp.Timestamp.Format(time.RFC3339),
+	}, nil
 }
 
 // ListChats returns known contacts and groups from the whatsmeow store.

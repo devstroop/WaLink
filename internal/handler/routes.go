@@ -31,7 +31,6 @@ func (a *API) RegisterRoutes(mux *http.ServeMux) {
 
 	// ── Session (auth/linking lifecycle) ────────────
 	mux.HandleFunc("GET "+acct+"/session", a.GetSession)
-	mux.HandleFunc("POST "+acct+"/session/connect", a.ConnectSession)
 	mux.HandleFunc("GET "+acct+"/session/qr", a.GetQR)
 	mux.HandleFunc("POST "+acct+"/session/pair", a.PairPhone)
 	mux.HandleFunc("DELETE "+acct+"/session", a.DeleteSession)
@@ -44,14 +43,16 @@ func (a *API) RegisterRoutes(mux *http.ServeMux) {
 	// ── Messaging ───────────────────────────────────
 	mux.HandleFunc("POST "+acct+"/messages", a.SendMessage)
 	mux.HandleFunc("POST "+acct+"/messages/react", a.ReactMessage)
-	mux.HandleFunc("POST "+acct+"/messages/reply", a.ReplyMessage)
 	mux.HandleFunc("POST "+acct+"/messages/read", a.MarkRead)
+	mux.HandleFunc("DELETE "+acct+"/messages/{message_id}", a.RevokeMessage)
 
 	// ── Chats ───────────────────────────────────────
 	mux.HandleFunc("GET "+acct+"/chats", a.ListChats)
 
 
 	// ── Contacts ────────────────────────────────────
+	mux.HandleFunc("GET "+acct+"/contacts", a.ListContacts)
+	mux.HandleFunc("POST "+acct+"/contacts/check", a.CheckContacts)
 	mux.HandleFunc("GET "+acct+"/contacts/{jid}", a.GetContact)
 
 	// ── Groups ──────────────────────────────────────
@@ -69,15 +70,4 @@ func (a *API) RegisterRoutes(mux *http.ServeMux) {
 	// ── Profile ─────────────────────────────────────
 	mux.HandleFunc("GET "+acct+"/profile", a.GetProfile)
 	mux.HandleFunc("PATCH "+acct+"/profile", a.UpdateProfile)
-
-	// ── Privacy ─────────────────────────────────────
-	mux.HandleFunc("GET "+acct+"/privacy", a.GetPrivacy)
-	mux.HandleFunc("PATCH "+acct+"/privacy", a.UpdatePrivacy)
-
-	// ── Newsletters ─────────────────────────────────
-	mux.HandleFunc("GET "+acct+"/newsletters", a.ListNewsletters)
-	mux.HandleFunc("POST "+acct+"/newsletters", a.CreateNewsletter)
-	mux.HandleFunc("GET "+acct+"/newsletters/{jid}", a.GetNewsletter)
-	mux.HandleFunc("POST "+acct+"/newsletters/{jid}/follow", a.FollowNewsletter)
-	mux.HandleFunc("DELETE "+acct+"/newsletters/{jid}/follow", a.UnfollowNewsletter)
 }

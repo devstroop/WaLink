@@ -100,8 +100,9 @@ type PhoneLinkResponse struct {
 
 // SendMessageRequest is the JSON body for POST /accounts/{id}/messages.
 type SendMessageRequest struct {
-	Chat string  `json:"chat"`
-	Text *string `json:"text,omitempty"`
+	Chat    string  `json:"chat"`
+	Text    *string `json:"text,omitempty"`
+	ReplyTo *string `json:"reply_to,omitempty"` // message ID to reply to
 	// File handled separately via multipart
 }
 
@@ -116,13 +117,6 @@ type ReactionRequest struct {
 	Chat      string `json:"chat"`
 	MessageID string `json:"message_id"`
 	Emoji     string `json:"emoji"`
-}
-
-// ReplyMessageRequest is the JSON body for POST /accounts/{id}/messages/reply.
-type ReplyMessageRequest struct {
-	Chat      string `json:"chat"`
-	MessageID string `json:"message_id"`
-	Text      string `json:"text"`
 }
 
 // MarkReadRequest is the JSON body for POST /accounts/{id}/messages/read.
@@ -163,6 +157,35 @@ type ContactInfo struct {
 	FirstName    string  `json:"first_name,omitempty"`
 	BusinessName string  `json:"business_name,omitempty"`
 	Phone        *string `json:"phone,omitempty"`
+}
+
+// ContactListResponse is the response for GET /accounts/{id}/contacts.
+type ContactListResponse struct {
+	Contacts []ContactInfo `json:"contacts"`
+	Total    int           `json:"total"`
+}
+
+// CheckContactsRequest is the JSON body for POST /accounts/{id}/contacts/check.
+type CheckContactsRequest struct {
+	Phones []string `json:"phones"`
+}
+
+// CheckContactResult is a single result from the IsOnWhatsApp check.
+type CheckContactResult struct {
+	Phone       string `json:"phone"`
+	OnWhatsApp  bool   `json:"on_whatsapp"`
+	JID         string `json:"jid,omitempty"`
+}
+
+// CheckContactsResponse is the response for POST /accounts/{id}/contacts/check.
+type CheckContactsResponse struct {
+	Results []CheckContactResult `json:"results"`
+}
+
+// RevokeMessageResponse is the response for DELETE /accounts/{id}/messages/{id}.
+type RevokeMessageResponse struct {
+	Revoked   bool   `json:"revoked"`
+	Timestamp string `json:"timestamp"`
 }
 
 // ──────────────────────────────────────────────────────
@@ -248,59 +271,6 @@ type ProfileResponse struct {
 // UpdateProfileRequest is the JSON body for PATCH /accounts/{id}/profile.
 type UpdateProfileRequest struct {
 	About *string `json:"about,omitempty"`
-}
-
-// ──────────────────────────────────────────────────────
-// Privacy
-// ──────────────────────────────────────────────────────
-
-// PrivacySettings maps setting names to their values.
-type PrivacySettings struct {
-	GroupAdd     string `json:"group_add"`
-	LastSeen     string `json:"last_seen"`
-	Status       string `json:"status"`
-	Profile      string `json:"profile"`
-	ReadReceipts string `json:"read_receipts"`
-	Online       string `json:"online"`
-	CallAdd      string `json:"call_add"`
-}
-
-// UpdatePrivacyRequest is the JSON body for PATCH /accounts/{id}/privacy.
-type UpdatePrivacyRequest struct {
-	GroupAdd     *string `json:"group_add,omitempty"`
-	LastSeen     *string `json:"last_seen,omitempty"`
-	Status       *string `json:"status,omitempty"`
-	Profile      *string `json:"profile,omitempty"`
-	ReadReceipts *string `json:"read_receipts,omitempty"`
-	Online       *string `json:"online,omitempty"`
-	CallAdd      *string `json:"call_add,omitempty"`
-}
-
-// ──────────────────────────────────────────────────────
-// Newsletters
-// ──────────────────────────────────────────────────────
-
-// NewsletterInfo represents a newsletter/channel.
-type NewsletterInfo struct {
-	ID              string  `json:"id"`
-	Name            string  `json:"name"`
-	Description     *string `json:"description"`
-	SubscriberCount int     `json:"subscriber_count"`
-	Role            *string `json:"role"`
-	Muted           bool    `json:"muted"`
-	PictureURL      *string `json:"picture_url"`
-}
-
-// NewsletterListResponse is the response for GET /accounts/{id}/newsletters.
-type NewsletterListResponse struct {
-	Newsletters []NewsletterInfo `json:"newsletters"`
-	Total       int              `json:"total"`
-}
-
-// CreateNewsletterRequest is the JSON body for POST /accounts/{id}/newsletters.
-type CreateNewsletterRequest struct {
-	Name        string `json:"name"`
-	Description string `json:"description,omitempty"`
 }
 
 // ──────────────────────────────────────────────────────

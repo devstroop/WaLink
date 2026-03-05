@@ -1,35 +1,29 @@
 {
   "openapi": "3.0.3",
   "info": {
-    "title": "WaLink API",
-    "description": "WhatsApp messaging API powered by whatsmeow",
-    "version": "0.2.0",
-    "license": { "name": "MIT" }
+    "title": "WaLink – WhatsApp HTTP API",
+    "version": "0.4.0",
+    "description": "Multi-account WhatsApp integration via whatsmeow."
   },
-  "servers": [{ "url": "http://localhost:3000", "description": "Local" }],
-  "security": [{ "BearerAuth": [] }],
+  "servers": [{ "url": "http://localhost:8080" }],
+  "security": [{ "ApiKey": [] }],
   "components": {
     "securitySchemes": {
-      "BearerAuth": {
-        "type": "apiKey",
-        "in": "header",
-        "name": "Authorization",
-        "description": "Enter: Bearer <your-secret-key>"
-      }
+      "ApiKey": { "type": "apiKey", "in": "header", "name": "X-API-Key" }
     },
     "parameters": {
-      "AccountId": { "name": "account_id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } },
-      "JID": { "name": "jid", "in": "path", "required": true, "schema": { "type": "string" }, "description": "WhatsApp JID (e.g. 919876543210@s.whatsapp.net)" }
+      "AccountId": { "name": "account_id", "in": "path", "required": true, "schema": { "type": "string" } },
+      "JID": { "name": "jid", "in": "path", "required": true, "schema": { "type": "string" } }
     },
     "schemas": {
       "AccountInfo": {
         "type": "object",
         "properties": {
-          "id": { "type": "string", "format": "uuid" },
+          "id": { "type": "string" },
           "phone_number": { "type": "string", "nullable": true },
           "account_name": { "type": "string" },
           "authorized": { "type": "boolean" },
-          "created_at": { "type": "string", "format": "date-time" }
+          "created_at": { "type": "string" }
         }
       },
       "AccountListResponse": {
@@ -41,10 +35,9 @@
       },
       "CreateAccountRequest": {
         "type": "object",
-        "required": ["phone_number"],
         "properties": {
-          "phone_number": { "type": "string", "example": "+919876543210" },
-          "account_name": { "type": "string", "example": "main" }
+          "phone_number": { "type": "string", "example": "919876543210" },
+          "account_name": { "type": "string", "example": "My Account" }
         }
       },
       "CreateAccountResponse": {
@@ -116,7 +109,8 @@
         "required": ["chat"],
         "properties": {
           "chat": { "type": "string", "example": "919876543210@s.whatsapp.net" },
-          "text": { "type": "string", "example": "Hello from WaLink!" }
+          "text": { "type": "string", "example": "Hello from WaLink!" },
+          "reply_to": { "type": "string", "description": "Message ID to reply to (optional)" }
         }
       },
       "SendMessageResponse": {
@@ -135,21 +129,19 @@
           "emoji": { "type": "string", "example": "\ud83d\udc4d" }
         }
       },
-      "ReplyMessageRequest": {
-        "type": "object",
-        "required": ["chat", "message_id", "text"],
-        "properties": {
-          "chat": { "type": "string" },
-          "message_id": { "type": "string" },
-          "text": { "type": "string" }
-        }
-      },
       "MarkReadRequest": {
         "type": "object",
         "required": ["chat", "message_ids"],
         "properties": {
           "chat": { "type": "string" },
           "message_ids": { "type": "array", "items": { "type": "string" } }
+        }
+      },
+      "RevokeMessageResponse": {
+        "type": "object",
+        "properties": {
+          "revoked": { "type": "boolean" },
+          "timestamp": { "type": "string" }
         }
       },
       "ChatInfo": {
@@ -179,6 +171,34 @@
           "first_name": { "type": "string" },
           "business_name": { "type": "string" },
           "phone": { "type": "string", "nullable": true }
+        }
+      },
+      "ContactListResponse": {
+        "type": "object",
+        "properties": {
+          "contacts": { "type": "array", "items": { "$ref": "#/components/schemas/ContactInfo" } },
+          "total": { "type": "integer" }
+        }
+      },
+      "CheckContactsRequest": {
+        "type": "object",
+        "required": ["phones"],
+        "properties": {
+          "phones": { "type": "array", "items": { "type": "string" }, "example": ["919876543210", "14155551234"] }
+        }
+      },
+      "CheckContactResult": {
+        "type": "object",
+        "properties": {
+          "phone": { "type": "string" },
+          "on_whatsapp": { "type": "boolean" },
+          "jid": { "type": "string" }
+        }
+      },
+      "CheckContactsResponse": {
+        "type": "object",
+        "properties": {
+          "results": { "type": "array", "items": { "$ref": "#/components/schemas/CheckContactResult" } }
         }
       },
       "GroupParticipant": {
@@ -263,57 +283,6 @@
           "about": { "type": "string" }
         }
       },
-      "PrivacySettings": {
-        "type": "object",
-        "properties": {
-          "group_add": { "type": "string" },
-          "last_seen": { "type": "string" },
-          "status": { "type": "string" },
-          "profile": { "type": "string" },
-          "read_receipts": { "type": "string" },
-          "online": { "type": "string" },
-          "call_add": { "type": "string" }
-        }
-      },
-      "UpdatePrivacyRequest": {
-        "type": "object",
-        "properties": {
-          "group_add": { "type": "string", "enum": ["all", "contacts", "contact_blacklist", "none"] },
-          "last_seen": { "type": "string", "enum": ["all", "contacts", "contact_blacklist", "none"] },
-          "status": { "type": "string", "enum": ["all", "contacts", "contact_blacklist", "none"] },
-          "profile": { "type": "string", "enum": ["all", "contacts", "contact_blacklist", "none"] },
-          "read_receipts": { "type": "string", "enum": ["all", "none"] },
-          "online": { "type": "string", "enum": ["all", "match_last_seen"] },
-          "call_add": { "type": "string", "enum": ["all", "known"] }
-        }
-      },
-      "NewsletterInfo": {
-        "type": "object",
-        "properties": {
-          "id": { "type": "string" },
-          "name": { "type": "string" },
-          "description": { "type": "string", "nullable": true },
-          "subscriber_count": { "type": "integer" },
-          "role": { "type": "string", "nullable": true },
-          "muted": { "type": "boolean" },
-          "picture_url": { "type": "string", "nullable": true }
-        }
-      },
-      "NewsletterListResponse": {
-        "type": "object",
-        "properties": {
-          "newsletters": { "type": "array", "items": { "$ref": "#/components/schemas/NewsletterInfo" } },
-          "total": { "type": "integer" }
-        }
-      },
-      "CreateNewsletterRequest": {
-        "type": "object",
-        "required": ["name"],
-        "properties": {
-          "name": { "type": "string" },
-          "description": { "type": "string" }
-        }
-      },
       "HealthResponse": {
         "type": "object",
         "properties": { "status": { "type": "string", "example": "ok" } }
@@ -388,7 +357,6 @@
       "get": {
         "tags": ["Proxy"],
         "summary": "Get proxy configuration",
-        "operationId": "getProxy",
         "responses": {
           "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ProxyConfigResponse" } } } },
           "404": { "description": "No proxy configured or account not found" }
@@ -397,7 +365,6 @@
       "put": {
         "tags": ["Proxy"],
         "summary": "Set proxy configuration",
-        "operationId": "setProxy",
         "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SetProxyRequest" } } } },
         "responses": {
           "200": { "description": "Proxy configured", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ProxyConfigResponse" } } } },
@@ -408,7 +375,6 @@
       "delete": {
         "tags": ["Proxy"],
         "summary": "Remove proxy configuration",
-        "operationId": "deleteProxy",
         "responses": {
           "200": { "description": "Proxy removed" },
           "404": { "description": "Account not found" }
@@ -465,7 +431,7 @@
       "post": {
         "tags": ["Messaging"],
         "summary": "Send a message",
-        "description": "Send text, file, or both. Provide at least one of 'text' or 'file'.",
+        "description": "Send text, file, or both. Use 'reply_to' to quote an existing message. Provide at least 'text' or 'file'.",
         "requestBody": {
           "required": true,
           "content": {
@@ -474,19 +440,35 @@
                 "type": "object",
                 "required": ["chat"],
                 "properties": {
-                  "chat": { "type": "string", "description": "Recipient JID (e.g. 919876543210@s.whatsapp.net)" },
-                  "text": { "type": "string", "description": "Text message or caption for the file" },
-                  "file": { "type": "string", "format": "binary", "description": "File attachment (image, document, etc.)" }
+                  "chat": { "type": "string", "description": "Recipient JID" },
+                  "text": { "type": "string", "description": "Text message or caption" },
+                  "file": { "type": "string", "format": "binary", "description": "File attachment" }
                 }
-              },
-              "encoding": {
-                "file": { "contentType": "application/octet-stream" }
               }
+            },
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/SendMessageRequest" }
             }
           }
         },
         "responses": {
           "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SendMessageResponse" } } } },
+          "400": { "description": "Bad request" },
+          "404": { "description": "Not found" }
+        }
+      }
+    },
+    "/api/v1/accounts/{account_id}/messages/{message_id}": {
+      "parameters": [
+        { "$ref": "#/components/parameters/AccountId" },
+        { "name": "message_id", "in": "path", "required": true, "schema": { "type": "string" } }
+      ],
+      "delete": {
+        "tags": ["Messaging"],
+        "summary": "Revoke (delete for everyone) a message",
+        "parameters": [{ "name": "chat", "in": "query", "required": true, "schema": { "type": "string" }, "description": "Chat JID where the message was sent" }],
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RevokeMessageResponse" } } } },
           "400": { "description": "Bad request" },
           "404": { "description": "Not found" }
         }
@@ -500,18 +482,6 @@
         "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ReactionRequest" } } } },
         "responses": {
           "200": { "description": "OK" },
-          "404": { "description": "Not found" }
-        }
-      }
-    },
-    "/api/v1/accounts/{account_id}/messages/reply": {
-      "parameters": [{ "$ref": "#/components/parameters/AccountId" }],
-      "post": {
-        "tags": ["Messaging"],
-        "summary": "Reply to a message",
-        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ReplyMessageRequest" } } } },
-        "responses": {
-          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SendMessageResponse" } } } },
           "404": { "description": "Not found" }
         }
       }
@@ -536,6 +506,30 @@
         "summary": "List chats",
         "responses": {
           "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ChatListResponse" } } } },
+          "404": { "description": "Not found" }
+        }
+      }
+    },
+    "/api/v1/accounts/{account_id}/contacts": {
+      "parameters": [{ "$ref": "#/components/parameters/AccountId" }],
+      "get": {
+        "tags": ["Contacts"],
+        "summary": "List all contacts",
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ContactListResponse" } } } },
+          "404": { "description": "Not found" }
+        }
+      }
+    },
+    "/api/v1/accounts/{account_id}/contacts/check": {
+      "parameters": [{ "$ref": "#/components/parameters/AccountId" }],
+      "post": {
+        "tags": ["Contacts"],
+        "summary": "Check if phone numbers are on WhatsApp",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CheckContactsRequest" } } } },
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CheckContactsResponse" } } } },
+          "400": { "description": "Bad request" },
           "404": { "description": "Not found" }
         }
       }
@@ -657,90 +651,18 @@
           "404": { "description": "Not found" }
         }
       }
-    },
-    "/api/v1/accounts/{account_id}/privacy": {
-      "parameters": [{ "$ref": "#/components/parameters/AccountId" }],
-      "get": {
-        "tags": ["Privacy"],
-        "summary": "Get privacy settings",
-        "responses": {
-          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PrivacySettings" } } } },
-          "404": { "description": "Not found" }
-        }
-      },
-      "patch": {
-        "tags": ["Privacy"],
-        "summary": "Update privacy settings",
-        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/UpdatePrivacyRequest" } } } },
-        "responses": {
-          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PrivacySettings" } } } },
-          "404": { "description": "Not found" }
-        }
-      }
-    },
-    "/api/v1/accounts/{account_id}/newsletters": {
-      "parameters": [{ "$ref": "#/components/parameters/AccountId" }],
-      "get": {
-        "tags": ["Newsletters"],
-        "summary": "List subscribed newsletters",
-        "responses": {
-          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/NewsletterListResponse" } } } },
-          "404": { "description": "Not found" }
-        }
-      },
-      "post": {
-        "tags": ["Newsletters"],
-        "summary": "Create a newsletter",
-        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreateNewsletterRequest" } } } },
-        "responses": {
-          "201": { "description": "Created", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/NewsletterInfo" } } } },
-          "400": { "description": "Bad request" },
-          "404": { "description": "Not found" }
-        }
-      }
-    },
-    "/api/v1/accounts/{account_id}/newsletters/{jid}": {
-      "parameters": [{ "$ref": "#/components/parameters/AccountId" }, { "$ref": "#/components/parameters/JID" }],
-      "get": {
-        "tags": ["Newsletters"],
-        "summary": "Get newsletter info",
-        "responses": {
-          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/NewsletterInfo" } } } },
-          "404": { "description": "Not found" }
-        }
-      }
-    },
-    "/api/v1/accounts/{account_id}/newsletters/{jid}/follow": {
-      "parameters": [{ "$ref": "#/components/parameters/AccountId" }, { "$ref": "#/components/parameters/JID" }],
-      "post": {
-        "tags": ["Newsletters"],
-        "summary": "Follow (subscribe to) a newsletter",
-        "responses": {
-          "200": { "description": "OK" },
-          "404": { "description": "Not found" }
-        }
-      },
-      "delete": {
-        "tags": ["Newsletters"],
-        "summary": "Unfollow a newsletter",
-        "responses": {
-          "200": { "description": "OK" },
-          "404": { "description": "Not found" }
-        }
-      }
     }
   },
   "tags": [
     { "name": "Health", "description": "Server health" },
     { "name": "Accounts", "description": "Account CRUD" },
     { "name": "Session", "description": "WhatsApp session lifecycle (QR, pair, logout)" },
-    { "name": "Messaging", "description": "Send messages, react, reply, mark read" },
-    { "name": "Chats", "description": "Chat listing and message history" },
-    { "name": "Contacts", "description": "Contact information" },
+    { "name": "Proxy", "description": "Proxy configuration" },
+    { "name": "Messaging", "description": "Send messages, react, revoke, mark read" },
+    { "name": "Chats", "description": "Chat listing" },
+    { "name": "Contacts", "description": "Contact listing and verification" },
     { "name": "Groups", "description": "Group management (create, update, participants, invite)" },
     { "name": "Presence", "description": "Online status and typing indicators" },
-    { "name": "Profile", "description": "Own profile (about, picture)" },
-    { "name": "Privacy", "description": "Privacy settings (last seen, read receipts, etc.)" },
-    { "name": "Newsletters", "description": "Newsletter/channel management" }
+    { "name": "Profile", "description": "Own profile (about, picture)" }
   ]
 }

@@ -34,24 +34,6 @@ func (a *API) GetSession(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, acct.StatusResponse())
 }
 
-// ConnectSession — POST /api/v1/accounts/{account_id}/session/connect
-func (a *API) ConnectSession(w http.ResponseWriter, r *http.Request) {
-	acct := a.requireConnectedAccount(w, r)
-	if acct == nil {
-		return
-	}
-
-	// Wait briefly for the async auth handshake to complete
-	for i := 0; i < 10; i++ {
-		if acct.IsLoggedIn() {
-			break
-		}
-		time.Sleep(500 * time.Millisecond)
-	}
-
-	writeJSON(w, http.StatusOK, acct.StatusResponse())
-}
-
 // GetQR — GET /api/v1/accounts/{account_id}/session/qr
 func (a *API) GetQR(w http.ResponseWriter, r *http.Request) {
 	acct := a.requireAccount(w, r)
@@ -213,7 +195,13 @@ func (a *API) SendMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	msgID, err := acct.SendMessage(r.Context(), req.Chat, *req.Text)
+	var msgID string
+	var err error
+	if req.ReplyTo != nil && *req.ReplyTo != "" {
+		msgID, err = acct.SendReply(r.Context(), req.Chat, *req.ReplyTo, *req.Text)
+	} else {
+		msgID, err = acct.SendMessage(r.Context(), req.Chat, *req.Text)
+	}
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -248,36 +236,6 @@ func (a *API) ReactMessage(w http.ResponseWriter, r *http.Request) {
 		"success":    true,
 		"message_id": req.MessageID,
 		"emoji":      req.Emoji,
-	})
-}
-
-// ReplyMessage — POST /api/v1/accounts/{account_id}/messages/reply
-func (a *API) ReplyMessage(w http.ResponseWriter, r *http.Request) {
-	acct := a.requireConnectedAccount(w, r)
-	if acct == nil {
-		return
-	}
-
-	var req model.ReplyMessageRequest
-	if err := readJSON(r, &req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid json: "+err.Error())
-		return
-	}
-
-	if req.Chat == "" || req.MessageID == "" || req.Text == "" {
-		writeError(w, http.StatusBadRequest, "chat, message_id, and text required")
-		return
-	}
-
-	replyID, err := acct.SendReply(r.Context(), req.Chat, req.MessageID, req.Text)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-
-	writeJSON(w, http.StatusOK, model.SendMessageResponse{
-		Status:    "sent",
-		MessageID: replyID,
 	})
 }
 
@@ -333,6 +291,52 @@ func (a *API) ListChats(w http.ResponseWriter, r *http.Request) {
 }
 
 // ── Contacts ────────────────────────────────────────
+
+// ListContacts — GET /api/v1/accounts/{account_id}/contacts
+func (a *API) ListContacts(w http.ResponseWriter, r *http.Request) {
+	acct := a.requireConnectedAccount(w, r)
+	if acct == nil {
+		return
+	}
+
+	contacts, err := acct.ListContacts(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusOK, model.ContactListResponse{
+		Contacts: contacts,
+		Total:    len(contacts),
+	})
+}
+
+// CheckContacts — POST /api/v1/accounts/{account_id}/contacts/check
+func (a *API) CheckContacts(w http.ResponseWriter, r *http.Request) {
+	acct := a.requireConnectedAccount(w, r)
+	if acct == nil {
+		return
+	}
+
+	var req model.CheckContactsRequest
+	if err := readJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid json: "+err.Error())
+		return
+	}
+
+	if len(req.Phones) == 0 {
+		writeError(w, http.StatusBadRequest, "phones required")
+		return
+	}
+
+	results, err := acct.CheckContacts(r.Context(), req.Phones)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusOK, model.CheckContactsResponse{Results: results})
+}
 
 // GetContact — GET /api/v1/accounts/{account_id}/contacts/{jid}
 func (a *API) GetContact(w http.ResponseWriter, r *http.Request) {
@@ -581,155 +585,25 @@ func (a *API) UpdateProfile(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, profile)
 }
 
-// ── Privacy ─────────────────────────────────────────
-
-// GetPrivacy — GET /api/v1/accounts/{account_id}/privacy
-func (a *API) GetPrivacy(w http.ResponseWriter, r *http.Request) {
+// RevokeMessage — DELETE /api/v1/accounts/{account_id}/messages/{message_id}
+func (a *API) RevokeMessage(w http.ResponseWriter, r *http.Request) {
 	acct := a.requireConnectedAccount(w, r)
 	if acct == nil {
 		return
 	}
 
-	settings, err := acct.GetPrivacySettings(r.Context())
+	messageID := r.PathValue("message_id")
+	chat := r.URL.Query().Get("chat")
+	if chat == "" {
+		writeError(w, http.StatusBadRequest, "chat query parameter required")
+		return
+	}
+
+	resp, err := acct.RevokeMessage(r.Context(), chat, messageID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
-	writeJSON(w, http.StatusOK, settings)
-}
-
-// UpdatePrivacy — PATCH /api/v1/accounts/{account_id}/privacy
-func (a *API) UpdatePrivacy(w http.ResponseWriter, r *http.Request) {
-	acct := a.requireConnectedAccount(w, r)
-	if acct == nil {
-		return
-	}
-
-	var req model.UpdatePrivacyRequest
-	if err := readJSON(r, &req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid json: "+err.Error())
-		return
-	}
-
-	updates := map[string]*string{
-		"group_add":     req.GroupAdd,
-		"last_seen":     req.LastSeen,
-		"status":        req.Status,
-		"profile":       req.Profile,
-		"read_receipts": req.ReadReceipts,
-		"online":        req.Online,
-		"call_add":      req.CallAdd,
-	}
-
-	for name, val := range updates {
-		if val != nil {
-			if err := acct.SetPrivacySetting(r.Context(), name, *val); err != nil {
-				writeError(w, http.StatusInternalServerError, err.Error())
-				return
-			}
-		}
-	}
-
-	settings, err := acct.GetPrivacySettings(r.Context())
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-
-	writeJSON(w, http.StatusOK, settings)
-}
-
-// ── Newsletters ─────────────────────────────────────
-
-// ListNewsletters — GET /api/v1/accounts/{account_id}/newsletters
-func (a *API) ListNewsletters(w http.ResponseWriter, r *http.Request) {
-	acct := a.requireConnectedAccount(w, r)
-	if acct == nil {
-		return
-	}
-
-	newsletters, err := acct.ListNewsletters(r.Context())
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-
-	writeJSON(w, http.StatusOK, model.NewsletterListResponse{
-		Newsletters: newsletters,
-		Total:       len(newsletters),
-	})
-}
-
-// CreateNewsletter — POST /api/v1/accounts/{account_id}/newsletters
-func (a *API) CreateNewsletter(w http.ResponseWriter, r *http.Request) {
-	acct := a.requireConnectedAccount(w, r)
-	if acct == nil {
-		return
-	}
-
-	var req model.CreateNewsletterRequest
-	if err := readJSON(r, &req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid json: "+err.Error())
-		return
-	}
-
-	if req.Name == "" {
-		writeError(w, http.StatusBadRequest, "name required")
-		return
-	}
-
-	info, err := acct.CreateNewsletter(r.Context(), req.Name, req.Description)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-
-	writeJSON(w, http.StatusCreated, info)
-}
-
-// GetNewsletter — GET /api/v1/accounts/{account_id}/newsletters/{jid}
-func (a *API) GetNewsletter(w http.ResponseWriter, r *http.Request) {
-	acct := a.requireConnectedAccount(w, r)
-	if acct == nil {
-		return
-	}
-
-	info, err := acct.GetNewsletterInfo(r.Context(), r.PathValue("jid"))
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-
-	writeJSON(w, http.StatusOK, info)
-}
-
-// FollowNewsletter — POST /api/v1/accounts/{account_id}/newsletters/{jid}/follow
-func (a *API) FollowNewsletter(w http.ResponseWriter, r *http.Request) {
-	acct := a.requireConnectedAccount(w, r)
-	if acct == nil {
-		return
-	}
-
-	if err := acct.FollowNewsletter(r.Context(), r.PathValue("jid")); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-
-	writeJSON(w, http.StatusOK, map[string]any{"success": true})
-}
-
-// UnfollowNewsletter — DELETE /api/v1/accounts/{account_id}/newsletters/{jid}/follow
-func (a *API) UnfollowNewsletter(w http.ResponseWriter, r *http.Request) {
-	acct := a.requireConnectedAccount(w, r)
-	if acct == nil {
-		return
-	}
-
-	if err := acct.UnfollowNewsletter(r.Context(), r.PathValue("jid")); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-
-	writeJSON(w, http.StatusOK, map[string]any{"success": true})
+	writeJSON(w, http.StatusOK, resp)
 }
