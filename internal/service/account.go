@@ -1,18 +1,25 @@
 package service
 
 import (
+	"bytes"
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"net"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/rs/zerolog/log"
 
+	"github.com/devstroop/walink/internal/database"
 	"github.com/devstroop/walink/internal/model"
 
 	"go.mau.fi/whatsmeow"
@@ -37,19 +44,21 @@ type Account struct {
 
 	Proxy        *ProxyConfig // nil = direct, set via PUT /accounts/{id}/proxy
 
+	db           *database.DB
 	client       *whatsmeow.Client
 	container    *sqlstore.Container
 	eventCh      chan any
 }
 
 // NewAccount constructs an Account (not yet connected).
-func NewAccount(id, phone, name, dataDir string, createdAt time.Time) *Account {
+func NewAccount(id, phone, name, dataDir string, createdAt time.Time, db *database.DB) *Account {
 	return &Account{
 		ID:           id,
 		PhoneNumber:  phone,
 		AccountName:  name,
 		DataDir:      dataDir,
 		CreatedAt:    createdAt,
+		db:           db,
 	}
 }
 
@@ -576,6 +585,12 @@ func (a *Account) GetContactInfo(ctx context.Context, contactJID string) (model.
 		result.Phone = &phone
 	}
 
+	// Profile picture (best-effort)
+	pic, err := client.GetProfilePictureInfo(ctx, jid, &whatsmeow.GetProfilePictureParams{Preview: false})
+	if err == nil && pic != nil {
+		result.PictureURL = &pic.URL
+	}
+
 	return result, nil
 }
 
@@ -966,6 +981,51 @@ func (a *Account) RevokeMessage(ctx context.Context, chatJID, messageID string) 
 	}, nil
 }
 
+// ListMessages returns stored messages for a chat with cursor pagination.
+func (a *Account) ListMessages(chatJID string, limit int, before string) (model.MessageListResponse, error) {
+	if a.db == nil {
+		return model.MessageListResponse{}, fmt.Errorf("no database")
+	}
+	records, err := a.db.ListMessages(a.ID, chatJID, limit, before)
+	if err != nil {
+		return model.MessageListResponse{}, fmt.Errorf("list messages: %w", err)
+	}
+	msgs := make([]model.MessageInfo, len(records))
+	for i, r := range records {
+		msgs[i] = model.MessageInfo{
+			ID:        r.ID,
+			ChatJID:   r.ChatJID,
+			SenderJID: r.SenderJID,
+			FromMe:    r.FromMe,
+			Type:      r.Type,
+			Body:      r.Body,
+			MediaType: r.MediaType,
+			Timestamp: r.Timestamp,
+		}
+	}
+	return model.MessageListResponse{
+		Messages: msgs,
+		Count:    len(msgs),
+	}, nil
+}
+
+// DownloadMedia downloads media from a received message using whatsmeow.
+func (a *Account) DownloadMedia(ctx context.Context, msg *waE2E.Message) ([]byte, error) {
+	a.mu.RLock()
+	client := a.client
+	a.mu.RUnlock()
+
+	if client == nil || !client.IsConnected() {
+		return nil, fmt.Errorf("not connected")
+	}
+
+	data, err := client.DownloadAny(ctx, msg)
+	if err != nil {
+		return nil, fmt.Errorf("download: %w", err)
+	}
+	return data, nil
+}
+
 // ListChats returns known contacts and groups from the whatsmeow store.
 func (a *Account) ListChats(ctx context.Context) ([]model.ChatInfo, error) {
 	a.mu.RLock()
@@ -1046,8 +1106,26 @@ func (a *Account) handleEvent(evt interface{}) {
 	switch v := evt.(type) {
 	case *events.Message:
 		log.Debug().Str("account", a.ID).Str("from", v.Info.Sender.String()).Msg("message received")
+		a.storeMessage(v)
+		a.dispatchWebhook("message", map[string]any{
+			"id":         v.Info.ID,
+			"chat":       v.Info.Chat.String(),
+			"sender":     v.Info.Sender.String(),
+			"from_me":    v.Info.IsFromMe,
+			"type":       classifyMessage(v.Message),
+			"body":       extractBody(v.Message),
+			"media_type": v.Info.MediaType,
+			"timestamp":  v.Info.Timestamp.UTC().Format(time.RFC3339),
+		})
 	case *events.Receipt:
 		log.Debug().Str("account", a.ID).Str("type", string(v.Type)).Int("count", len(v.MessageIDs)).Msg("receipt")
+		a.dispatchWebhook("receipt", map[string]any{
+			"type":        string(v.Type),
+			"chat":        v.Chat.String(),
+			"sender":      v.Sender.String(),
+			"message_ids": v.MessageIDs,
+			"timestamp":   v.Timestamp.UTC().Format(time.RFC3339),
+		})
 	case *events.PushName:
 		log.Debug().Str("account", a.ID).Str("jid", v.JID.String()).Str("name", v.NewPushName).Msg("push name update")
 	case *events.HistorySync:
@@ -1056,9 +1134,6 @@ func (a *Account) handleEvent(evt interface{}) {
 		log.Info().Str("account", a.ID).Msg("whatsmeow connected event")
 	case *events.LoggedOut:
 		log.Warn().Str("account", a.ID).Int("reason", int(v.Reason)).Msg("logged out by phone — cleaning up")
-		// whatsmeow already called Store.Delete() before dispatching this event,
-		// so the session is gone from the SQLite store. We need to tear down the
-		// client so that hasStoredSession() doesn't see a stale in-memory client.
 		a.mu.Lock()
 		if a.client != nil {
 			a.client.Disconnect()
@@ -1068,6 +1143,160 @@ func (a *Account) handleEvent(evt interface{}) {
 	case *events.Disconnected:
 		log.Warn().Str("account", a.ID).Msg("disconnected event")
 	}
+}
+
+// storeMessage persists a received message to the DB.
+func (a *Account) storeMessage(v *events.Message) {
+	if a.db == nil {
+		return
+	}
+	rec := &database.MessageRecord{
+		ID:        v.Info.ID,
+		AccountID: a.ID,
+		ChatJID:   v.Info.Chat.String(),
+		SenderJID: v.Info.Sender.String(),
+		FromMe:    v.Info.IsFromMe,
+		Type:      classifyMessage(v.Message),
+		Body:      extractBody(v.Message),
+		MediaType: v.Info.MediaType,
+		Timestamp: v.Info.Timestamp.UTC().Format(time.RFC3339),
+	}
+	if err := a.db.InsertMessage(rec); err != nil {
+		log.Warn().Str("account", a.ID).Err(err).Msg("failed to store message")
+	}
+}
+
+// classifyMessage returns a short type label for the message.
+func classifyMessage(msg *waE2E.Message) string {
+	if msg == nil {
+		return "unknown"
+	}
+	switch {
+	case msg.Conversation != nil || msg.ExtendedTextMessage != nil:
+		return "text"
+	case msg.ImageMessage != nil:
+		return "image"
+	case msg.VideoMessage != nil:
+		return "video"
+	case msg.AudioMessage != nil:
+		return "audio"
+	case msg.DocumentMessage != nil:
+		return "document"
+	case msg.StickerMessage != nil:
+		return "sticker"
+	case msg.ReactionMessage != nil:
+		return "reaction"
+	case msg.ContactMessage != nil:
+		return "contact"
+	case msg.LocationMessage != nil:
+		return "location"
+	default:
+		return "other"
+	}
+}
+
+// extractBody returns the textual content of a message.
+func extractBody(msg *waE2E.Message) string {
+	if msg == nil {
+		return ""
+	}
+	switch {
+	case msg.Conversation != nil:
+		return msg.GetConversation()
+	case msg.ExtendedTextMessage != nil:
+		return msg.ExtendedTextMessage.GetText()
+	case msg.ImageMessage != nil:
+		return msg.ImageMessage.GetCaption()
+	case msg.VideoMessage != nil:
+		return msg.VideoMessage.GetCaption()
+	case msg.DocumentMessage != nil:
+		return msg.DocumentMessage.GetCaption()
+	case msg.ReactionMessage != nil:
+		return msg.ReactionMessage.GetText()
+	default:
+		return ""
+	}
+}
+
+// dispatchWebhook sends an event to the account's webhook URL, if configured.
+func (a *Account) dispatchWebhook(eventType string, payload map[string]any) {
+	if a.db == nil {
+		return
+	}
+	go a.doDispatchWebhook(eventType, payload)
+}
+
+func (a *Account) doDispatchWebhook(eventType string, payload map[string]any) {
+	cfg, err := a.db.GetWebhookConfig(a.ID)
+	if err != nil || cfg == nil || !cfg.Enabled || cfg.URL == "" {
+		return
+	}
+
+	// Filter by event type if events are specified
+	if cfg.Events != "" {
+		allowed := false
+		for _, e := range splitCSV(cfg.Events) {
+			if e == eventType {
+				allowed = true
+				break
+			}
+		}
+		if !allowed {
+			return
+		}
+	}
+
+	evt := model.WebhookEvent{
+		EventType: eventType,
+		AccountID: a.ID,
+		Timestamp: time.Now().UTC().Format(time.RFC3339),
+		Payload:   payload,
+	}
+
+	body, err := json.Marshal(evt)
+	if err != nil {
+		log.Warn().Str("account", a.ID).Err(err).Msg("webhook: marshal failed")
+		return
+	}
+
+	req, err := http.NewRequest("POST", cfg.URL, bytes.NewReader(body))
+	if err != nil {
+		log.Warn().Str("account", a.ID).Err(err).Msg("webhook: create request failed")
+		return
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	// HMAC signature if secret is set
+	if cfg.Secret != "" {
+		mac := hmac.New(sha256.New, []byte(cfg.Secret))
+		mac.Write(body)
+		sig := hex.EncodeToString(mac.Sum(nil))
+		req.Header.Set("X-Webhook-Signature", sig)
+	}
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Warn().Str("account", a.ID).Err(err).Msg("webhook: POST failed")
+		return
+	}
+	resp.Body.Close()
+
+	if resp.StatusCode >= 400 {
+		log.Warn().Str("account", a.ID).Int("status", resp.StatusCode).Msg("webhook: non-success response")
+	}
+}
+
+// splitCSV splits a comma-separated string into trimmed parts.
+func splitCSV(s string) []string {
+	var out []string
+	for _, p := range strings.Split(s, ",") {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 // ---- phone helpers ----

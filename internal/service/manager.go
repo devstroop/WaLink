@@ -74,7 +74,7 @@ func (m *AccountManager) CreateAccount(req model.CreateAccountRequest) (*model.C
 		return nil, fmt.Errorf("db insert: %w", err)
 	}
 
-	acct := NewAccount(id, phone, name, dataDir, now)
+	acct := NewAccount(id, phone, name, dataDir, now, m.db)
 
 	m.mu.Lock()
 	m.accounts[id] = acct
@@ -93,6 +93,11 @@ func (m *AccountManager) GetAccount(id string) *Account {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	return m.accounts[id]
+}
+
+// DB returns the underlying database handle.
+func (m *AccountManager) DB() *database.DB {
+	return m.db
 }
 
 // ListAccounts returns info for all known accounts.
@@ -250,7 +255,7 @@ func (m *AccountManager) DiscoverAccounts(ctx context.Context) error {
 		}
 
 		created, _ := time.Parse(time.RFC3339, rec.CreatedAt)
-		acct := NewAccount(rec.ID, rec.PhoneNumber, rec.AccountName, rec.DataDir, created)
+		acct := NewAccount(rec.ID, rec.PhoneNumber, rec.AccountName, rec.DataDir, created, m.db)
 
 		// Load proxy config if present
 		proxyCfg, err := m.db.GetProxyConfig(rec.ID)

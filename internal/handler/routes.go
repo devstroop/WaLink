@@ -41,10 +41,16 @@ func (a *API) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("DELETE "+acct+"/proxy", a.DeleteProxy)
 
 	// ── Messaging ───────────────────────────────────
+	mux.HandleFunc("GET "+acct+"/messages", a.GetMessages)
 	mux.HandleFunc("POST "+acct+"/messages", a.SendMessage)
 	mux.HandleFunc("POST "+acct+"/messages/react", a.ReactMessage)
 	mux.HandleFunc("POST "+acct+"/messages/read", a.MarkRead)
 	mux.HandleFunc("DELETE "+acct+"/messages/{message_id}", a.RevokeMessage)
+
+	// ── Webhook ─────────────────────────────────────
+	mux.HandleFunc("GET "+acct+"/webhook", a.GetWebhook)
+	mux.HandleFunc("PUT "+acct+"/webhook", a.SetWebhook)
+	mux.HandleFunc("DELETE "+acct+"/webhook", a.DeleteWebhook)
 
 	// ── Chats ───────────────────────────────────────
 	mux.HandleFunc("GET "+acct+"/chats", a.ListChats)

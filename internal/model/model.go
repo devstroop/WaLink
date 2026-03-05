@@ -157,6 +157,7 @@ type ContactInfo struct {
 	FirstName    string  `json:"first_name,omitempty"`
 	BusinessName string  `json:"business_name,omitempty"`
 	Phone        *string `json:"phone,omitempty"`
+	PictureURL   *string `json:"picture_url,omitempty"`
 }
 
 // ContactListResponse is the response for GET /accounts/{id}/contacts.
@@ -186,6 +187,56 @@ type CheckContactsResponse struct {
 type RevokeMessageResponse struct {
 	Revoked   bool   `json:"revoked"`
 	Timestamp string `json:"timestamp"`
+}
+
+// ──────────────────────────────────────────────────────
+// Message History
+// ──────────────────────────────────────────────────────
+
+// MessageInfo is a single stored message.
+type MessageInfo struct {
+	ID        string `json:"id"`
+	ChatJID   string `json:"chat_jid"`
+	SenderJID string `json:"sender_jid"`
+	FromMe    bool   `json:"from_me"`
+	Type      string `json:"type"`
+	Body      string `json:"body,omitempty"`
+	MediaType string `json:"media_type,omitempty"`
+	Timestamp string `json:"timestamp"`
+}
+
+// MessageListResponse is the response for GET /accounts/{id}/messages.
+type MessageListResponse struct {
+	Messages []MessageInfo `json:"messages"`
+	Count    int           `json:"count"`
+}
+
+// ──────────────────────────────────────────────────────
+// Webhook
+// ──────────────────────────────────────────────────────
+
+// SetWebhookRequest is the JSON body for PUT /accounts/{id}/webhook.
+type SetWebhookRequest struct {
+	URL     string   `json:"url"`
+	Secret  string   `json:"secret,omitempty"`
+	Events  []string `json:"events,omitempty"` // empty = all events
+	Enabled *bool    `json:"enabled,omitempty"` // defaults to true
+}
+
+// WebhookConfigResponse is returned when reading webhook config.
+// Secret is intentionally omitted.
+type WebhookConfigResponse struct {
+	URL     string   `json:"url"`
+	Events  []string `json:"events"`
+	Enabled bool     `json:"enabled"`
+}
+
+// WebhookEvent is the payload POSTed to the webhook URL.
+type WebhookEvent struct {
+	EventType string `json:"event_type"`
+	AccountID string `json:"account_id"`
+	Timestamp string `json:"timestamp"`
+	Payload   any    `json:"payload"`
 }
 
 // ──────────────────────────────────────────────────────

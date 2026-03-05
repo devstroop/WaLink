@@ -38,6 +38,28 @@ type ProxyConfigRecord struct {
 	Enabled   bool
 }
 
+// MessageRecord is a stored message row.
+type MessageRecord struct {
+	ID        string // whatsmeow message ID
+	AccountID string
+	ChatJID   string
+	SenderJID string
+	FromMe    bool
+	Type      string // text, image, video, audio, document, sticker, reaction, other
+	Body      string // text body, caption, or reaction emoji
+	MediaType string // MIME type for media messages
+	Timestamp string // RFC3339
+}
+
+// WebhookConfigRecord is the persistent webhook config row.
+type WebhookConfigRecord struct {
+	AccountID string
+	URL       string
+	Secret    string // optional HMAC signing secret
+	Events    string // comma-separated event types, empty = all
+	Enabled   bool
+}
+
 // Open creates or opens the SQLite database at path, running migrations.
 func Open(path string) (*DB, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
@@ -85,6 +107,45 @@ func (d *DB) migrate() error {
 			port       INTEGER NOT NULL,
 			username   TEXT NOT NULL DEFAULT '',
 			password   TEXT NOT NULL DEFAULT '',
+			enabled    INTEGER NOT NULL DEFAULT 1
+		);
+	`)
+	if err != nil {
+		return err
+	}
+
+	_, err = d.db.Exec(`
+		CREATE TABLE IF NOT EXISTS message (
+			id         TEXT NOT NULL,
+			account_id TEXT NOT NULL REFERENCES account(id) ON DELETE CASCADE,
+			chat_jid   TEXT NOT NULL,
+			sender_jid TEXT NOT NULL,
+			from_me    INTEGER NOT NULL DEFAULT 0,
+			type       TEXT NOT NULL DEFAULT 'text',
+			body       TEXT NOT NULL DEFAULT '',
+			media_type TEXT NOT NULL DEFAULT '',
+			timestamp  TEXT NOT NULL,
+			PRIMARY KEY (account_id, id)
+		);
+	`)
+	if err != nil {
+		return err
+	}
+
+	// Index for paginated chat history queries
+	_, err = d.db.Exec(`
+		CREATE INDEX IF NOT EXISTS idx_message_chat_ts ON message (account_id, chat_jid, timestamp DESC);
+	`)
+	if err != nil {
+		return err
+	}
+
+	_, err = d.db.Exec(`
+		CREATE TABLE IF NOT EXISTS webhook_config (
+			account_id TEXT PRIMARY KEY REFERENCES account(id) ON DELETE CASCADE,
+			url        TEXT NOT NULL,
+			secret     TEXT NOT NULL DEFAULT '',
+			events     TEXT NOT NULL DEFAULT '',
 			enabled    INTEGER NOT NULL DEFAULT 1
 		);
 	`)
@@ -236,5 +297,115 @@ func (d *DB) DeleteProxyConfig(accountID string) error {
 	defer d.mu.Unlock()
 
 	_, err := d.db.Exec(`DELETE FROM proxy_config WHERE account_id = ?`, accountID)
+	return err
+}
+
+// ─── Message CRUD ───────────────────────────────────────────
+
+// InsertMessage stores a message row (idempotent — ignores duplicates).
+func (d *DB) InsertMessage(rec *MessageRecord) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	_, err := d.db.Exec(`
+		INSERT OR IGNORE INTO message (id, account_id, chat_jid, sender_jid, from_me, type, body, media_type, timestamp)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		rec.ID, rec.AccountID, rec.ChatJID, rec.SenderJID, rec.FromMe, rec.Type, rec.Body, rec.MediaType, rec.Timestamp,
+	)
+	return err
+}
+
+// ListMessages returns messages for a chat, ordered newest-first with cursor pagination.
+// If before is non-empty, only messages with timestamp < before are returned.
+func (d *DB) ListMessages(accountID, chatJID string, limit int, before string) ([]*MessageRecord, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	if limit <= 0 || limit > 200 {
+		limit = 50
+	}
+
+	var (
+		rows *sql.Rows
+		err  error
+	)
+	if before != "" {
+		rows, err = d.db.Query(`
+			SELECT id, account_id, chat_jid, sender_jid, from_me, type, body, media_type, timestamp
+			FROM message
+			WHERE account_id = ? AND chat_jid = ? AND timestamp < ?
+			ORDER BY timestamp DESC
+			LIMIT ?`, accountID, chatJID, before, limit)
+	} else {
+		rows, err = d.db.Query(`
+			SELECT id, account_id, chat_jid, sender_jid, from_me, type, body, media_type, timestamp
+			FROM message
+			WHERE account_id = ? AND chat_jid = ?
+			ORDER BY timestamp DESC
+			LIMIT ?`, accountID, chatJID, limit)
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []*MessageRecord
+	for rows.Next() {
+		var r MessageRecord
+		if err := rows.Scan(&r.ID, &r.AccountID, &r.ChatJID, &r.SenderJID, &r.FromMe, &r.Type, &r.Body, &r.MediaType, &r.Timestamp); err != nil {
+			return nil, err
+		}
+		out = append(out, &r)
+	}
+	return out, rows.Err()
+}
+
+// ─── Webhook Config CRUD ────────────────────────────────────
+
+// UpsertWebhookConfig inserts or replaces the webhook config for an account.
+func (d *DB) UpsertWebhookConfig(rec *WebhookConfigRecord) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	_, err := d.db.Exec(`
+		INSERT INTO webhook_config (account_id, url, secret, events, enabled)
+		VALUES (?, ?, ?, ?, ?)
+		ON CONFLICT(account_id) DO UPDATE SET
+			url     = excluded.url,
+			secret  = excluded.secret,
+			events  = excluded.events,
+			enabled = excluded.enabled`,
+		rec.AccountID, rec.URL, rec.Secret, rec.Events, rec.Enabled,
+	)
+	return err
+}
+
+// GetWebhookConfig returns the webhook config for an account, or nil if none.
+func (d *DB) GetWebhookConfig(accountID string) (*WebhookConfigRecord, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	row := d.db.QueryRow(
+		`SELECT account_id, url, secret, events, enabled
+		 FROM webhook_config WHERE account_id = ?`, accountID)
+	var r WebhookConfigRecord
+	var enabled int
+	err := row.Scan(&r.AccountID, &r.URL, &r.Secret, &r.Events, &enabled)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	r.Enabled = enabled != 0
+	return &r, nil
+}
+
+// DeleteWebhookConfig removes the webhook config for an account.
+func (d *DB) DeleteWebhookConfig(accountID string) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	_, err := d.db.Exec(`DELETE FROM webhook_config WHERE account_id = ?`, accountID)
 	return err
 }
