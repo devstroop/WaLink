@@ -157,11 +157,10 @@
         "properties": {
           "id": { "type": "string" },
           "name": { "type": "string" },
-          "last_message": { "type": "string", "nullable": true },
-          "last_message_sender": { "type": "string", "nullable": true },
-          "timestamp": { "type": "string", "nullable": true },
-          "unread_count": { "type": "integer" },
-          "is_group": { "type": "boolean" }
+          "is_group": { "type": "boolean" },
+          "pinned": { "type": "boolean" },
+          "muted": { "type": "boolean" },
+          "archived": { "type": "boolean" }
         }
       },
       "ChatListResponse": {
@@ -171,39 +170,15 @@
           "total": { "type": "integer" }
         }
       },
-      "MessageInfo": {
-        "type": "object",
-        "properties": {
-          "id": { "type": "string" },
-          "from_me": { "type": "boolean" },
-          "sender": { "type": "string", "nullable": true },
-          "text": { "type": "string", "nullable": true },
-          "message_type": { "type": "string" },
-          "timestamp": { "type": "string", "nullable": true },
-          "timestamp_unix": { "type": "integer", "nullable": true },
-          "status": { "type": "string", "nullable": true },
-          "media_info": { "type": "string", "nullable": true }
-        }
-      },
-      "MessageListResponse": {
-        "type": "object",
-        "properties": {
-          "chat_id": { "type": "string" },
-          "chat_name": { "type": "string", "nullable": true },
-          "messages": { "type": "array", "items": { "$ref": "#/components/schemas/MessageInfo" } },
-          "total": { "type": "integer" },
-          "has_more": { "type": "boolean" }
-        }
-      },
       "ContactInfo": {
         "type": "object",
         "properties": {
           "id": { "type": "string" },
-          "name": { "type": "string", "nullable": true },
-          "push_name": { "type": "string", "nullable": true },
-          "phone": { "type": "string", "nullable": true },
-          "status": { "type": "string", "nullable": true },
-          "is_business": { "type": "boolean" }
+          "push_name": { "type": "string" },
+          "full_name": { "type": "string" },
+          "first_name": { "type": "string" },
+          "business_name": { "type": "string" },
+          "phone": { "type": "string", "nullable": true }
         }
       },
       "GroupParticipant": {
@@ -490,20 +465,22 @@
       "post": {
         "tags": ["Messaging"],
         "summary": "Send a message",
-        "description": "Send text (JSON) or text+file (multipart/form-data). Chat JID in body.",
+        "description": "Send text, file, or both. Provide at least one of 'text' or 'file'.",
         "requestBody": {
           "required": true,
           "content": {
-            "application/json": { "schema": { "$ref": "#/components/schemas/SendMessageRequest" } },
             "multipart/form-data": {
               "schema": {
                 "type": "object",
                 "required": ["chat"],
                 "properties": {
-                  "chat": { "type": "string" },
-                  "text": { "type": "string" },
-                  "file": { "type": "string", "format": "binary" }
+                  "chat": { "type": "string", "description": "Recipient JID (e.g. 919876543210@s.whatsapp.net)" },
+                  "text": { "type": "string", "description": "Text message or caption for the file" },
+                  "file": { "type": "string", "format": "binary", "description": "File attachment (image, document, etc.)" }
                 }
+              },
+              "encoding": {
+                "file": { "contentType": "application/octet-stream" }
               }
             }
           }
@@ -559,17 +536,6 @@
         "summary": "List chats",
         "responses": {
           "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ChatListResponse" } } } },
-          "404": { "description": "Not found" }
-        }
-      }
-    },
-    "/api/v1/accounts/{account_id}/chats/{jid}/messages": {
-      "parameters": [{ "$ref": "#/components/parameters/AccountId" }, { "$ref": "#/components/parameters/JID" }],
-      "get": {
-        "tags": ["Chats"],
-        "summary": "Get messages in a chat (stub)",
-        "responses": {
-          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/MessageListResponse" } } } },
           "404": { "description": "Not found" }
         }
       }

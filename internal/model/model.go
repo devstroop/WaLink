@@ -137,13 +137,12 @@ type MarkReadRequest struct {
 
 // ChatInfo represents a single chat in the chat list.
 type ChatInfo struct {
-	ID                string  `json:"id"`
-	Name              string  `json:"name"`
-	LastMessage       *string `json:"last_message"`
-	LastMessageSender *string `json:"last_message_sender"`
-	Timestamp         *string `json:"timestamp"`
-	UnreadCount       int     `json:"unread_count"`
-	IsGroup           bool    `json:"is_group"`
+	ID       string `json:"id"`
+	Name     string `json:"name"`
+	IsGroup  bool   `json:"is_group"`
+	Pinned   bool   `json:"pinned"`
+	Muted    bool   `json:"muted"`
+	Archived bool   `json:"archived"`
 }
 
 // ChatListResponse is the response for GET /accounts/{id}/chats.
@@ -152,40 +151,18 @@ type ChatListResponse struct {
 	Total int        `json:"total"`
 }
 
-// MessageInfo represents a single message.
-type MessageInfo struct {
-	ID            string  `json:"id"`
-	FromMe        bool    `json:"from_me"`
-	Sender        *string `json:"sender"`
-	Text          *string `json:"text"`
-	MessageType   string  `json:"message_type"`
-	Timestamp     *string `json:"timestamp"`
-	TimestampUnix *int64  `json:"timestamp_unix"`
-	Status        *string `json:"status"`
-	MediaInfo     *string `json:"media_info"`
-}
-
-// MessageListResponse is the response for GET /accounts/{id}/chats/{jid}/messages.
-type MessageListResponse struct {
-	ChatID   string        `json:"chat_id"`
-	ChatName *string       `json:"chat_name"`
-	Messages []MessageInfo `json:"messages"`
-	Total    int           `json:"total"`
-	HasMore  bool          `json:"has_more"`
-}
-
 // ──────────────────────────────────────────────────────
 // Contacts
 // ──────────────────────────────────────────────────────
 
 // ContactInfo represents a contact's details.
 type ContactInfo struct {
-	ID         string  `json:"id"`
-	Name       *string `json:"name"`
-	PushName   *string `json:"push_name"`
-	Phone      *string `json:"phone"`
-	Status     *string `json:"status"`
-	IsBusiness bool    `json:"is_business"`
+	ID           string  `json:"id"`
+	PushName     string  `json:"push_name,omitempty"`
+	FullName     string  `json:"full_name,omitempty"`
+	FirstName    string  `json:"first_name,omitempty"`
+	BusinessName string  `json:"business_name,omitempty"`
+	Phone        *string `json:"phone,omitempty"`
 }
 
 // ──────────────────────────────────────────────────────
@@ -329,9 +306,6 @@ type CreateNewsletterRequest struct {
 // ──────────────────────────────────────────────────────
 // Common
 // ──────────────────────────────────────────────────────
-
-// TypingRequest is kept for backward compat, but PresenceRequest is preferred.
-type TypingRequest = PresenceRequest
 
 // ErrorResponse is a JSON error payload.
 type ErrorResponse struct {

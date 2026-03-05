@@ -16,7 +16,6 @@ import (
 	"github.com/devstroop/walink/internal/model"
 
 	"go.mau.fi/whatsmeow"
-	"go.mau.fi/whatsmeow/proto/waCommon"
 	"go.mau.fi/whatsmeow/proto/waE2E"
 	"go.mau.fi/whatsmeow/store/sqlstore"
 	"go.mau.fi/whatsmeow/types"
@@ -502,17 +501,8 @@ func (a *Account) SendReaction(ctx context.Context, chatJID, messageID, emoji st
 		return fmt.Errorf("invalid jid %q: %w", chatJID, err)
 	}
 
-	msg := &waE2E.Message{
-		ReactionMessage: &waE2E.ReactionMessage{
-			Key: &waCommon.MessageKey{
-				RemoteJID: proto.String(chatJID),
-				FromMe:    proto.Bool(false),
-				ID:        proto.String(messageID),
-			},
-			Text:              proto.String(emoji),
-			SenderTimestampMS: proto.Int64(time.Now().UnixMilli()),
-		},
-	}
+	// Use whatsmeow's BuildReaction helper — it handles MessageKey construction.
+	msg := client.BuildReaction(target, types.EmptyJID, types.MessageID(messageID), emoji)
 
 	if _, err := client.SendMessage(ctx, target, msg); err != nil {
 		return fmt.Errorf("send reaction: %w", err)
@@ -574,15 +564,16 @@ func (a *Account) GetContactInfo(ctx context.Context, contactJID string) (model.
 		return model.ContactInfo{}, fmt.Errorf("get contact: %w", err)
 	}
 
-	result := model.ContactInfo{ID: contactJID}
-	if info.FullName != "" {
-		result.Name = &info.FullName
+	result := model.ContactInfo{
+		ID:           contactJID,
+		PushName:     info.PushName,
+		FullName:     info.FullName,
+		FirstName:    info.FirstName,
+		BusinessName: info.BusinessName,
 	}
-	if info.PushName != "" {
-		result.PushName = &info.PushName
-	}
-	if info.BusinessName != "" {
-		result.IsBusiness = true
+	if jid.Server == types.DefaultUserServer {
+		phone := jid.User
+		result.Phone = &phone
 	}
 
 	return result, nil
@@ -702,8 +693,8 @@ func (a *Account) UpdateGroup(ctx context.Context, groupJID string, req model.Up
 		}
 	}
 	if req.Description != nil {
-		if err := client.SetGroupTopic(ctx, jid, "", "", *req.Description); err != nil {
-			return fmt.Errorf("set group topic: %w", err)
+		if err := client.SetGroupDescription(ctx, jid, *req.Description); err != nil {
+			return fmt.Errorf("set group description: %w", err)
 		}
 	}
 	if req.Locked != nil {
@@ -820,11 +811,21 @@ func (a *Account) GetProfile(ctx context.Context) (model.ProfileResponse, error)
 		resp.PhoneNumber = &a.PhoneNumber
 	}
 
-	// Try to get own profile picture
 	if client.Store.ID != nil {
-		pic, err := client.GetProfilePictureInfo(ctx, *client.Store.ID, &whatsmeow.GetProfilePictureParams{Preview: false})
+		ownJID := *client.Store.ID
+
+		// Profile picture
+		pic, err := client.GetProfilePictureInfo(ctx, ownJID, &whatsmeow.GetProfilePictureParams{Preview: false})
 		if err == nil && pic != nil {
 			resp.PictureURL = &pic.URL
+		}
+
+		// About / status text via GetUserInfo
+		userInfo, err := client.GetUserInfo(ctx, []types.JID{ownJID})
+		if err == nil {
+			if info, ok := userInfo[ownJID]; ok && info.Status != "" {
+				resp.About = &info.Status
+			}
 		}
 	}
 
@@ -916,24 +917,7 @@ func (a *Account) ListNewsletters(ctx context.Context) ([]model.NewsletterInfo, 
 
 	result := make([]model.NewsletterInfo, len(newsletters))
 	for i, nl := range newsletters {
-		info := model.NewsletterInfo{
-			ID:              nl.ID.String(),
-			Name:            nl.ThreadMeta.Name.Text,
-			SubscriberCount: nl.ThreadMeta.SubscriberCount,
-		}
-		if nl.ThreadMeta.Description.Text != "" {
-			desc := nl.ThreadMeta.Description.Text
-			info.Description = &desc
-		}
-		if nl.ViewerMeta != nil {
-			role := string(nl.ViewerMeta.Role)
-			info.Role = &role
-			info.Muted = nl.ViewerMeta.Mute == "on"
-		}
-		if nl.ThreadMeta.Picture != nil && nl.ThreadMeta.Picture.URL != "" {
-			info.PictureURL = &nl.ThreadMeta.Picture.URL
-		}
-		result[i] = info
+		result[i] = newsletterToModel(nl)
 	}
 	return result, nil
 }
@@ -958,24 +942,7 @@ func (a *Account) GetNewsletterInfo(ctx context.Context, newsletterJID string) (
 		return model.NewsletterInfo{}, fmt.Errorf("get newsletter: %w", err)
 	}
 
-	info := model.NewsletterInfo{
-		ID:              nl.ID.String(),
-		Name:            nl.ThreadMeta.Name.Text,
-		SubscriberCount: nl.ThreadMeta.SubscriberCount,
-	}
-	if nl.ThreadMeta.Description.Text != "" {
-		desc := nl.ThreadMeta.Description.Text
-		info.Description = &desc
-	}
-	if nl.ViewerMeta != nil {
-		role := string(nl.ViewerMeta.Role)
-		info.Role = &role
-		info.Muted = nl.ViewerMeta.Mute == "on"
-	}
-	if nl.ThreadMeta.Picture != nil && nl.ThreadMeta.Picture.URL != "" {
-		info.PictureURL = &nl.ThreadMeta.Picture.URL
-	}
-	return info, nil
+	return newsletterToModel(nl), nil
 }
 
 // CreateNewsletter creates a new newsletter/channel.
@@ -996,16 +963,7 @@ func (a *Account) CreateNewsletter(ctx context.Context, name, description string
 		return model.NewsletterInfo{}, fmt.Errorf("create newsletter: %w", err)
 	}
 
-	info := model.NewsletterInfo{
-		ID:              nl.ID.String(),
-		Name:            nl.ThreadMeta.Name.Text,
-		SubscriberCount: nl.ThreadMeta.SubscriberCount,
-	}
-	if nl.ThreadMeta.Description.Text != "" {
-		desc := nl.ThreadMeta.Description.Text
-		info.Description = &desc
-	}
-	return info, nil
+	return newsletterToModel(nl), nil
 }
 
 // FollowNewsletter subscribes to a newsletter.
@@ -1078,7 +1036,28 @@ func groupInfoToModel(gi *types.GroupInfo) model.GroupInfo {
 	return result
 }
 
-// ListChats returns known contacts as chat entries from the whatsmeow store.
+func newsletterToModel(nl *types.NewsletterMetadata) model.NewsletterInfo {
+	info := model.NewsletterInfo{
+		ID:              nl.ID.String(),
+		Name:            nl.ThreadMeta.Name.Text,
+		SubscriberCount: nl.ThreadMeta.SubscriberCount,
+	}
+	if nl.ThreadMeta.Description.Text != "" {
+		desc := nl.ThreadMeta.Description.Text
+		info.Description = &desc
+	}
+	if nl.ViewerMeta != nil {
+		role := string(nl.ViewerMeta.Role)
+		info.Role = &role
+		info.Muted = nl.ViewerMeta.Mute == "on"
+	}
+	if nl.ThreadMeta.Picture != nil && nl.ThreadMeta.Picture.URL != "" {
+		info.PictureURL = &nl.ThreadMeta.Picture.URL
+	}
+	return info
+}
+
+// ListChats returns known contacts and groups from the whatsmeow store.
 func (a *Account) ListChats(ctx context.Context) ([]model.ChatInfo, error) {
 	a.mu.RLock()
 	client := a.client
@@ -1091,7 +1070,17 @@ func (a *Account) ListChats(ctx context.Context) ([]model.ChatInfo, error) {
 	seen := make(map[string]bool)
 	var chats []model.ChatInfo
 
-	// 1. Groups from server (always available)
+	// Helper to enrich a chat entry with local settings (pinned/muted/archived)
+	enrich := func(chat *model.ChatInfo, jid types.JID) {
+		settings, err := client.Store.ChatSettings.GetChatSettings(ctx, jid)
+		if err == nil && settings.Found {
+			chat.Pinned = settings.Pinned
+			chat.Archived = settings.Archived
+			chat.Muted = !settings.MutedUntil.IsZero()
+		}
+	}
+
+	// 1. Groups from server
 	groups, err := client.GetJoinedGroups(ctx)
 	if err != nil {
 		log.Warn().Err(err).Msg("failed to fetch groups from server")
@@ -1099,11 +1088,13 @@ func (a *Account) ListChats(ctx context.Context) ([]model.ChatInfo, error) {
 		for _, g := range groups {
 			id := g.JID.String()
 			seen[id] = true
-			chats = append(chats, model.ChatInfo{
+			chat := model.ChatInfo{
 				ID:      id,
 				Name:    g.GroupName.Name,
 				IsGroup: true,
-			})
+			}
+			enrich(&chat, g.JID)
+			chats = append(chats, chat)
 		}
 	}
 
@@ -1127,11 +1118,13 @@ func (a *Account) ListChats(ctx context.Context) ([]model.ChatInfo, error) {
 			if name == "" {
 				name = jid.User
 			}
-			chats = append(chats, model.ChatInfo{
+			chat := model.ChatInfo{
 				ID:      id,
 				Name:    name,
 				IsGroup: jid.Server == types.GroupServer,
-			})
+			}
+			enrich(&chat, jid)
+			chats = append(chats, chat)
 		}
 	}
 

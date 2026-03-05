@@ -49,7 +49,7 @@ func (a *API) RegisterRoutes(mux *http.ServeMux) {
 
 	// ── Chats ───────────────────────────────────────
 	mux.HandleFunc("GET "+acct+"/chats", a.ListChats)
-	mux.HandleFunc("GET "+acct+"/chats/{jid}/messages", a.GetMessages)
+
 
 	// ── Contacts ────────────────────────────────────
 	mux.HandleFunc("GET "+acct+"/contacts/{jid}", a.GetContact)

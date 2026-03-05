@@ -29,9 +29,8 @@ func (a *API) CreateAccount(w http.ResponseWriter, r *http.Request) {
 
 // GetAccount — GET /api/v1/accounts/{account_id}
 func (a *API) GetAccount(w http.ResponseWriter, r *http.Request) {
-	acct := a.mgr.GetAccount(r.PathValue("account_id"))
+	acct := a.requireAccount(w, r)
 	if acct == nil {
-		writeError(w, http.StatusNotFound, "account not found")
 		return
 	}
 	writeJSON(w, http.StatusOK, acct.Info())
@@ -54,9 +53,8 @@ func (a *API) DeleteAccount(w http.ResponseWriter, r *http.Request) {
 
 // UpdateAccount — PATCH /api/v1/accounts/{account_id}
 func (a *API) UpdateAccount(w http.ResponseWriter, r *http.Request) {
-	acct := a.mgr.GetAccount(r.PathValue("account_id"))
+	acct := a.requireAccount(w, r)
 	if acct == nil {
-		writeError(w, http.StatusNotFound, "account not found")
 		return
 	}
 

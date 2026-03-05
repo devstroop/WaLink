@@ -26,12 +26,11 @@ func (a *API) GetProxy(w http.ResponseWriter, r *http.Request) {
 
 // SetProxy — PUT /api/v1/accounts/{account_id}/proxy
 func (a *API) SetProxy(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("account_id")
-	acct := a.mgr.GetAccount(id)
+	acct := a.requireAccount(w, r)
 	if acct == nil {
-		writeError(w, http.StatusNotFound, "account not found")
 		return
 	}
+	id := acct.ID
 
 	var req model.SetProxyRequest
 	if err := readJSON(r, &req); err != nil {

@@ -19,9 +19,8 @@ import (
 // connects to WhatsApp to verify the session is still valid. A session revoked
 // from the phone will be detected and cleaned up automatically.
 func (a *API) GetSession(w http.ResponseWriter, r *http.Request) {
-	acct := a.mgr.GetAccount(r.PathValue("account_id"))
+	acct := a.requireAccount(w, r)
 	if acct == nil {
-		writeError(w, http.StatusNotFound, "account not found")
 		return
 	}
 
@@ -37,15 +36,8 @@ func (a *API) GetSession(w http.ResponseWriter, r *http.Request) {
 
 // ConnectSession — POST /api/v1/accounts/{account_id}/session/connect
 func (a *API) ConnectSession(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("account_id")
-	acct := a.mgr.GetAccount(id)
+	acct := a.requireConnectedAccount(w, r)
 	if acct == nil {
-		writeError(w, http.StatusNotFound, "account not found")
-		return
-	}
-
-	if err := acct.EnsureConnected(r.Context()); err != nil {
-		writeError(w, http.StatusInternalServerError, "connect: "+err.Error())
 		return
 	}
 
@@ -62,10 +54,8 @@ func (a *API) ConnectSession(w http.ResponseWriter, r *http.Request) {
 
 // GetQR — GET /api/v1/accounts/{account_id}/session/qr
 func (a *API) GetQR(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("account_id")
-	acct := a.mgr.GetAccount(id)
+	acct := a.requireAccount(w, r)
 	if acct == nil {
-		writeError(w, http.StatusNotFound, "account not found")
 		return
 	}
 
@@ -115,15 +105,8 @@ func (a *API) GetQR(w http.ResponseWriter, r *http.Request) {
 
 // PairPhone — POST /api/v1/accounts/{account_id}/session/pair
 func (a *API) PairPhone(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("account_id")
-	acct := a.mgr.GetAccount(id)
+	acct := a.requireConnectedAccount(w, r)
 	if acct == nil {
-		writeError(w, http.StatusNotFound, "account not found")
-		return
-	}
-
-	if err := acct.EnsureConnected(r.Context()); err != nil {
-		writeError(w, http.StatusInternalServerError, "connect: "+err.Error())
 		return
 	}
 
@@ -138,10 +121,8 @@ func (a *API) PairPhone(w http.ResponseWriter, r *http.Request) {
 
 // DeleteSession — DELETE /api/v1/accounts/{account_id}/session
 func (a *API) DeleteSession(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("account_id")
-	acct := a.mgr.GetAccount(id)
+	acct := a.requireAccount(w, r)
 	if acct == nil {
-		writeError(w, http.StatusNotFound, "account not found")
 		return
 	}
 
@@ -152,7 +133,7 @@ func (a *API) DeleteSession(w http.ResponseWriter, r *http.Request) {
 
 	writeJSON(w, http.StatusOK, model.AccountActionResponse{
 		Message:   "unlinked",
-		AccountID: id,
+		AccountID: acct.ID,
 	})
 }
 
@@ -160,15 +141,8 @@ func (a *API) DeleteSession(w http.ResponseWriter, r *http.Request) {
 
 // SendMessage — POST /api/v1/accounts/{account_id}/messages
 func (a *API) SendMessage(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("account_id")
-	acct := a.mgr.GetAccount(id)
+	acct := a.requireConnectedAccount(w, r)
 	if acct == nil {
-		writeError(w, http.StatusNotFound, "account not found")
-		return
-	}
-
-	if err := acct.EnsureConnected(r.Context()); err != nil {
-		writeError(w, http.StatusInternalServerError, "connect: "+err.Error())
 		return
 	}
 
@@ -249,14 +223,8 @@ func (a *API) SendMessage(w http.ResponseWriter, r *http.Request) {
 
 // ReactMessage — POST /api/v1/accounts/{account_id}/messages/react
 func (a *API) ReactMessage(w http.ResponseWriter, r *http.Request) {
-	acct := a.mgr.GetAccount(r.PathValue("account_id"))
+	acct := a.requireConnectedAccount(w, r)
 	if acct == nil {
-		writeError(w, http.StatusNotFound, "account not found")
-		return
-	}
-
-	if err := acct.EnsureConnected(r.Context()); err != nil {
-		writeError(w, http.StatusInternalServerError, "connect: "+err.Error())
 		return
 	}
 
@@ -285,14 +253,8 @@ func (a *API) ReactMessage(w http.ResponseWriter, r *http.Request) {
 
 // ReplyMessage — POST /api/v1/accounts/{account_id}/messages/reply
 func (a *API) ReplyMessage(w http.ResponseWriter, r *http.Request) {
-	acct := a.mgr.GetAccount(r.PathValue("account_id"))
+	acct := a.requireConnectedAccount(w, r)
 	if acct == nil {
-		writeError(w, http.StatusNotFound, "account not found")
-		return
-	}
-
-	if err := acct.EnsureConnected(r.Context()); err != nil {
-		writeError(w, http.StatusInternalServerError, "connect: "+err.Error())
 		return
 	}
 
@@ -321,14 +283,8 @@ func (a *API) ReplyMessage(w http.ResponseWriter, r *http.Request) {
 
 // MarkRead — POST /api/v1/accounts/{account_id}/messages/read
 func (a *API) MarkRead(w http.ResponseWriter, r *http.Request) {
-	acct := a.mgr.GetAccount(r.PathValue("account_id"))
+	acct := a.requireConnectedAccount(w, r)
 	if acct == nil {
-		writeError(w, http.StatusNotFound, "account not found")
-		return
-	}
-
-	if err := acct.EnsureConnected(r.Context()); err != nil {
-		writeError(w, http.StatusInternalServerError, "connect: "+err.Error())
 		return
 	}
 
@@ -359,14 +315,8 @@ func (a *API) MarkRead(w http.ResponseWriter, r *http.Request) {
 
 // ListChats — GET /api/v1/accounts/{account_id}/chats
 func (a *API) ListChats(w http.ResponseWriter, r *http.Request) {
-	acct := a.mgr.GetAccount(r.PathValue("account_id"))
+	acct := a.requireConnectedAccount(w, r)
 	if acct == nil {
-		writeError(w, http.StatusNotFound, "account not found")
-		return
-	}
-
-	if err := acct.EnsureConnected(r.Context()); err != nil {
-		writeError(w, http.StatusInternalServerError, "connect: "+err.Error())
 		return
 	}
 
@@ -382,37 +332,12 @@ func (a *API) ListChats(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// GetMessages — GET /api/v1/accounts/{account_id}/chats/{jid}/messages
-// Stub: requires local message store (not yet implemented).
-func (a *API) GetMessages(w http.ResponseWriter, r *http.Request) {
-	acct := a.mgr.GetAccount(r.PathValue("account_id"))
-	chatJID := r.PathValue("jid")
-
-	if acct == nil {
-		writeError(w, http.StatusNotFound, "account not found")
-		return
-	}
-
-	writeJSON(w, http.StatusOK, model.MessageListResponse{
-		ChatID:   chatJID,
-		Messages: []model.MessageInfo{},
-		Total:    0,
-		HasMore:  false,
-	})
-}
-
 // ── Contacts ────────────────────────────────────────
 
 // GetContact — GET /api/v1/accounts/{account_id}/contacts/{jid}
 func (a *API) GetContact(w http.ResponseWriter, r *http.Request) {
-	acct := a.mgr.GetAccount(r.PathValue("account_id"))
+	acct := a.requireConnectedAccount(w, r)
 	if acct == nil {
-		writeError(w, http.StatusNotFound, "account not found")
-		return
-	}
-
-	if err := acct.EnsureConnected(r.Context()); err != nil {
-		writeError(w, http.StatusInternalServerError, "connect: "+err.Error())
 		return
 	}
 
@@ -429,14 +354,8 @@ func (a *API) GetContact(w http.ResponseWriter, r *http.Request) {
 
 // ListGroups — GET /api/v1/accounts/{account_id}/groups
 func (a *API) ListGroups(w http.ResponseWriter, r *http.Request) {
-	acct := a.mgr.GetAccount(r.PathValue("account_id"))
+	acct := a.requireConnectedAccount(w, r)
 	if acct == nil {
-		writeError(w, http.StatusNotFound, "account not found")
-		return
-	}
-
-	if err := acct.EnsureConnected(r.Context()); err != nil {
-		writeError(w, http.StatusInternalServerError, "connect: "+err.Error())
 		return
 	}
 
@@ -454,14 +373,8 @@ func (a *API) ListGroups(w http.ResponseWriter, r *http.Request) {
 
 // CreateGroup — POST /api/v1/accounts/{account_id}/groups
 func (a *API) CreateGroup(w http.ResponseWriter, r *http.Request) {
-	acct := a.mgr.GetAccount(r.PathValue("account_id"))
+	acct := a.requireConnectedAccount(w, r)
 	if acct == nil {
-		writeError(w, http.StatusNotFound, "account not found")
-		return
-	}
-
-	if err := acct.EnsureConnected(r.Context()); err != nil {
-		writeError(w, http.StatusInternalServerError, "connect: "+err.Error())
 		return
 	}
 
@@ -487,14 +400,8 @@ func (a *API) CreateGroup(w http.ResponseWriter, r *http.Request) {
 
 // GetGroup — GET /api/v1/accounts/{account_id}/groups/{jid}
 func (a *API) GetGroup(w http.ResponseWriter, r *http.Request) {
-	acct := a.mgr.GetAccount(r.PathValue("account_id"))
+	acct := a.requireConnectedAccount(w, r)
 	if acct == nil {
-		writeError(w, http.StatusNotFound, "account not found")
-		return
-	}
-
-	if err := acct.EnsureConnected(r.Context()); err != nil {
-		writeError(w, http.StatusInternalServerError, "connect: "+err.Error())
 		return
 	}
 
@@ -509,14 +416,8 @@ func (a *API) GetGroup(w http.ResponseWriter, r *http.Request) {
 
 // UpdateGroup — PATCH /api/v1/accounts/{account_id}/groups/{jid}
 func (a *API) UpdateGroup(w http.ResponseWriter, r *http.Request) {
-	acct := a.mgr.GetAccount(r.PathValue("account_id"))
+	acct := a.requireConnectedAccount(w, r)
 	if acct == nil {
-		writeError(w, http.StatusNotFound, "account not found")
-		return
-	}
-
-	if err := acct.EnsureConnected(r.Context()); err != nil {
-		writeError(w, http.StatusInternalServerError, "connect: "+err.Error())
 		return
 	}
 
@@ -543,14 +444,8 @@ func (a *API) UpdateGroup(w http.ResponseWriter, r *http.Request) {
 
 // LeaveGroup — DELETE /api/v1/accounts/{account_id}/groups/{jid}
 func (a *API) LeaveGroup(w http.ResponseWriter, r *http.Request) {
-	acct := a.mgr.GetAccount(r.PathValue("account_id"))
+	acct := a.requireConnectedAccount(w, r)
 	if acct == nil {
-		writeError(w, http.StatusNotFound, "account not found")
-		return
-	}
-
-	if err := acct.EnsureConnected(r.Context()); err != nil {
-		writeError(w, http.StatusInternalServerError, "connect: "+err.Error())
 		return
 	}
 
@@ -564,14 +459,8 @@ func (a *API) LeaveGroup(w http.ResponseWriter, r *http.Request) {
 
 // GetGroupInvite — GET /api/v1/accounts/{account_id}/groups/{jid}/invite
 func (a *API) GetGroupInvite(w http.ResponseWriter, r *http.Request) {
-	acct := a.mgr.GetAccount(r.PathValue("account_id"))
+	acct := a.requireConnectedAccount(w, r)
 	if acct == nil {
-		writeError(w, http.StatusNotFound, "account not found")
-		return
-	}
-
-	if err := acct.EnsureConnected(r.Context()); err != nil {
-		writeError(w, http.StatusInternalServerError, "connect: "+err.Error())
 		return
 	}
 
@@ -587,14 +476,8 @@ func (a *API) GetGroupInvite(w http.ResponseWriter, r *http.Request) {
 
 // UpdateGroupParticipants — POST /api/v1/accounts/{account_id}/groups/{jid}/participants
 func (a *API) UpdateGroupParticipants(w http.ResponseWriter, r *http.Request) {
-	acct := a.mgr.GetAccount(r.PathValue("account_id"))
+	acct := a.requireConnectedAccount(w, r)
 	if acct == nil {
-		writeError(w, http.StatusNotFound, "account not found")
-		return
-	}
-
-	if err := acct.EnsureConnected(r.Context()); err != nil {
-		writeError(w, http.StatusInternalServerError, "connect: "+err.Error())
 		return
 	}
 
@@ -621,14 +504,8 @@ func (a *API) UpdateGroupParticipants(w http.ResponseWriter, r *http.Request) {
 
 // SendPresence — POST /api/v1/accounts/{account_id}/presence
 func (a *API) SendPresence(w http.ResponseWriter, r *http.Request) {
-	acct := a.mgr.GetAccount(r.PathValue("account_id"))
+	acct := a.requireConnectedAccount(w, r)
 	if acct == nil {
-		writeError(w, http.StatusNotFound, "account not found")
-		return
-	}
-
-	if err := acct.EnsureConnected(r.Context()); err != nil {
-		writeError(w, http.StatusInternalServerError, "connect: "+err.Error())
 		return
 	}
 
@@ -661,14 +538,8 @@ func (a *API) SendPresence(w http.ResponseWriter, r *http.Request) {
 
 // GetProfile — GET /api/v1/accounts/{account_id}/profile
 func (a *API) GetProfile(w http.ResponseWriter, r *http.Request) {
-	acct := a.mgr.GetAccount(r.PathValue("account_id"))
+	acct := a.requireConnectedAccount(w, r)
 	if acct == nil {
-		writeError(w, http.StatusNotFound, "account not found")
-		return
-	}
-
-	if err := acct.EnsureConnected(r.Context()); err != nil {
-		writeError(w, http.StatusInternalServerError, "connect: "+err.Error())
 		return
 	}
 
@@ -683,14 +554,8 @@ func (a *API) GetProfile(w http.ResponseWriter, r *http.Request) {
 
 // UpdateProfile — PATCH /api/v1/accounts/{account_id}/profile
 func (a *API) UpdateProfile(w http.ResponseWriter, r *http.Request) {
-	acct := a.mgr.GetAccount(r.PathValue("account_id"))
+	acct := a.requireConnectedAccount(w, r)
 	if acct == nil {
-		writeError(w, http.StatusNotFound, "account not found")
-		return
-	}
-
-	if err := acct.EnsureConnected(r.Context()); err != nil {
-		writeError(w, http.StatusInternalServerError, "connect: "+err.Error())
 		return
 	}
 
@@ -720,14 +585,8 @@ func (a *API) UpdateProfile(w http.ResponseWriter, r *http.Request) {
 
 // GetPrivacy — GET /api/v1/accounts/{account_id}/privacy
 func (a *API) GetPrivacy(w http.ResponseWriter, r *http.Request) {
-	acct := a.mgr.GetAccount(r.PathValue("account_id"))
+	acct := a.requireConnectedAccount(w, r)
 	if acct == nil {
-		writeError(w, http.StatusNotFound, "account not found")
-		return
-	}
-
-	if err := acct.EnsureConnected(r.Context()); err != nil {
-		writeError(w, http.StatusInternalServerError, "connect: "+err.Error())
 		return
 	}
 
@@ -742,14 +601,8 @@ func (a *API) GetPrivacy(w http.ResponseWriter, r *http.Request) {
 
 // UpdatePrivacy — PATCH /api/v1/accounts/{account_id}/privacy
 func (a *API) UpdatePrivacy(w http.ResponseWriter, r *http.Request) {
-	acct := a.mgr.GetAccount(r.PathValue("account_id"))
+	acct := a.requireConnectedAccount(w, r)
 	if acct == nil {
-		writeError(w, http.StatusNotFound, "account not found")
-		return
-	}
-
-	if err := acct.EnsureConnected(r.Context()); err != nil {
-		writeError(w, http.StatusInternalServerError, "connect: "+err.Error())
 		return
 	}
 
@@ -791,14 +644,8 @@ func (a *API) UpdatePrivacy(w http.ResponseWriter, r *http.Request) {
 
 // ListNewsletters — GET /api/v1/accounts/{account_id}/newsletters
 func (a *API) ListNewsletters(w http.ResponseWriter, r *http.Request) {
-	acct := a.mgr.GetAccount(r.PathValue("account_id"))
+	acct := a.requireConnectedAccount(w, r)
 	if acct == nil {
-		writeError(w, http.StatusNotFound, "account not found")
-		return
-	}
-
-	if err := acct.EnsureConnected(r.Context()); err != nil {
-		writeError(w, http.StatusInternalServerError, "connect: "+err.Error())
 		return
 	}
 
@@ -816,14 +663,8 @@ func (a *API) ListNewsletters(w http.ResponseWriter, r *http.Request) {
 
 // CreateNewsletter — POST /api/v1/accounts/{account_id}/newsletters
 func (a *API) CreateNewsletter(w http.ResponseWriter, r *http.Request) {
-	acct := a.mgr.GetAccount(r.PathValue("account_id"))
+	acct := a.requireConnectedAccount(w, r)
 	if acct == nil {
-		writeError(w, http.StatusNotFound, "account not found")
-		return
-	}
-
-	if err := acct.EnsureConnected(r.Context()); err != nil {
-		writeError(w, http.StatusInternalServerError, "connect: "+err.Error())
 		return
 	}
 
@@ -849,14 +690,8 @@ func (a *API) CreateNewsletter(w http.ResponseWriter, r *http.Request) {
 
 // GetNewsletter — GET /api/v1/accounts/{account_id}/newsletters/{jid}
 func (a *API) GetNewsletter(w http.ResponseWriter, r *http.Request) {
-	acct := a.mgr.GetAccount(r.PathValue("account_id"))
+	acct := a.requireConnectedAccount(w, r)
 	if acct == nil {
-		writeError(w, http.StatusNotFound, "account not found")
-		return
-	}
-
-	if err := acct.EnsureConnected(r.Context()); err != nil {
-		writeError(w, http.StatusInternalServerError, "connect: "+err.Error())
 		return
 	}
 
@@ -871,14 +706,8 @@ func (a *API) GetNewsletter(w http.ResponseWriter, r *http.Request) {
 
 // FollowNewsletter — POST /api/v1/accounts/{account_id}/newsletters/{jid}/follow
 func (a *API) FollowNewsletter(w http.ResponseWriter, r *http.Request) {
-	acct := a.mgr.GetAccount(r.PathValue("account_id"))
+	acct := a.requireConnectedAccount(w, r)
 	if acct == nil {
-		writeError(w, http.StatusNotFound, "account not found")
-		return
-	}
-
-	if err := acct.EnsureConnected(r.Context()); err != nil {
-		writeError(w, http.StatusInternalServerError, "connect: "+err.Error())
 		return
 	}
 
@@ -892,14 +721,8 @@ func (a *API) FollowNewsletter(w http.ResponseWriter, r *http.Request) {
 
 // UnfollowNewsletter — DELETE /api/v1/accounts/{account_id}/newsletters/{jid}/follow
 func (a *API) UnfollowNewsletter(w http.ResponseWriter, r *http.Request) {
-	acct := a.mgr.GetAccount(r.PathValue("account_id"))
+	acct := a.requireConnectedAccount(w, r)
 	if acct == nil {
-		writeError(w, http.StatusNotFound, "account not found")
-		return
-	}
-
-	if err := acct.EnsureConnected(r.Context()); err != nil {
-		writeError(w, http.StatusInternalServerError, "connect: "+err.Error())
 		return
 	}
 
