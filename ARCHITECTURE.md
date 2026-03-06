@@ -19,7 +19,7 @@ WaLink is an HTTP API server, implementing WhatsApp's multi-device protocol. No 
                                     │       │                          │
                                     │  ┌────▼────────────────┐         │
                                     │  │  Account            │         │
-                                    │  │  (WA Client)        │         │
+                                    │  │  (whatsmeow.Client) │         │
                                     │  └────┬────────────────┘         │
                                     │       │                          │
                                     │  ┌────▼────┐  ┌──────────┐       │

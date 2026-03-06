@@ -362,12 +362,16 @@ func (a *API) ReactMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if req.Chat == "" || req.MessageID == "" || req.Emoji == "" {
-		writeError(w, http.StatusBadRequest, "chat, message_id, and emoji required")
+	chat, ok := resolveRecipient(w, r, acct, req.Chat, req.Phone)
+	if !ok {
+		return
+	}
+	if req.MessageID == "" || req.Emoji == "" {
+		writeError(w, http.StatusBadRequest, "message_id and emoji required")
 		return
 	}
 
-	if err := acct.SendReaction(r.Context(), req.Chat, req.MessageID, req.Emoji); err != nil {
+	if err := acct.SendReaction(r.Context(), chat, req.MessageID, req.Emoji); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -392,19 +396,23 @@ func (a *API) MarkRead(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if req.Chat == "" || len(req.MessageIDs) == 0 {
-		writeError(w, http.StatusBadRequest, "chat and message_ids required")
+	chat, ok := resolveRecipient(w, r, acct, req.Chat, req.Phone)
+	if !ok {
+		return
+	}
+	if len(req.MessageIDs) == 0 {
+		writeError(w, http.StatusBadRequest, "message_ids required")
 		return
 	}
 
-	if err := acct.MarkRead(r.Context(), req.Chat, req.MessageIDs); err != nil {
+	if err := acct.MarkRead(r.Context(), chat, req.MessageIDs); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{
 		"success":       true,
-		"chat":          req.Chat,
+		"chat":          chat,
 		"messages_read": len(req.MessageIDs),
 	})
 }
@@ -479,13 +487,25 @@ func (a *API) CheckContacts(w http.ResponseWriter, r *http.Request) {
 }
 
 // GetContact — GET /api/v1/accounts/{account_id}/contacts/{jid}
+// Also accepts ?phone=NUM (skips path param).
 func (a *API) GetContact(w http.ResponseWriter, r *http.Request) {
 	acct := a.requireConnectedAccount(w, r)
 	if acct == nil {
 		return
 	}
 
-	info, err := acct.GetContactInfo(r.Context(), r.PathValue("jid"))
+	jid := r.PathValue("jid")
+	phone := r.URL.Query().Get("phone")
+	if phone != "" {
+		resolved, err := acct.ResolvePhone(r.Context(), phone)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		jid = resolved
+	}
+
+	info, err := acct.GetContactInfo(r.Context(), jid)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -516,6 +536,7 @@ func (a *API) ListGroups(w http.ResponseWriter, r *http.Request) {
 }
 
 // CreateGroup — POST /api/v1/accounts/{account_id}/groups
+// Participants can be JIDs or phone numbers (auto-resolved).
 func (a *API) CreateGroup(w http.ResponseWriter, r *http.Request) {
 	acct := a.requireConnectedAccount(w, r)
 	if acct == nil {
@@ -533,7 +554,13 @@ func (a *API) CreateGroup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	info, err := acct.CreateGroup(r.Context(), req.Name, req.Participants)
+	resolved, err := resolveParticipants(r.Context(), acct, req.Participants)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	info, err := acct.CreateGroup(r.Context(), req.Name, resolved)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -619,6 +646,7 @@ func (a *API) GetGroupInvite(w http.ResponseWriter, r *http.Request) {
 }
 
 // UpdateGroupParticipants — POST /api/v1/accounts/{account_id}/groups/{jid}/participants
+// Participants can be JIDs or phone numbers (auto-resolved).
 func (a *API) UpdateGroupParticipants(w http.ResponseWriter, r *http.Request) {
 	acct := a.requireConnectedAccount(w, r)
 	if acct == nil {
@@ -636,7 +664,13 @@ func (a *API) UpdateGroupParticipants(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := acct.UpdateGroupParticipants(r.Context(), r.PathValue("jid"), req.Participants, req.Action); err != nil {
+	resolved, err := resolveParticipants(r.Context(), acct, req.Participants)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	if err := acct.UpdateGroupParticipants(r.Context(), r.PathValue("jid"), resolved, req.Action); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -668,13 +702,26 @@ func (a *API) SendPresence(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Resolve chat from phone if provided
+	var chatTarget string
+	if req.Phone != nil && *req.Phone != "" {
+		resolved, err := acct.ResolvePhone(r.Context(), *req.Phone)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		chatTarget = resolved
+	} else if req.Chat != nil && *req.Chat != "" {
+		chatTarget = *req.Chat
+	}
+
 	// Chat-level typing indicator
-	if req.Chat != nil && *req.Chat != "" {
-		if err := acct.SendChatPresence(r.Context(), *req.Chat, req.State); err != nil {
+	if chatTarget != "" {
+		if err := acct.SendChatPresence(r.Context(), chatTarget, req.State); err != nil {
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"success": true, "chat": *req.Chat, "state": req.State})
+		writeJSON(w, http.StatusOK, map[string]any{"success": true, "chat": chatTarget, "state": req.State})
 		return
 	}
 
@@ -735,6 +782,7 @@ func (a *API) UpdateProfile(w http.ResponseWriter, r *http.Request) {
 }
 
 // RevokeMessage — DELETE /api/v1/accounts/{account_id}/messages/{message_id}
+// Accepts ?chat=JID or ?phone=NUM.
 func (a *API) RevokeMessage(w http.ResponseWriter, r *http.Request) {
 	acct := a.requireConnectedAccount(w, r)
 	if acct == nil {
@@ -742,9 +790,8 @@ func (a *API) RevokeMessage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	messageID := r.PathValue("message_id")
-	chat := r.URL.Query().Get("chat")
-	if chat == "" {
-		writeError(w, http.StatusBadRequest, "chat query parameter required")
+	chat, ok := resolveRecipientQuery(w, r, acct)
+	if !ok {
 		return
 	}
 

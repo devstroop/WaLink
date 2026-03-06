@@ -114,14 +114,16 @@ type SendMessageResponse struct {
 
 // ReactionRequest is the JSON body for POST /accounts/{id}/messages/react.
 type ReactionRequest struct {
-	Chat      string `json:"chat"`
+	Chat      string `json:"chat,omitempty"`
+	Phone     string `json:"phone,omitempty"`  // alternative to chat — auto-resolves to JID
 	MessageID string `json:"message_id"`
 	Emoji     string `json:"emoji"`
 }
 
 // MarkReadRequest is the JSON body for POST /accounts/{id}/messages/read.
 type MarkReadRequest struct {
-	Chat       string   `json:"chat"`
+	Chat       string   `json:"chat,omitempty"`
+	Phone      string   `json:"phone,omitempty"` // alternative to chat — auto-resolves to JID
 	MessageIDs []string `json:"message_ids"`
 }
 
@@ -275,6 +277,8 @@ type GroupListResponse struct {
 }
 
 // CreateGroupRequest is the JSON body for POST /accounts/{id}/groups.
+// Participants can be JIDs ("919999@s.whatsapp.net") or phone numbers ("919999").
+// Phone numbers are auto-resolved to JIDs.
 type CreateGroupRequest struct {
 	Name         string   `json:"name"`
 	Participants []string `json:"participants"`
@@ -289,6 +293,8 @@ type UpdateGroupRequest struct {
 }
 
 // GroupParticipantsRequest is the JSON body for POST /accounts/{id}/groups/{jid}/participants.
+// Participants can be JIDs ("919999@s.whatsapp.net") or phone numbers ("919999").
+// Phone numbers are auto-resolved to JIDs.
 type GroupParticipantsRequest struct {
 	Participants []string `json:"participants"`
 	Action       string   `json:"action"` // add, remove, promote, demote
@@ -308,7 +314,8 @@ type PresenceRequest struct {
 	// For chat typing: "composing" or "paused". For global: "available" or "unavailable".
 	State string `json:"state"`
 	// Optional chat JID for typing indicators. Omit for global presence.
-	Chat *string `json:"chat,omitempty"`
+	Chat  *string `json:"chat,omitempty"`
+	Phone *string `json:"phone,omitempty"` // alternative to chat — auto-resolves to JID
 }
 
 // ──────────────────────────────────────────────────────

@@ -3,18 +3,28 @@ package handler
 import (
 	"net/http"
 	"strconv"
+
+	"github.com/devstroop/walink/internal/service"
 )
 
 // GetMessages — GET /api/v1/accounts/{account_id}/messages?chat=...&limit=...&before=...
+// Also accepts ?phone=... instead of ?chat=...
 func (a *API) GetMessages(w http.ResponseWriter, r *http.Request) {
 	acct := a.requireAccount(w, r)
 	if acct == nil {
 		return
 	}
 
-	chatJID := r.URL.Query().Get("chat")
-	if chatJID == "" {
-		writeError(w, http.StatusBadRequest, "chat query parameter required")
+	q := r.URL.Query()
+	chat := q.Get("chat")
+	phone := q.Get("phone")
+
+	// If phone is given, convert to JID without full IsOnWhatsApp lookup
+	// (message history is local — no connection needed).
+	if chat == "" && phone != "" {
+		chat = service.PhoneToJID(phone)
+	} else if chat == "" {
+		writeError(w, http.StatusBadRequest, "chat or phone query parameter required")
 		return
 	}
 
@@ -27,7 +37,7 @@ func (a *API) GetMessages(w http.ResponseWriter, r *http.Request) {
 
 	before := r.URL.Query().Get("before") // RFC3339 cursor
 
-	resp, err := acct.ListMessages(chatJID, limit, before)
+	resp, err := acct.ListMessages(chat, limit, before)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return

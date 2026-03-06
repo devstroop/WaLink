@@ -1,8 +1,11 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/devstroop/walink/internal/service"
 )
@@ -51,4 +54,54 @@ func (a *API) requireConnectedAccount(w http.ResponseWriter, r *http.Request) *s
 		return nil
 	}
 	return acct
+}
+
+// resolveRecipient resolves a JID from chat/jid and phone values.
+// Exactly one must be non-empty. If phone is provided it is resolved via
+// WhatsApp's IsOnWhatsApp API. Returns "" and writes an error on failure.
+func resolveRecipient(w http.ResponseWriter, r *http.Request, acct *service.Account, chatOrJID, phone string) (string, bool) {
+	if chatOrJID == "" && phone == "" {
+		writeError(w, http.StatusBadRequest, "chat (or jid) or phone required")
+		return "", false
+	}
+	if chatOrJID != "" && phone != "" {
+		writeError(w, http.StatusBadRequest, "provide chat/jid or phone, not both")
+		return "", false
+	}
+	if phone != "" {
+		resolved, err := acct.ResolvePhone(r.Context(), phone)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return "", false
+		}
+		return resolved, true
+	}
+	return chatOrJID, true
+}
+
+// resolveRecipientQuery is a convenience for query-param-based endpoints.
+// It reads "chat" and "phone" from the query string.
+func resolveRecipientQuery(w http.ResponseWriter, r *http.Request, acct *service.Account) (string, bool) {
+	q := r.URL.Query()
+	return resolveRecipient(w, r, acct, q.Get("chat"), q.Get("phone"))
+}
+
+// resolveParticipants takes a mixed slice of JIDs and phone numbers and
+// resolves any phone numbers (entries without "@") to JIDs via the WhatsApp
+// IsOnWhatsApp API. Returns an error if any phone fails to resolve.
+func resolveParticipants(ctx context.Context, acct *service.Account, participants []string) ([]string, error) {
+	resolved := make([]string, 0, len(participants))
+	for _, p := range participants {
+		if strings.Contains(p, "@") {
+			// Already a JID
+			resolved = append(resolved, p)
+		} else {
+			jid, err := acct.ResolvePhone(ctx, p)
+			if err != nil {
+				return nil, fmt.Errorf("failed to resolve phone %q: %w", p, err)
+			}
+			resolved = append(resolved, jid)
+		}
+	}
+	return resolved, nil
 }
