@@ -15,7 +15,7 @@ services:
       WALINK_LOG_LEVEL: "${WALINK_LOG_LEVEL:-info}"
       WALINK_DATABASE_PATH: "/data/db/walink.db"
       WALINK_ACCOUNTS_DIR: "/data/accounts"
-      WALINK_CORS_ORIGINS: "${WALINK_CORS_ORIGINS:-'*'}"
+      WALINK_CORS_ORIGINS: "${WALINK_CORS_ORIGINS:-*}"
       WALINK_SWAGGER_ENABLED: "${WALINK_SWAGGER_ENABLED:-true}"
 
 volumes:
