@@ -3,15 +3,10 @@ FROM golang:1.25-alpine AS builder
 
 WORKDIR /src
 
-# Copy dependency files first for better layer caching
-COPY go.mod go.sum ./
-COPY whatsmeow/ ./whatsmeow/
-
-RUN go mod download
-
-# Copy source code
+# Copy all source (local replace directive requires full whatsmeow source)
 COPY . .
 
+RUN go mod download
 RUN go build -trimpath -o /bin/walink ./cmd/walink
 
 # --- Runtime stage ---
