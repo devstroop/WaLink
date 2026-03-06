@@ -16,7 +16,7 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-        go: ["1.25"]
+        go: ["1.24"]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -34,6 +34,7 @@ jobs:
         run: go vet ./...
 
       - name: Test
+        shell: bash
         run: go test -v -race -count=1 -coverprofile=coverage.out -timeout 120s ./...
 
       - name: Upload coverage
@@ -54,7 +55,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: "1.25"
+          go-version: "1.24"
 
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v6
