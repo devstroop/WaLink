@@ -47,3 +47,23 @@ func CORS(cfg config.CORSConfig, next http.Handler) http.Handler {
 		next.ServeHTTP(w, r)
 	})
 }
+
+// RateLimit returns middleware that caps concurrent in-flight requests.
+// When the limit is reached, new requests receive 429 Too Many Requests.
+func RateLimit(maxConcurrent int, next http.Handler) http.Handler {
+	if maxConcurrent <= 0 {
+		return next
+	}
+	sem := make(chan struct{}, maxConcurrent)
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case sem <- struct{}{}:
+			defer func() { <-sem }()
+			next.ServeHTTP(w, r)
+		default:
+			w.Header().Set("Content-Type", "application/json")
+			w.Header().Set("Retry-After", "1")
+			http.Error(w, `{"error":"too many requests"}`, http.StatusTooManyRequests)
+		}
+	})
+}

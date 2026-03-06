@@ -48,7 +48,6 @@ type Account struct {
 	db           *database.DB
 	client       *whatsmeow.Client
 	container    *sqlstore.Container
-	eventCh      chan any
 }
 
 // NewAccount constructs an Account (not yet connected).
@@ -123,7 +122,6 @@ func (a *Account) prepareClient(ctx context.Context) error {
 	a.client = client
 
 	// Event handler
-	a.eventCh = make(chan any, 64)
 	client.AddEventHandler(func(evt interface{}) {
 		a.handleEvent(evt)
 	})
@@ -313,6 +311,7 @@ func (a *Account) SendMessage(ctx context.Context, jid string, text string) (str
 		return "", fmt.Errorf("send: %w", err)
 	}
 
+	a.storeOutgoing(resp.ID, jid, "text", text, "")
 	return resp.ID, nil
 }
 
@@ -355,6 +354,11 @@ func (a *Account) SendMedia(ctx context.Context, jid string, data []byte, filena
 		return "", fmt.Errorf("send media: %w", err)
 	}
 
+	cap := ""
+	if caption != nil {
+		cap = *caption
+	}
+	a.storeOutgoing(resp.ID, jid, "document", cap, mimetype)
 	return resp.ID, nil
 }
 
@@ -564,6 +568,7 @@ func (a *Account) SendReply(ctx context.Context, chatJID, messageID, text string
 		return "", fmt.Errorf("send reply: %w", err)
 	}
 
+	a.storeOutgoing(resp.ID, chatJID, "text", text, "")
 	return resp.ID, nil
 }
 
@@ -1273,7 +1278,57 @@ func (a *Account) handleEvent(evt interface{}) {
 		a.mu.Unlock()
 	case *events.Disconnected:
 		log.Warn().Str("account", a.ID).Msg("disconnected event")
+		go a.autoReconnect()
 	}
+}
+
+// storeOutgoing persists a sent message to the DB so it appears in message history.
+func (a *Account) storeOutgoing(msgID, chatJID, msgType, body, mediaType string) {
+	if a.db == nil {
+		return
+	}
+	rec := &database.MessageRecord{
+		ID:        msgID,
+		AccountID: a.ID,
+		ChatJID:   chatJID,
+		SenderJID: "me",
+		FromMe:    true,
+		Type:      msgType,
+		Body:      body,
+		MediaType: mediaType,
+		Timestamp: time.Now().UTC().Format(time.RFC3339),
+	}
+	if err := a.db.InsertMessage(rec); err != nil {
+		log.Warn().Str("account", a.ID).Err(err).Msg("failed to store outgoing message")
+	}
+}
+
+// autoReconnect attempts to reconnect after an unexpected disconnect.
+func (a *Account) autoReconnect() {
+	delays := []time.Duration{2 * time.Second, 5 * time.Second, 15 * time.Second, 30 * time.Second, 60 * time.Second}
+	for i, delay := range delays {
+		time.Sleep(delay)
+
+		a.mu.RLock()
+		client := a.client
+		a.mu.RUnlock()
+
+		if client == nil {
+			return // intentionally disconnected or logged out
+		}
+		if client.IsConnected() {
+			return // already reconnected
+		}
+
+		log.Info().Str("account", a.ID).Int("attempt", i+1).Msg("auto-reconnect attempt")
+		if err := client.Connect(); err != nil {
+			log.Warn().Str("account", a.ID).Err(err).Msg("auto-reconnect failed")
+			continue
+		}
+		log.Info().Str("account", a.ID).Msg("auto-reconnected")
+		return
+	}
+	log.Error().Str("account", a.ID).Msg("auto-reconnect: all retries exhausted")
 }
 
 // storeMessage persists a received message to the DB.
@@ -1390,31 +1445,51 @@ func (a *Account) doDispatchWebhook(eventType string, payload map[string]any) {
 		return
 	}
 
-	req, err := http.NewRequest("POST", cfg.URL, bytes.NewReader(body))
-	if err != nil {
-		log.Warn().Str("account", a.ID).Err(err).Msg("webhook: create request failed")
-		return
-	}
-	req.Header.Set("Content-Type", "application/json")
-
-	// HMAC signature if secret is set
+	// Build HMAC signature header value (reused across retries)
+	var signature string
 	if cfg.Secret != "" {
 		mac := hmac.New(sha256.New, []byte(cfg.Secret))
 		mac.Write(body)
-		sig := hex.EncodeToString(mac.Sum(nil))
-		req.Header.Set("X-Webhook-Signature", sig)
+		signature = hex.EncodeToString(mac.Sum(nil))
 	}
 
-	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		log.Warn().Str("account", a.ID).Err(err).Msg("webhook: POST failed")
-		return
-	}
-	resp.Body.Close()
+	httpClient := &http.Client{Timeout: 10 * time.Second}
+	maxAttempts := 4 // 1 initial + 3 retries
 
-	if resp.StatusCode >= 400 {
-		log.Warn().Str("account", a.ID).Int("status", resp.StatusCode).Msg("webhook: non-success response")
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		req, err := http.NewRequest("POST", cfg.URL, bytes.NewReader(body))
+		if err != nil {
+			log.Warn().Str("account", a.ID).Err(err).Msg("webhook: create request failed")
+			return
+		}
+		req.Header.Set("Content-Type", "application/json")
+		if signature != "" {
+			req.Header.Set("X-Webhook-Signature", signature)
+		}
+
+		resp, err := httpClient.Do(req)
+		if err != nil {
+			log.Warn().Str("account", a.ID).Err(err).Int("attempt", attempt).Msg("webhook: POST failed")
+			if attempt < maxAttempts {
+				time.Sleep(time.Duration(attempt) * time.Second)
+				continue
+			}
+			return
+		}
+		resp.Body.Close()
+
+		if resp.StatusCode < 500 {
+			if resp.StatusCode >= 400 {
+				log.Warn().Str("account", a.ID).Int("status", resp.StatusCode).Msg("webhook: client error (no retry)")
+			}
+			return // 2xx–4xx: done
+		}
+
+		// 5xx: retry
+		log.Warn().Str("account", a.ID).Int("status", resp.StatusCode).Int("attempt", attempt).Msg("webhook: server error, retrying")
+		if attempt < maxAttempts {
+			time.Sleep(time.Duration(attempt) * time.Second)
+		}
 	}
 }
 
