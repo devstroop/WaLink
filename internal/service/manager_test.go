@@ -83,10 +83,12 @@ func TestManagerCreateAccountInvalidPhone(t *testing.T) {
 func TestManagerCreateAccountDuplicatePhone(t *testing.T) {
 	mgr := setupManager(t)
 
-	mgr.CreateAccount(model.CreateAccountRequest{
+	if _, err := mgr.CreateAccount(model.CreateAccountRequest{
 		PhoneNumber: "9876543210",
 		AccountName: "first",
-	})
+	}); err != nil {
+		t.Fatal(err)
+	}
 
 	_, err := mgr.CreateAccount(model.CreateAccountRequest{
 		PhoneNumber: "9876543210",
@@ -126,8 +128,12 @@ func TestManagerGetAccountNotFound(t *testing.T) {
 func TestManagerListAccounts(t *testing.T) {
 	mgr := setupManager(t)
 
-	mgr.CreateAccount(model.CreateAccountRequest{PhoneNumber: "1111111111", AccountName: "a1"})
-	mgr.CreateAccount(model.CreateAccountRequest{PhoneNumber: "2222222222", AccountName: "a2"})
+	if _, err := mgr.CreateAccount(model.CreateAccountRequest{PhoneNumber: "1111111111", AccountName: "a1"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := mgr.CreateAccount(model.CreateAccountRequest{PhoneNumber: "2222222222", AccountName: "a2"}); err != nil {
+		t.Fatal(err)
+	}
 
 	list := mgr.ListAccounts()
 	if list.Total != 2 {

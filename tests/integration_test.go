@@ -437,7 +437,7 @@ func TestGetMessagesWithData(t *testing.T) {
 	db := mgr.DB()
 	chat := "919999999999@s.whatsapp.net"
 	for i := 0; i < 5; i++ {
-		db.InsertMessage(&database.MessageRecord{
+		if err := db.InsertMessage(&database.MessageRecord{
 			ID:        fmt.Sprintf("msg-%d", i),
 			AccountID: cr.ID,
 			ChatJID:   chat,
@@ -446,7 +446,9 @@ func TestGetMessagesWithData(t *testing.T) {
 			Type:      "text",
 			Body:      fmt.Sprintf("hello %d", i),
 			Timestamp: fmt.Sprintf("2026-01-01T00:00:0%dZ", i),
-		})
+		}); err != nil {
+			t.Fatal(err)
+		}
 	}
 
 	// Default limit

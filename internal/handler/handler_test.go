@@ -24,7 +24,9 @@ func TestHealth(t *testing.T) {
 	}
 
 	var body map[string]string
-	json.NewDecoder(w.Body).Decode(&body)
+	if err := json.NewDecoder(w.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
 	if body["status"] != "ok" {
 		t.Errorf("expected status ok, got %s", body["status"])
 	}
@@ -39,7 +41,9 @@ func TestWriteJSON(t *testing.T) {
 	}
 
 	var body map[string]int
-	json.NewDecoder(w.Body).Decode(&body)
+	if err := json.NewDecoder(w.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
 	if body["count"] != 42 {
 		t.Errorf("expected count 42, got %d", body["count"])
 	}
@@ -54,7 +58,9 @@ func TestWriteError(t *testing.T) {
 	}
 
 	var body map[string]string
-	json.NewDecoder(w.Body).Decode(&body)
+	if err := json.NewDecoder(w.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
 	if body["error"] != "something broke" {
 		t.Errorf("expected 'something broke', got %s", body["error"])
 	}

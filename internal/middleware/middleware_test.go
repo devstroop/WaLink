@@ -8,9 +8,9 @@ import (
 	"github.com/devstroop/walink/internal/config"
 )
 
-var okHandler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+var okHandler = http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("ok"))
+	_, _ = w.Write([]byte("ok"))
 })
 
 // --- Auth tests ---

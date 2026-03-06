@@ -35,7 +35,9 @@ func TestDefaults(t *testing.T) {
 func TestLoadFromFile(t *testing.T) {
 	dir := t.TempDir()
 	configDir := filepath.Join(dir, "config")
-	os.MkdirAll(configDir, 0o755)
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
 
 	content := `
 [server]
@@ -49,12 +51,16 @@ secret_key = "test-key"
 level = "debug"
 `
 	configPath := filepath.Join(configDir, "app.toml")
-	os.WriteFile(configPath, []byte(content), 0o644)
+	if err := os.WriteFile(configPath, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	// Change to temp dir so config/app.toml is found
 	origDir, _ := os.Getwd()
-	os.Chdir(dir)
-	defer os.Chdir(origDir)
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = os.Chdir(origDir) }()
 
 	cfg, err := Load()
 	if err != nil {
@@ -83,8 +89,10 @@ level = "debug"
 func TestLoadNoFile(t *testing.T) {
 	dir := t.TempDir()
 	origDir, _ := os.Getwd()
-	os.Chdir(dir)
-	defer os.Chdir(origDir)
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = os.Chdir(origDir) }()
 
 	cfg, err := Load()
 	if err != nil {
@@ -100,12 +108,18 @@ func TestLoadNoFile(t *testing.T) {
 func TestLoadInvalidToml(t *testing.T) {
 	dir := t.TempDir()
 	configDir := filepath.Join(dir, "config")
-	os.MkdirAll(configDir, 0o755)
-	os.WriteFile(filepath.Join(configDir, "app.toml"), []byte("not valid [[[ toml"), 0o644)
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(configDir, "app.toml"), []byte("not valid [[[ toml"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	origDir, _ := os.Getwd()
-	os.Chdir(dir)
-	defer os.Chdir(origDir)
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = os.Chdir(origDir) }()
 
 	_, err := Load()
 	if err == nil {

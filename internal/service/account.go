@@ -1087,7 +1087,8 @@ func (a *Account) RevokeMessage(ctx context.Context, chatJID, messageID string) 
 		return model.RevokeMessageResponse{}, fmt.Errorf("invalid jid %q: %w", chatJID, err)
 	}
 
-	resp, err := client.RevokeMessage(ctx, target, types.MessageID(messageID))
+	revokeMsg := client.BuildRevoke(target, types.EmptyJID, types.MessageID(messageID))
+	resp, err := client.SendMessage(ctx, target, revokeMsg)
 	if err != nil {
 		return model.RevokeMessageResponse{}, fmt.Errorf("revoke: %w", err)
 	}
@@ -1136,6 +1137,7 @@ func (a *Account) DownloadMedia(ctx context.Context, msg *waE2E.Message) ([]byte
 		return nil, fmt.Errorf("not connected")
 	}
 
+	//nolint:staticcheck // DownloadAny is the only generic entry point for mixed media messages.
 	data, err := client.DownloadAny(ctx, msg)
 	if err != nil {
 		return nil, fmt.Errorf("download: %w", err)

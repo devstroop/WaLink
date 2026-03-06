@@ -19,10 +19,10 @@ func SwaggerUI(basePath string) http.Handler {
 		switch r.URL.Path {
 		case specPath:
 			w.Header().Set("Content-Type", "application/json")
-			w.Write(openapiSpec)
+			_, _ = w.Write(openapiSpec)
 		case basePath, basePath + "/":
 			w.Header().Set("Content-Type", "text/html; charset=utf-8")
-			w.Write([]byte(swaggerHTML(basePath)))
+			_, _ = w.Write([]byte(swaggerHTML(basePath)))
 		default:
 			http.NotFound(w, r)
 		}

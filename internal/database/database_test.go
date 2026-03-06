@@ -75,7 +75,9 @@ func TestGetAccountByPhone(t *testing.T) {
 		ID: "id-phone-test", PhoneNumber: "1234567890",
 		AccountName: "phone-test", DataDir: "/tmp/pt",
 	}
-	db.CreateAccount(rec)
+	if err := db.CreateAccount(rec); err != nil {
+		t.Fatal(err)
+	}
 
 	got, err := db.GetAccountByPhone("1234567890")
 	if err != nil {
@@ -120,10 +122,12 @@ func TestListAccounts(t *testing.T) {
 	db := openTestDB(t)
 
 	for _, phone := range []string{"1111111111", "2222222222", "3333333333"} {
-		db.CreateAccount(&AccountRecord{
+		if err := db.CreateAccount(&AccountRecord{
 			ID: phone, PhoneNumber: phone,
 			AccountName: "acct", DataDir: "/tmp/" + phone,
-		})
+		}); err != nil {
+			t.Fatal(err)
+		}
 	}
 
 	// All
@@ -139,10 +143,12 @@ func TestListAccounts(t *testing.T) {
 func TestUpdateAccountName(t *testing.T) {
 	db := openTestDB(t)
 
-	db.CreateAccount(&AccountRecord{
+	if err := db.CreateAccount(&AccountRecord{
 		ID: "name-test", PhoneNumber: "8888888888",
 		AccountName: "old-name", DataDir: "/tmp/nt",
-	})
+	}); err != nil {
+		t.Fatal(err)
+	}
 
 	if err := db.UpdateAccountName("name-test", "new-name"); err != nil {
 		t.Fatalf("UpdateAccountName: %v", err)
@@ -157,10 +163,12 @@ func TestUpdateAccountName(t *testing.T) {
 func TestDeleteAccount(t *testing.T) {
 	db := openTestDB(t)
 
-	db.CreateAccount(&AccountRecord{
+	if err := db.CreateAccount(&AccountRecord{
 		ID: "del-test", PhoneNumber: "7777777777",
 		AccountName: "del", DataDir: "/tmp/del",
-	})
+	}); err != nil {
+		t.Fatal(err)
+	}
 
 	if err := db.DeleteAccount("del-test"); err != nil {
 		t.Fatalf("DeleteAccount: %v", err)
