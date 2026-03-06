@@ -38,4 +38,4 @@ require (
 	modernc.org/memory v1.11.0 // indirect
 )
 
-replace go.mau.fi/whatsmeow => ../whatsmeow
+replace go.mau.fi/whatsmeow => ./whatsmeow
