@@ -34,6 +34,9 @@ func (a *API) GetMessages(w http.ResponseWriter, r *http.Request) {
 			limit = n
 		}
 	}
+	if limit > 500 {
+		limit = 500
+	}
 
 	before := r.URL.Query().Get("before") // RFC3339 cursor
 

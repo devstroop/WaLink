@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"fmt"
+	"io"
 	"net/http"
 	"time"
 
@@ -208,8 +209,12 @@ func (a *API) SendMessageSend(w http.ResponseWriter, r *http.Request) {
 		file, header, err := r.FormFile("file")
 		if err == nil {
 			defer file.Close()
-			data := make([]byte, header.Size)
-			if _, err := file.Read(data); err != nil {
+			if header.Size > a.mgr.Config().Limits.MaxUploadSize {
+				writeError(w, http.StatusRequestEntityTooLarge, "file too large")
+				return
+			}
+			data, err := io.ReadAll(file)
+			if err != nil {
 				writeError(w, http.StatusInternalServerError, "read file: "+err.Error())
 				return
 			}
@@ -287,8 +292,12 @@ func (a *API) SendMessage(w http.ResponseWriter, r *http.Request) {
 		file, header, err := r.FormFile("file")
 		if err == nil {
 			defer file.Close()
-			data := make([]byte, header.Size)
-			if _, err := file.Read(data); err != nil {
+			if header.Size > a.mgr.Config().Limits.MaxUploadSize {
+				writeError(w, http.StatusRequestEntityTooLarge, "file too large")
+				return
+			}
+			data, err := io.ReadAll(file)
+			if err != nil {
 				writeError(w, http.StatusInternalServerError, "read file: "+err.Error())
 				return
 			}

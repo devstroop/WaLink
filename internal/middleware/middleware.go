@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"crypto/subtle"
 	"net/http"
 	"strings"
 
@@ -18,7 +19,7 @@ func Auth(secretKey string, next http.Handler) http.Handler {
 		}
 
 		parts := strings.SplitN(header, " ", 2)
-		if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") || parts[1] != secretKey {
+		if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") || subtle.ConstantTimeCompare([]byte(parts[1]), []byte(secretKey)) != 1 {
 			w.Header().Set("Content-Type", "application/json")
 			http.Error(w, `{"error":"invalid credentials"}`, http.StatusUnauthorized)
 			return

@@ -31,6 +31,10 @@ func main() {
 
 	log.Info().Str("version", "0.1.0").Msg("starting WaLink")
 
+	if cfg.Auth.SecretKey == "change-this-secret-key-in-production" {
+		log.Warn().Msg("using default auth secret key — set WALINK_AUTH_SECRET_KEY for production")
+	}
+
 	// Open database
 	db, err := database.Open(cfg.Database.Path)
 	if err != nil {
@@ -103,7 +107,9 @@ func main() {
 	defer cancel()
 
 	mgr.ShutdownAll()
-	_ = srv.Shutdown(ctx)
+	if err := srv.Shutdown(ctx); err != nil {
+		log.Error().Err(err).Msg("server shutdown error")
+	}
 	log.Info().Msg("goodbye")
 }
 

@@ -39,6 +39,9 @@ func NewAccountManager(cfg *config.Config, db *database.DB) (*AccountManager, er
 	}, nil
 }
 
+// Config returns the application configuration.
+func (m *AccountManager) Config() *config.Config { return m.cfg }
+
 // CreateAccount validates input, persists to DB, and returns the new account.
 func (m *AccountManager) CreateAccount(req model.CreateAccountRequest) (*model.CreateAccountResponse, error) {
 	phone := NormalizePhone(req.PhoneNumber)
