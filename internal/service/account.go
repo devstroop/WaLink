@@ -618,7 +618,7 @@ func (a *Account) GetContactInfo(ctx context.Context, contactJID string) (model.
 	client := a.client
 	a.mu.RUnlock()
 
-	if client == nil {
+	if client == nil || !client.IsConnected() {
 		return model.ContactInfo{}, fmt.Errorf("not connected")
 	}
 

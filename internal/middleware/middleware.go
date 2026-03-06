@@ -30,13 +30,29 @@ func Auth(secretKey string, next http.Handler) http.Handler {
 }
 
 // CORS returns middleware that sets CORS headers from config.
+// Per the HTTP spec, Access-Control-Allow-Origin must be either a single
+// origin or "*" — a comma-separated list is invalid. When multiple origins
+// are configured we match the request Origin against the allow-list and
+// reflect it back (or reject).
 func CORS(cfg config.CORSConfig, next http.Handler) http.Handler {
-	origins := strings.Join(cfg.AllowOrigins, ", ")
+	allowAll := len(cfg.AllowOrigins) == 1 && cfg.AllowOrigins[0] == "*"
+	allowed := make(map[string]struct{}, len(cfg.AllowOrigins))
+	for _, o := range cfg.AllowOrigins {
+		allowed[o] = struct{}{}
+	}
 	methods := strings.Join(cfg.AllowMethods, ", ")
 	headers := strings.Join(cfg.AllowHeaders, ", ")
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", origins)
+		origin := r.Header.Get("Origin")
+
+		if allowAll {
+			w.Header().Set("Access-Control-Allow-Origin", "*")
+		} else if _, ok := allowed[origin]; ok && origin != "" {
+			w.Header().Set("Access-Control-Allow-Origin", origin)
+			w.Header().Set("Vary", "Origin")
+		}
+
 		w.Header().Set("Access-Control-Allow-Methods", methods)
 		w.Header().Set("Access-Control-Allow-Headers", headers)
 

@@ -43,7 +43,6 @@ func (a *API) RegisterRoutes(mux *http.ServeMux) {
 	// ── Messaging ───────────────────────────────────
 	mux.HandleFunc("GET "+acct+"/messages", a.GetMessages)
 	mux.HandleFunc("POST "+acct+"/messages/send", a.SendMessageSend)
-	mux.HandleFunc("POST "+acct+"/messages", a.SendMessage)       // legacy
 	mux.HandleFunc("POST "+acct+"/messages/react", a.ReactMessage)
 	mux.HandleFunc("POST "+acct+"/messages/read", a.MarkRead)
 	mux.HandleFunc("DELETE "+acct+"/messages/{message_id}", a.RevokeMessage)

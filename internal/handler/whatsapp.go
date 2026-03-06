@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	qrcode "github.com/skip2/go-qrcode"
@@ -156,7 +157,7 @@ func (a *API) SendMessageSend(w http.ResponseWriter, r *http.Request) {
 	text := q.Get("text")
 	replyTo := q.Get("reply_to")
 	ct := r.Header.Get("Content-Type")
-	isMultipart := len(ct) > 19 && ct[:19] == "multipart/form-data"
+	isMultipart := strings.HasPrefix(ct, "multipart/form-data")
 
 	// For non-multipart requests without query text, try parsing JSON body now.
 	var jsonReq model.SendMessageRequest
@@ -261,98 +262,6 @@ func (a *API) SendMessageSend(w http.ResponseWriter, r *http.Request) {
 		msgID, err = acct.SendReply(r.Context(), chatJID, replyTo, text)
 	} else {
 		msgID, err = acct.SendMessage(r.Context(), chatJID, text)
-	}
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	writeJSON(w, http.StatusOK, model.SendMessageResponse{Status: "sent", MessageID: msgID})
-}
-
-// SendMessage — POST /api/v1/accounts/{account_id}/messages  (legacy)
-func (a *API) SendMessage(w http.ResponseWriter, r *http.Request) {
-	acct := a.requireConnectedAccount(w, r)
-	if acct == nil {
-		return
-	}
-
-	ct := r.Header.Get("Content-Type")
-
-	// Handle multipart/form-data for file uploads
-	if len(ct) > 19 && ct[:19] == "multipart/form-data" {
-		if err := r.ParseMultipartForm(10 << 20); err != nil {
-			writeError(w, http.StatusBadRequest, "parse multipart: "+err.Error())
-			return
-		}
-
-		chatID := r.FormValue("chat")
-		if chatID == "" {
-			writeError(w, http.StatusBadRequest, "chat required")
-			return
-		}
-		text := r.FormValue("text")
-
-		file, header, err := r.FormFile("file")
-		if err == nil {
-			defer file.Close()
-			if header.Size > a.mgr.Config().Limits.MaxUploadSize {
-				writeError(w, http.StatusRequestEntityTooLarge, "file too large")
-				return
-			}
-			data, err := io.ReadAll(file)
-			if err != nil {
-				writeError(w, http.StatusInternalServerError, "read file: "+err.Error())
-				return
-			}
-			var caption *string
-			if text != "" {
-				caption = &text
-			}
-			msgID, err := acct.SendMedia(r.Context(), chatID, data, header.Filename, header.Header.Get("Content-Type"), caption)
-			if err != nil {
-				writeError(w, http.StatusInternalServerError, err.Error())
-				return
-			}
-			writeJSON(w, http.StatusOK, model.SendMessageResponse{Status: "sent", MessageID: msgID})
-			return
-		}
-
-		// No file — send text only
-		if text == "" {
-			writeError(w, http.StatusBadRequest, "text or file required")
-			return
-		}
-		msgID, err2 := acct.SendMessage(r.Context(), chatID, text)
-		if err2 != nil {
-			writeError(w, http.StatusInternalServerError, err2.Error())
-			return
-		}
-		writeJSON(w, http.StatusOK, model.SendMessageResponse{Status: "sent", MessageID: msgID})
-		return
-	}
-
-	// JSON body
-	var req model.SendMessageRequest
-	if err := readJSON(r, &req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid json: "+err.Error())
-		return
-	}
-
-	if req.Chat == "" {
-		writeError(w, http.StatusBadRequest, "chat required")
-		return
-	}
-	if req.Text == nil || *req.Text == "" {
-		writeError(w, http.StatusBadRequest, "text required")
-		return
-	}
-
-	var msgID string
-	var err error
-	if req.ReplyTo != nil && *req.ReplyTo != "" {
-		msgID, err = acct.SendReply(r.Context(), req.Chat, *req.ReplyTo, *req.Text)
-	} else {
-		msgID, err = acct.SendMessage(r.Context(), req.Chat, *req.Text)
 	}
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())

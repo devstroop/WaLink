@@ -12,6 +12,7 @@ import (
 	"github.com/devstroop/walink/internal/config"
 	"github.com/devstroop/walink/internal/database"
 	"github.com/devstroop/walink/internal/handler"
+	"github.com/devstroop/walink/internal/mcpserver"
 	"github.com/devstroop/walink/internal/middleware"
 	"github.com/devstroop/walink/internal/service"
 	"github.com/rs/zerolog"
@@ -19,6 +20,8 @@ import (
 	"go.mau.fi/whatsmeow/proto/waCompanionReg"
 	"go.mau.fi/whatsmeow/store"
 	"google.golang.org/protobuf/proto"
+
+	mcphttp "github.com/mark3labs/mcp-go/server"
 )
 
 // version is set via -ldflags "-X main.version=..." at build time.
@@ -83,6 +86,12 @@ func main() {
 	authed := middleware.Auth(cfg.Auth.SecretKey, apiMux)
 	limited := middleware.RateLimit(cfg.Limits.MaxConcurrentRequests, authed)
 	mux.Handle("/api/v1/", limited)
+
+	// MCP (Model Context Protocol) endpoint — same auth as API
+	mcpSrv := mcpserver.New(mgr, version)
+	mcpTransport := mcphttp.NewStreamableHTTPServer(mcpSrv)
+	mux.Handle("/mcp", middleware.Auth(cfg.Auth.SecretKey, mcpTransport))
+	log.Info().Msg("MCP endpoint enabled at /mcp")
 
 	// Swagger UI (no auth)
 	if cfg.Swagger.Enabled {
