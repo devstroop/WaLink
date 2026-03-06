@@ -1,6 +1,6 @@
 # Binaries
-walink
-walink.exe
+/walink
+/walink.exe
 *.exe
 
 # Go build
