@@ -6,7 +6,7 @@ Initial scaffolding.
 
 ### Added
 - Multi-account management with UUID-based isolation
-- whatsmeow integration for native WhatsApp multi-device protocol
+- Native WhatsApp multi-device protocol integration (browserless)
 - QR code and phone number pairing for authentication
 - Send text messages and file attachments (documents with captions)
 - Account lifecycle: auto-connect on demand, idle timeout auto-disconnect

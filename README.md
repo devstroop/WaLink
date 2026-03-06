@@ -1,6 +1,6 @@
 # WaLink
 
-WhatsApp HTTP API powered by [whatsmeow](https://github.com/tulir/whatsmeow). Multi-account, browserless.
+WhatsApp HTTP API. Multi-account, browserless, native multi-device protocol.
 
 ## Quick Start
 

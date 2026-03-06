@@ -3,7 +3,7 @@
   "info": {
     "title": "WaLink – WhatsApp HTTP API",
     "version": "0.4.0",
-    "description": "Multi-account WhatsApp integration via whatsmeow."
+    "description": "Multi-account WhatsApp HTTP API."
   },
   "servers": [{ "url": "/" }],
   "security": [{ "BearerAuth": [] }],

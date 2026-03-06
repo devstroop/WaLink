@@ -28,7 +28,7 @@ func (a *API) GetSession(w http.ResponseWriter, r *http.Request) {
 	// A revoked session will trigger the LoggedOut event, clearing stale data.
 	if acct.HasStoredCredentials() && !acct.IsLoggedIn() {
 		_ = acct.EnsureConnected(r.Context())   // best-effort
-		time.Sleep(2 * time.Second)              // give whatsmeow time to auth or fire LoggedOut
+		time.Sleep(2 * time.Second)              // give the client time to auth or fire LoggedOut
 	}
 
 	writeJSON(w, http.StatusOK, acct.StatusResponse())
@@ -63,7 +63,7 @@ func (a *API) GetQR(w http.ResponseWriter, r *http.Request) {
 		}
 		if item.Event == "code" {
 			// Start draining remaining QR events AFTER we got our code.
-			// This prevents whatsmeow from disconnecting when the
+			// This prevents the client from disconnecting when the
 			// channel buffer fills up with subsequent codes.
 			service.DrainQR(ch)
 

@@ -6,15 +6,15 @@ Tracking of incomplete features, stubs, and known problems.
 
 ## Stub Handlers
 
-These API endpoints are registered and routed but return hardcoded empty responses. Each needs a real whatsmeow implementation.
+These API endpoints are registered and routed but return hardcoded empty responses. Each needs a real implementation.
 
 | # | Endpoint | Handler | What's needed |
 |---|----------|---------|---------------|
-| 1 | ~~`GET /accounts/{id}/chats`~~ | ~~`ListChats`~~ | **Done** — returns contacts from whatsmeow store |
+| 1 | ~~`GET /accounts/{id}/chats`~~ | ~~`ListChats`~~ | **Done** — returns contacts from local store |
 | 2 | `GET /accounts/{id}/chats/{chat_id}/messages` | `GetMessages` | Requires a local message store (not yet built) |
 | 3 | ~~`POST /accounts/{id}/chats/{chat_id}/typing`~~ | ~~`SendTyping`~~ | **Done** — `SendChatPresence` |
 | 4 | ~~`POST /accounts/{id}/chats/{chat_id}/read`~~ | ~~`MarkRead`~~ | **Done** — `MarkRead` with message IDs |
-| 5 | ~~`POST /accounts/{id}/messages/{msg_id}/react`~~ | ~~`ReactMessage`~~ | **Done** — `ReactionMessage` via whatsmeow |
+| 5 | ~~`POST /accounts/{id}/messages/{msg_id}/react`~~ | ~~`ReactMessage`~~ | **Done** — `ReactionMessage` |
 | 6 | ~~`POST /accounts/{id}/messages/{msg_id}/reply`~~ | ~~`ReplyMessage`~~ | **Done** — `ExtendedTextMessage` with `ContextInfo` |
 | 7 | ~~`GET /accounts/{id}/contacts/{contact_id}`~~ | ~~`GetContact`~~ | **Done** — `Store.Contacts.GetContact` |
 | 8 | ~~`GET /accounts/{id}/groups/{group_id}`~~ | ~~`GetGroup`~~ | **Done** — `client.GetGroupInfo` |

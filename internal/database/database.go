@@ -40,7 +40,7 @@ type ProxyConfigRecord struct {
 
 // MessageRecord is a stored message row.
 type MessageRecord struct {
-	ID        string // whatsmeow message ID
+	ID        string // message ID
 	AccountID string
 	ChatJID   string
 	SenderJID string

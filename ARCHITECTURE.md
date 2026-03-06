@@ -19,7 +19,7 @@ WaLink is an HTTP API server, implementing WhatsApp's multi-device protocol. No 
                                     │       │                          │
                                     │  ┌────▼────────────────┐         │
                                     │  │  Account            │         │
-                                    │  │  (whatsmeow.Client) │         │
+                                    │  │  (WA Client)        │         │
                                     │  └────┬────────────────┘         │
                                     │       │                          │
                                     │  ┌────▼────┐  ┌──────────┐       │
@@ -46,7 +46,7 @@ walink/
     ├── middleware/middleware.go     Bearer auth & CORS
     ├── model/model.go              Request/response types
     └── service/
-        ├── account.go              whatsmeow-backed account lifecycle
+        ├── account.go              WhatsApp-backed account lifecycle
         └── manager.go              Multi-account orchestration
 ```
 
@@ -61,8 +61,8 @@ Owns all accounts. Responsible for:
 
 ### Account (`service/account.go`)
 
-Wraps a single `whatsmeow.Client`. Each account has:
-- **Isolated data directory** with its own `whatsmeow.db` (Signal protocol keys, device session)
+Wraps a single WhatsApp client connection. Each account has:
+- **Isolated data directory** with its own `session.db` (Signal protocol keys, device session)
 - **Lifecycle states**: `sleeping` → `connecting` → `active` → (idle timeout) → `sleeping`
 - **Idle timer**: Background goroutine polls every 30s, disconnects after `idle_timeout`
 - **Auto-connect**: Any API request triggers `EnsureConnected()` — no manual warmup needed
@@ -70,7 +70,7 @@ Wraps a single `whatsmeow.Client`. Each account has:
 
 ### Database (`database/database.go`)
 
-Account registry in SQLite. Stores account metadata (ID, phone, name, data dir, idle timeout, status). whatsmeow manages its own separate SQLite database per account for Signal protocol state.
+Account registry in SQLite. Stores account metadata (ID, phone, name, data dir, idle timeout, status). A separate SQLite database per account stores Signal protocol state.
 
 ### Middleware (`middleware/middleware.go`)
 
@@ -86,18 +86,18 @@ HTTP Request
       → Handler (route matched)
         → AccountManager.GetAccount(id)
           → Account.EnsureConnected()   ← auto-warms if sleeping
-            → whatsmeow.Client operation
+            → WA Client operation
               → WhatsApp servers (encrypted WebSocket)
 ```
 
 ## Two SQLite Databases
 
 1. **`~/.walink/db/walink.db`** — Account registry. One row per account.
-2. **`~/.walink/accounts/{uuid}/whatsmeow.db`** — Per-account. Managed by whatsmeow. Contains Signal protocol keys, identity store, session keys, pre-keys, sender keys, contacts, chat settings.
+2. **`~/.walink/accounts/{uuid}/session.db`** — Per-account. Contains Signal protocol keys, identity store, session keys, pre-keys, sender keys, contacts, chat settings.
 
 ## Protocol
 
-whatsmeow implements WhatsApp's multi-device protocol:
+WaLink implements WhatsApp's multi-device protocol:
 - **Noise Protocol** for encrypted WebSocket transport
 - **Signal Protocol** (libsignal) for end-to-end encrypted messages
 - **Protobuf** for message serialization

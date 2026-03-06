@@ -54,7 +54,7 @@ path = "/api-docs"
 │   └── walink.db               # Account registry (SQLite)
 └── accounts/
     └── {uuid}/
-        └── whatsmeow.db        # WhatsApp session (Signal keys, device state)
+        └── session.db          # WhatsApp session (Signal keys, device state)
 ```
 
 ## Environment Notes

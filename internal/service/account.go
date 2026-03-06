@@ -33,7 +33,7 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-// Account wraps a single whatsmeow client with lifecycle management.
+// Account wraps a single WhatsApp client with lifecycle management.
 type Account struct {
 	mu sync.RWMutex
 
@@ -63,7 +63,7 @@ func NewAccount(id, phone, name, dataDir string, createdAt time.Time, db *databa
 	}
 }
 
-// Connect initialises the whatsmeow client and connects to WhatsApp servers.
+// Connect initialises the WhatsApp client and connects to WhatsApp servers.
 func (a *Account) Connect(ctx context.Context) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -84,10 +84,10 @@ func (a *Account) Connect(ctx context.Context) error {
 	return nil
 }
 
-// prepareClient creates the whatsmeow client and store without connecting.
+// prepareClient creates the WhatsApp client and store without connecting.
 // Must be called with a.mu held.
 func (a *Account) prepareClient(ctx context.Context) error {
-	dbPath := filepath.Join(a.DataDir, "whatsmeow.db")
+	dbPath := filepath.Join(a.DataDir, "session.db")
 	if err := os.MkdirAll(a.DataDir, 0o755); err != nil {
 		return fmt.Errorf("create data dir: %w", err)
 	}
@@ -95,7 +95,7 @@ func (a *Account) prepareClient(ctx context.Context) error {
 	logger := waLog.Noop
 	container, err := sqlstore.New(ctx, "sqlite", fmt.Sprintf("file:%s?_pragma=foreign_keys(1)", dbPath), logger)
 	if err != nil {
-		return fmt.Errorf("open whatsmeow store: %w", err)
+		return fmt.Errorf("open session store: %w", err)
 	}
 	a.container = container
 
@@ -131,7 +131,7 @@ func (a *Account) prepareClient(ctx context.Context) error {
 	return nil
 }
 
-// Disconnect gracefully closes the whatsmeow connection.
+// Disconnect gracefully closes the WhatsApp connection.
 func (a *Account) Disconnect() {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -156,7 +156,7 @@ func (a *Account) EnsureConnected(ctx context.Context) error {
 	return a.Connect(ctx)
 }
 
-// IsLoggedIn returns true if whatsmeow has a valid session.
+// IsLoggedIn returns true if the client has a valid session.
 func (a *Account) IsLoggedIn() bool {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
@@ -165,10 +165,10 @@ func (a *Account) IsLoggedIn() bool {
 
 // GetQR sets up the client for QR linking. It disconnects any existing session,
 // prepares a fresh client, obtains a QR channel, then connects.
-// whatsmeow requires GetQRChannel to be called before Connect.
+// GetQRChannel must be called before Connect.
 //
 // The returned channel emits QR code events. The caller MUST drain the channel
-// after reading the desired code (call DrainQR) so whatsmeow doesn't disconnect
+// after reading the desired code (call DrainQR) so the client doesn't disconnect
 // due to a full channel buffer.
 func (a *Account) GetQR(ctx context.Context) (<-chan whatsmeow.QRChannelItem, error) {
 	a.mu.Lock()
@@ -217,7 +217,7 @@ func (a *Account) GetQR(ctx context.Context) (<-chan whatsmeow.QRChannelItem, er
 }
 
 // DrainQR consumes remaining QR channel events in the background so
-// whatsmeow doesn't disconnect due to a full channel buffer.
+// the client doesn't disconnect due to a full channel buffer.
 func DrainQR(ch <-chan whatsmeow.QRChannelItem) {
 	go func() {
 		for range ch {
@@ -264,7 +264,7 @@ func (a *Account) Logout() error {
 
 	// Not connected: just wipe local session data so
 	// hasStoredSession() stops returning true.
-	dbPath := filepath.Join(a.DataDir, "whatsmeow.db")
+	dbPath := filepath.Join(a.DataDir, "session.db")
 	if _, err := os.Stat(dbPath); err != nil {
 		// No stored session at all — nothing to do
 		return nil
@@ -397,7 +397,7 @@ func (a *Account) IsAuthorized() bool {
 	return a.hasStoredSession()
 }
 
-// HasStoredCredentials reports whether the on-disk whatsmeow store contains
+// HasStoredCredentials reports whether the on-disk session store contains
 // device credentials. This does NOT verify they are still valid on the server.
 // Used to decide whether a connect-and-verify is worthwhile.
 func (a *Account) HasStoredCredentials() bool {
@@ -409,7 +409,7 @@ func (a *Account) HasStoredCredentials() bool {
 		return a.client.Store.ID != nil
 	}
 	// Probe disk
-	dbPath := filepath.Join(a.DataDir, "whatsmeow.db")
+	dbPath := filepath.Join(a.DataDir, "session.db")
 	if _, err := os.Stat(dbPath); err != nil {
 		return false
 	}
@@ -430,7 +430,7 @@ func (a *Account) HasStoredCredentials() bool {
 // When the client is nil (sleeping), we cannot verify the session against the
 // WhatsApp server, so we conservatively report false. Accounts with stored
 // credentials are verified on startup via DiscoverAccounts, which connects
-// them and lets whatsmeow detect revoked sessions via the LoggedOut event.
+// them and lets the client detect revoked sessions via the LoggedOut event.
 // Must be called with a.mu held.
 func (a *Account) hasStoredSession() bool {
 	if a.client != nil {
@@ -524,7 +524,7 @@ func (a *Account) SendReaction(ctx context.Context, chatJID, messageID, emoji st
 		return fmt.Errorf("invalid jid %q: %w", chatJID, err)
 	}
 
-	// Use whatsmeow's BuildReaction helper — it handles MessageKey construction.
+	// Use the client's BuildReaction helper — it handles MessageKey construction.
 	msg := client.BuildReaction(target, types.EmptyJID, types.MessageID(messageID), emoji)
 
 	if _, err := client.SendMessage(ctx, target, msg); err != nil {
@@ -567,7 +567,7 @@ func (a *Account) SendReply(ctx context.Context, chatJID, messageID, text string
 	return resp.ID, nil
 }
 
-// GetContactInfo returns contact details from the whatsmeow store.
+// GetContactInfo returns contact details from the local store.
 func (a *Account) GetContactInfo(ctx context.Context, contactJID string) (model.ContactInfo, error) {
 	a.mu.RLock()
 	client := a.client
@@ -849,7 +849,7 @@ func (a *Account) GetProfile(ctx context.Context) (model.ProfileResponse, error)
 	}
 
 	if client.Store.ID != nil {
-		// Use ToNonAD() to strip the device suffix — whatsmeow's
+		// Use ToNonAD() to strip the device suffix — the client's
 		// GetUserInfo keys the response map by the bare JID, so a
 		// lookup with the device-scoped JID would silently miss.
 		ownJID := client.Store.ID.ToNonAD()
@@ -977,7 +977,7 @@ func groupInfoToModel(gi *types.GroupInfo) model.GroupInfo {
 	return result
 }
 
-// ListContacts returns all contacts from the whatsmeow store.
+// ListContacts returns all contacts from the local store.
 func (a *Account) ListContacts(ctx context.Context) ([]model.ContactInfo, error) {
 	a.mu.RLock()
 	client := a.client
@@ -1092,7 +1092,7 @@ func (a *Account) ListMessages(chatJID string, limit int, before string) (model.
 	}, nil
 }
 
-// DownloadMedia downloads media from a received message using whatsmeow.
+// DownloadMedia downloads media from a received message.
 func (a *Account) DownloadMedia(ctx context.Context, msg *waE2E.Message) ([]byte, error) {
 	a.mu.RLock()
 	client := a.client
@@ -1109,7 +1109,7 @@ func (a *Account) DownloadMedia(ctx context.Context, msg *waE2E.Message) ([]byte
 	return data, nil
 }
 
-// ListChats returns known contacts and groups from the whatsmeow store,
+// ListChats returns known contacts and groups from the local store,
 // enriched with last message, unread count, and sorted by most recent activity.
 func (a *Account) ListChats(ctx context.Context) ([]model.ChatInfo, error) {
 	a.mu.RLock()
@@ -1262,7 +1262,7 @@ func (a *Account) handleEvent(evt interface{}) {
 	case *events.HistorySync:
 		log.Info().Str("account", a.ID).Msg("history sync received")
 	case *events.Connected:
-		log.Info().Str("account", a.ID).Msg("whatsmeow connected event")
+		log.Info().Str("account", a.ID).Msg("connected event")
 	case *events.LoggedOut:
 		log.Warn().Str("account", a.ID).Int("reason", int(v.Reason)).Msg("logged out by phone — cleaning up")
 		a.mu.Lock()

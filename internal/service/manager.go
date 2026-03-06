@@ -147,7 +147,7 @@ func (m *AccountManager) DeleteAccount(id string, deleteData bool) (*model.Delet
 	}, nil
 }
 
-// ConnectAccount ensures the account's whatsmeow client is connected.
+// ConnectAccount ensures the account's WhatsApp client is connected.
 func (m *AccountManager) ConnectAccount(ctx context.Context, id string) error {
 	acct := m.GetAccount(id)
 	if acct == nil {
@@ -276,7 +276,7 @@ func (m *AccountManager) DiscoverAccounts(ctx context.Context) error {
 	m.mu.Unlock()
 
 	// Verify stored sessions by connecting. If a session was revoked from the
-	// phone while the server was down, whatsmeow will receive a LoggedOut event
+	// phone while the server was down, the client will receive a LoggedOut event
 	// and the handler will clear the local session data.
 	m.mu.RLock()
 	var toVerify []*Account
