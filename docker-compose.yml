@@ -1,0 +1,22 @@
+services:
+  walink:
+    build: .
+    container_name: walink
+    restart: unless-stopped
+    ports:
+      - "${WALINK_SERVER_PORT:-3000}:${WALINK_SERVER_PORT:-3000}"
+    volumes:
+      - walink-data:/data
+    environment:
+      TZ: UTC
+      WALINK_SERVER_HOST: "0.0.0.0"
+      WALINK_SERVER_PORT: "${WALINK_SERVER_PORT:-3000}"
+      WALINK_AUTH_SECRET_KEY: "${WALINK_AUTH_SECRET_KEY:-change-this-secret-key-in-production}"
+      WALINK_LOG_LEVEL: "${WALINK_LOG_LEVEL:-info}"
+      WALINK_DATABASE_PATH: "/data/db/walink.db"
+      WALINK_ACCOUNTS_DIR: "/data/accounts"
+      WALINK_CORS_ORIGINS: "${WALINK_CORS_ORIGINS:-*}"
+      WALINK_SWAGGER_ENABLED: "${WALINK_SWAGGER_ENABLED:-true}"
+
+volumes:
+  walink-data:

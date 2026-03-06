@@ -126,3 +126,59 @@ func TestLoadInvalidToml(t *testing.T) {
 		t.Error("expected error for invalid toml, got nil")
 	}
 }
+
+func TestEnvOverrides(t *testing.T) {
+	dir := t.TempDir()
+	origDir, _ := os.Getwd()
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = os.Chdir(origDir) }()
+
+	t.Setenv("WALINK_SERVER_HOST", "10.0.0.1")
+	t.Setenv("WALINK_SERVER_PORT", "9090")
+	t.Setenv("WALINK_AUTH_SECRET_KEY", "env-secret")
+	t.Setenv("WALINK_LOG_LEVEL", "debug")
+	t.Setenv("WALINK_DATABASE_PATH", "/data/walink.db")
+	t.Setenv("WALINK_ACCOUNTS_DIR", "/data/accounts")
+	t.Setenv("WALINK_CORS_ORIGINS", "https://a.com,https://b.com")
+	t.Setenv("WALINK_SWAGGER_ENABLED", "false")
+	t.Setenv("WALINK_WEBHOOKS_ENABLED", "true")
+	t.Setenv("WALINK_LIMITS_MAX_CONCURRENT", "100")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+
+	if cfg.Server.Host != "10.0.0.1" {
+		t.Errorf("expected host 10.0.0.1, got %s", cfg.Server.Host)
+	}
+	if cfg.Server.Port != 9090 {
+		t.Errorf("expected port 9090, got %d", cfg.Server.Port)
+	}
+	if cfg.Auth.SecretKey != "env-secret" {
+		t.Errorf("expected secret env-secret, got %s", cfg.Auth.SecretKey)
+	}
+	if cfg.Logging.Level != "debug" {
+		t.Errorf("expected log level debug, got %s", cfg.Logging.Level)
+	}
+	if cfg.Database.Path != "/data/walink.db" {
+		t.Errorf("expected db path /data/walink.db, got %s", cfg.Database.Path)
+	}
+	if cfg.Accounts.BaseDirectory != "/data/accounts" {
+		t.Errorf("expected accounts dir /data/accounts, got %s", cfg.Accounts.BaseDirectory)
+	}
+	if len(cfg.CORS.AllowOrigins) != 2 || cfg.CORS.AllowOrigins[0] != "https://a.com" {
+		t.Errorf("expected 2 CORS origins, got %v", cfg.CORS.AllowOrigins)
+	}
+	if cfg.Swagger.Enabled {
+		t.Error("expected swagger disabled via env")
+	}
+	if !cfg.Webhooks.Enabled {
+		t.Error("expected webhooks enabled via env")
+	}
+	if cfg.Limits.MaxConcurrentRequests != 100 {
+		t.Errorf("expected max_concurrent 100, got %d", cfg.Limits.MaxConcurrentRequests)
+	}
+}

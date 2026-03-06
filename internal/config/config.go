@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 
 	"github.com/BurntSushi/toml"
 )
@@ -86,6 +88,9 @@ func Load() (*Config, error) {
 		}
 	}
 
+	// Apply environment variable overrides
+	applyEnvOverrides(cfg)
+
 	// Resolve database path
 	if cfg.Database.Path == "" {
 		cfg.Database.Path = filepath.Join(homeDir(), ".walink", "db", "walink.db")
@@ -97,6 +102,72 @@ func Load() (*Config, error) {
 	}
 
 	return cfg, nil
+}
+
+// applyEnvOverrides overrides config values with WALINK_* environment variables.
+func applyEnvOverrides(cfg *Config) {
+	if v := os.Getenv("WALINK_SERVER_HOST"); v != "" {
+		cfg.Server.Host = v
+	}
+	if v := os.Getenv("WALINK_SERVER_PORT"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			cfg.Server.Port = n
+		}
+	}
+	if v := os.Getenv("WALINK_AUTH_SECRET_KEY"); v != "" {
+		cfg.Auth.SecretKey = v
+	}
+	if v := os.Getenv("WALINK_LOG_LEVEL"); v != "" {
+		cfg.Logging.Level = v
+	}
+	if v := os.Getenv("WALINK_DATABASE_PATH"); v != "" {
+		cfg.Database.Path = v
+	}
+	if v := os.Getenv("WALINK_CORS_ORIGINS"); v != "" {
+		cfg.CORS.AllowOrigins = strings.Split(v, ",")
+	}
+	if v := os.Getenv("WALINK_LIMITS_MAX_CONCURRENT"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			cfg.Limits.MaxConcurrentRequests = n
+		}
+	}
+	if v := os.Getenv("WALINK_LIMITS_TIMEOUT_MS"); v != "" {
+		if n, err := strconv.ParseInt(v, 10, 64); err == nil {
+			cfg.Limits.RequestTimeoutMs = n
+		}
+	}
+	if v := os.Getenv("WALINK_LIMITS_MAX_UPLOAD"); v != "" {
+		if n, err := strconv.ParseInt(v, 10, 64); err == nil {
+			cfg.Limits.MaxUploadSize = n
+		}
+	}
+	if v := os.Getenv("WALINK_ACCOUNTS_DIR"); v != "" {
+		cfg.Accounts.BaseDirectory = v
+	}
+	if v := os.Getenv("WALINK_WEBHOOKS_ENABLED"); v != "" {
+		cfg.Webhooks.Enabled = v == "true" || v == "1"
+	}
+	if v := os.Getenv("WALINK_WEBHOOKS_TIMEOUT_MS"); v != "" {
+		if n, err := strconv.ParseInt(v, 10, 64); err == nil {
+			cfg.Webhooks.TimeoutMs = n
+		}
+	}
+	if v := os.Getenv("WALINK_WEBHOOKS_RETRY_COUNT"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			cfg.Webhooks.RetryCount = n
+		}
+	}
+	if v := os.Getenv("WALINK_WEBHOOKS_RETRY_DELAY_MS"); v != "" {
+		if n, err := strconv.ParseInt(v, 10, 64); err == nil {
+			cfg.Webhooks.RetryDelay = n
+		}
+	}
+	if v := os.Getenv("WALINK_SWAGGER_ENABLED"); v != "" {
+		cfg.Swagger.Enabled = v == "true" || v == "1"
+	}
+	if v := os.Getenv("WALINK_SWAGGER_PATH"); v != "" {
+		cfg.Swagger.Path = v
+	}
 }
 
 func defaults() *Config {
