@@ -47,9 +47,12 @@ func (a *API) GetQR(w http.ResponseWriter, r *http.Request) {
 
 	ch, err := acct.GetQR(ctx)
 	if err != nil {
-		if err.Error() == "already logged in" {
+		switch err.Error() {
+		case "already logged in":
 			writeError(w, http.StatusConflict, err.Error())
-		} else {
+		case "qr auth already in progress":
+			writeError(w, http.StatusConflict, err.Error())
+		default:
 			writeError(w, http.StatusInternalServerError, err.Error())
 		}
 		return

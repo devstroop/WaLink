@@ -16,6 +16,9 @@ import (
 	"github.com/devstroop/walink/internal/service"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
+	"go.mau.fi/whatsmeow/proto/waCompanionReg"
+	"go.mau.fi/whatsmeow/store"
+	"google.golang.org/protobuf/proto"
 )
 
 func main() {
@@ -30,6 +33,12 @@ func main() {
 	setupLogging(cfg.Logging.Level)
 
 	log.Info().Str("version", "0.1.0").Msg("starting WaLink")
+
+	// Set the device name shown in WhatsApp's "Linked Devices" list on the phone.
+	// PlatformType must be a known type (CHROME) so WhatsApp accepts it without
+	// falling back to prompting for a device name on mobile.
+	store.DeviceProps.Os = proto.String("WaLink")
+	store.DeviceProps.PlatformType = waCompanionReg.DeviceProps_CHROME.Enum()
 
 	if cfg.Auth.SecretKey == "change-this-secret-key-in-production" {
 		log.Warn().Msg("using default auth secret key — set WALINK_AUTH_SECRET_KEY for production")

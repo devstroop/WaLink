@@ -108,7 +108,7 @@ func (m *AccountManager) ListAccounts() model.AccountListResponse {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	var list []model.AccountInfo
+	list := make([]model.AccountInfo, 0, len(m.accounts))
 	for _, acct := range m.accounts {
 		list = append(list, acct.Info())
 	}

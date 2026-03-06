@@ -250,14 +250,19 @@ func (a *Account) Logout() error {
 	defer a.mu.Unlock()
 
 	if a.client != nil {
-		// Connected: tell WhatsApp servers + clear local store
-		err := a.client.Logout(context.Background())
+		if a.client.IsConnected() {
+			// Connected: tell WhatsApp servers + clear local store
+			err := a.client.Logout(context.Background())
+			a.client.Disconnect()
+			a.client = nil
+			if err != nil {
+				return fmt.Errorf("logout: %w", err)
+			}
+			return nil
+		}
+		// Client exists but not connected — clean up the object
 		a.client.Disconnect()
 		a.client = nil
-		if err != nil {
-			return fmt.Errorf("logout: %w", err)
-		}
-		return nil
 	}
 
 	// Not connected: just wipe local session data so
