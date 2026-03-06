@@ -74,7 +74,7 @@ func (a *API) GetQR(w http.ResponseWriter, r *http.Request) {
 			}
 			w.Header().Set("Content-Type", "image/png")
 			w.WriteHeader(http.StatusOK)
-			w.Write(png)
+			_, _ = w.Write(png)
 			return
 		}
 		service.DrainQR(ch)

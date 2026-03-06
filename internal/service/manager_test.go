@@ -186,10 +186,12 @@ func TestManagerDiscoverAccounts(t *testing.T) {
 	defer db.Close()
 
 	// Pre-seed the DB
-	db.CreateAccount(&database.AccountRecord{
+	if err := db.CreateAccount(&database.AccountRecord{
 		ID: "pre-existing", PhoneNumber: "4444444444",
 		AccountName: "pre", DataDir: filepath.Join(dir, "accounts", "pre-existing"),
-	})
+	}); err != nil {
+		t.Fatal(err)
+	}
 
 	cfg := &config.Config{
 		Accounts: config.AccountsConfig{
