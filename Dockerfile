@@ -8,6 +8,12 @@ WORKDIR /src
 # Copy all source (local replace directive requires full whatsmeow source)
 COPY . .
 
+# Ensure whatsmeow submodule is present (Portainer/CI may not init submodules)
+RUN if [ ! -f whatsmeow/go.mod ]; then \
+    rm -rf whatsmeow && \
+    git clone --depth 1 https://github.com/tulir/whatsmeow.git whatsmeow; \
+    fi
+
 RUN CGO_ENABLED=0 GOTOOLCHAIN=auto go build -trimpath -o /bin/walink ./cmd/walink
 
 # --- Runtime stage ---
