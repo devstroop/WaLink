@@ -129,6 +129,7 @@ func TestCORSPreflight(t *testing.T) {
 	h := CORS(cfg, okHandler)
 
 	req := httptest.NewRequest("OPTIONS", "/", nil)
+	req.Header.Set("Origin", "https://example.com")
 	w := httptest.NewRecorder()
 	h.ServeHTTP(w, req)
 

@@ -679,8 +679,8 @@ func TestSendMessageWithoutConnection(t *testing.T) {
 
 	blockDataDir(t, mgr, cr.ID)
 
-	resp = authReq(t, srv, "POST", "/api/v1/accounts/"+cr.ID+"/messages",
-		`{"chat":"123@s.whatsapp.net","text":"hello"}`)
+	resp = authReq(t, srv, "POST", "/api/v1/accounts/"+cr.ID+"/messages/send?phone=1234567890&text=hello",
+		`{}`)
 	defer resp.Body.Close()
 	// Should fail because Connect cannot create data dir (500)
 	if resp.StatusCode != 500 {
