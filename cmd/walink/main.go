@@ -34,11 +34,14 @@ func main() {
 
 	log.Info().Str("version", "0.1.0").Msg("starting WaLink")
 
-	// Set the device name shown in WhatsApp's "Linked Devices" list on the phone.
-	// PlatformType must be a known type (CHROME) so WhatsApp accepts it without
-	// falling back to prompting for a device name on mobile.
+	// Set the device identity shown in WhatsApp's "Linked Devices" on the phone.
+	// Protocol only has os + platformType — no free-text device name field.
+	// Browser types (CHROME) auto-label without prompting; DESKTOP always prompts.
+	// Result: phone shows "Chrome (WaLink)" with no naming dialog.
 	store.DeviceProps.Os = proto.String("WaLink")
 	store.DeviceProps.PlatformType = waCompanionReg.DeviceProps_CHROME.Enum()
+	// Send push name in the handshake payload itself (fastest possible propagation).
+	store.BaseClientPayload.PushName = proto.String("WaLink")
 
 	if cfg.Auth.SecretKey == "change-this-secret-key-in-production" {
 		log.Warn().Msg("using default auth secret key — set WALINK_AUTH_SECRET_KEY for production")

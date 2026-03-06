@@ -104,6 +104,12 @@ func (a *Account) prepareClient(ctx context.Context) error {
 		return fmt.Errorf("get device: %w", err)
 	}
 
+	// Ensure push name is set before connecting so the handshake includes it
+	// and SendPresence won't fail after the Connected event.
+	if device.PushName == "" {
+		device.PushName = "WaLink"
+	}
+
 	client := whatsmeow.NewClient(device, logger)
 	// Build HTTP transport — force IPv4, optionally route through proxy
 	ipv4Dialer := &net.Dialer{}
@@ -288,7 +294,7 @@ func (a *Account) Logout() error {
 			return fmt.Errorf("delete stored device: %w", err)
 		}
 	}
-	log.Info().Str("account", a.ID).Msg("cleared local session data (was not connected)")
+	log.Info().Str("account", a.ID).Msg("cleared local session data")
 	return nil
 }
 
@@ -1304,6 +1310,17 @@ func (a *Account) handleEvent(evt interface{}) {
 		log.Info().Str("account", a.ID).Msg("history sync received")
 	case *events.Connected:
 		log.Info().Str("account", a.ID).Msg("connected event")
+		// Send presence so WhatsApp server registers our push name and device identity.
+		// Without this, the phone may prompt for a device name with a delay.
+		a.mu.RLock()
+		client := a.client
+		a.mu.RUnlock()
+		if client != nil {
+			if client.Store.PushName == "" {
+				client.Store.PushName = "WaLink"
+			}
+			_ = client.SendPresence(context.Background(), types.PresenceAvailable)
+		}
 	case *events.LoggedOut:
 		log.Warn().Str("account", a.ID).Int("reason", int(v.Reason)).Msg("logged out by phone — cleaning up")
 		a.mu.Lock()
