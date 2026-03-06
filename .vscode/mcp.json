@@ -1,0 +1,19 @@
+{
+  "servers": {
+    "walink": {
+      "type": "http",
+      "url": "http://localhost:3000/mcp",
+      "headers": {
+        "Authorization": "Bearer ${input:walink_secret_key}"
+      }
+    }
+  },
+  "inputs": [
+    {
+      "id": "walink_secret_key",
+      "type": "promptString",
+      "description": "WaLink API secret key (auth.secret_key from config)",
+      "password": true
+    }
+  ]
+}
