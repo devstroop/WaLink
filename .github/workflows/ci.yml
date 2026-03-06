@@ -78,6 +78,42 @@ jobs:
       - name: Build binary
         run: go build -ldflags "-s -w" -o walink ./cmd/walink
 
+  docker:
+    name: Docker
+    runs-on: ubuntu-latest
+    needs: [test, lint]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - name: Validate compose file
+        run: docker compose config --quiet
+
+      - name: Build image
+        run: docker compose build
+
+      - name: Start services
+        run: docker compose up -d
+
+      - name: Wait for healthy
+        run: |
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:3000/api/health; then
+              echo "Service is healthy"
+              exit 0
+            fi
+            echo "Waiting... ($i/30)"
+            sleep 2
+          done
+          echo "Service did not become healthy"
+          docker compose logs
+          exit 1
+
+      - name: Teardown
+        if: always()
+        run: docker compose down -v
+
       - name: Upload binary
         uses: actions/upload-artifact@v4
         with:
