@@ -21,6 +21,9 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
+// version is set via -ldflags "-X main.version=..." at build time.
+var version = "dev"
+
 func main() {
 	// Load configuration
 	cfg, err := config.Load()
@@ -32,7 +35,7 @@ func main() {
 	// Setup logging
 	setupLogging(cfg.Logging.Level)
 
-	log.Info().Str("version", "0.1.0").Msg("starting WaLink")
+	log.Info().Str("version", version).Msg("starting WaLink")
 
 	// Set the device identity shown in WhatsApp's "Linked Devices" on the phone.
 	// Protocol only has os + platformType — no free-text device name field.
