@@ -2,13 +2,17 @@ package mcpserver
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
+	qrcode "github.com/skip2/go-qrcode"
 
+	"github.com/devstroop/walink/internal/model"
 	"github.com/devstroop/walink/internal/service"
 )
 
@@ -83,6 +87,87 @@ func registerTools(s *server.MCPServer, mgr *service.AccountManager) {
 				return errResult, nil
 			}
 			return jsonResult(acct.StatusResponse())
+		},
+	)
+
+	s.AddTool(
+		mcp.NewTool("get_qr",
+			mcp.WithDescription("Get a QR code string for linking a WhatsApp account. The returned code can be rendered as a QR code for scanning with WhatsApp mobile. Only works if the account is not already logged in."),
+			mcp.WithString("account_id", mcp.Required(), mcp.Description("Account ID")),
+		),
+		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			acct, errResult := requireAccount(mgr, req)
+			if errResult != nil {
+				return errResult, nil
+			}
+
+			ch, err := acct.GetQR(ctx)
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+
+			select {
+			case item := <-ch:
+				service.DrainQR(ch)
+				if item.Error != nil {
+					return mcp.NewToolResultError(item.Error.Error()), nil
+				}
+				if item.Event == "code" {
+					png, err := qrcode.Encode(item.Code, qrcode.Medium, 512)
+					if err != nil {
+						return mcp.NewToolResultError(fmt.Sprintf("failed to render QR: %v", err)), nil
+					}
+					b64png := base64.StdEncoding.EncodeToString(png)
+					return mcp.NewToolResultImage("Scan this QR code with WhatsApp to link the account.", b64png, "image/png"), nil
+				}
+				return mcp.NewToolResultError(fmt.Sprintf("unexpected qr event: %s", item.Event)), nil
+			case <-ctx.Done():
+				service.DrainQR(ch)
+				return mcp.NewToolResultError("timeout waiting for QR code"), nil
+			}
+		},
+	)
+
+	s.AddTool(
+		mcp.NewTool("pair_phone",
+			mcp.WithDescription("Pair a WhatsApp account using a phone number. Returns a linking code to enter on WhatsApp mobile. The account must be connected but not yet logged in (call get_qr first to initialize the connection)."),
+			mcp.WithString("account_id", mcp.Required(), mcp.Description("Account ID")),
+			mcp.WithString("phone", mcp.Required(), mcp.Description("Phone number to pair (international format, digits only, e.g. 919999999999)")),
+		),
+		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			acct, errResult := requireAccount(mgr, req)
+			if errResult != nil {
+				return errResult, nil
+			}
+
+			phone, err := req.RequireString("phone")
+			if err != nil {
+				return mcp.NewToolResultError("phone is required"), nil
+			}
+
+			code, err := acct.PairPhone(ctx, phone)
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			return jsonResult(map[string]string{"linking_code": code})
+		},
+	)
+
+	s.AddTool(
+		mcp.NewTool("logout",
+			mcp.WithDescription("Disconnect and log out a WhatsApp account, clearing session credentials"),
+			mcp.WithString("account_id", mcp.Required(), mcp.Description("Account ID")),
+		),
+		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			acct, errResult := requireAccount(mgr, req)
+			if errResult != nil {
+				return errResult, nil
+			}
+
+			if err := acct.Logout(); err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			return jsonResult(map[string]string{"status": "logged_out", "account_id": acct.ID})
 		},
 	)
 
@@ -257,6 +342,475 @@ func registerTools(s *server.MCPServer, mgr *service.AccountManager) {
 				return mcp.NewToolResultError(err.Error()), nil
 			}
 			return jsonResult(profile)
+		},
+	)
+
+	s.AddTool(
+		mcp.NewTool("update_profile",
+			mcp.WithDescription("Update the account's WhatsApp status/about text"),
+			mcp.WithString("account_id", mcp.Required(), mcp.Description("Account ID")),
+			mcp.WithString("about", mcp.Required(), mcp.Description("New status/about text")),
+		),
+		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			acct, errResult := requireConnectedAccount(ctx, mgr, req)
+			if errResult != nil {
+				return errResult, nil
+			}
+
+			about, err := req.RequireString("about")
+			if err != nil {
+				return mcp.NewToolResultError("about is required"), nil
+			}
+
+			if err := acct.SetStatusMessage(ctx, about); err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			return jsonResult(map[string]string{"status": "updated"})
+		},
+	)
+
+	// ── Chats ───────────────────────────────────────
+
+	s.AddTool(
+		mcp.NewTool("list_chats",
+			mcp.WithDescription("List recent WhatsApp conversations with last message and unread count"),
+			mcp.WithString("account_id", mcp.Required(), mcp.Description("Account ID")),
+		),
+		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			acct, errResult := requireConnectedAccount(ctx, mgr, req)
+			if errResult != nil {
+				return errResult, nil
+			}
+
+			chats, err := acct.ListChats(ctx)
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			return jsonResult(map[string]any{"chats": chats, "total": len(chats)})
+		},
+	)
+
+	// ── Messages ────────────────────────────────────
+
+	s.AddTool(
+		mcp.NewTool("get_messages",
+			mcp.WithDescription("Get paginated message history for a WhatsApp chat"),
+			mcp.WithString("account_id", mcp.Required(), mcp.Description("Account ID")),
+			mcp.WithString("chat_jid", mcp.Required(), mcp.Description("Chat JID (e.g. 919999999999@s.whatsapp.net or 120363012345@g.us)")),
+			mcp.WithString("limit", mcp.Description("Max messages to return (default 50, max 200)")),
+			mcp.WithString("before", mcp.Description("Cursor: message ID to paginate before")),
+		),
+		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			acct, errResult := requireAccount(mgr, req)
+			if errResult != nil {
+				return errResult, nil
+			}
+
+			chatJID, err := req.RequireString("chat_jid")
+			if err != nil {
+				return mcp.NewToolResultError("chat_jid is required"), nil
+			}
+
+			limit := 50
+			if ls := req.GetString("limit", ""); ls != "" {
+				if v, err := strconv.Atoi(ls); err == nil && v > 0 {
+					limit = v
+				}
+			}
+			if limit > 200 {
+				limit = 200
+			}
+
+			before := req.GetString("before", "")
+
+			msgs, err := acct.ListMessages(chatJID, limit, before)
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			return jsonResult(msgs)
+		},
+	)
+
+	s.AddTool(
+		mcp.NewTool("react_message",
+			mcp.WithDescription("Send an emoji reaction to a WhatsApp message"),
+			mcp.WithString("account_id", mcp.Required(), mcp.Description("Account ID")),
+			mcp.WithString("chat_jid", mcp.Required(), mcp.Description("Chat JID where the message is")),
+			mcp.WithString("message_id", mcp.Required(), mcp.Description("ID of the message to react to")),
+			mcp.WithString("emoji", mcp.Required(), mcp.Description("Emoji to react with (e.g. 👍). Send empty string to remove reaction.")),
+		),
+		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			acct, errResult := requireConnectedAccount(ctx, mgr, req)
+			if errResult != nil {
+				return errResult, nil
+			}
+
+			chatJID, err := req.RequireString("chat_jid")
+			if err != nil {
+				return mcp.NewToolResultError("chat_jid is required"), nil
+			}
+			messageID, err := req.RequireString("message_id")
+			if err != nil {
+				return mcp.NewToolResultError("message_id is required"), nil
+			}
+			emoji, err := req.RequireString("emoji")
+			if err != nil {
+				return mcp.NewToolResultError("emoji is required"), nil
+			}
+
+			if err := acct.SendReaction(ctx, chatJID, messageID, emoji); err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			return jsonResult(map[string]string{"status": "reacted"})
+		},
+	)
+
+	s.AddTool(
+		mcp.NewTool("mark_read",
+			mcp.WithDescription("Mark messages as read in a WhatsApp chat"),
+			mcp.WithString("account_id", mcp.Required(), mcp.Description("Account ID")),
+			mcp.WithString("chat_jid", mcp.Required(), mcp.Description("Chat JID")),
+			mcp.WithString("message_ids", mcp.Required(), mcp.Description("Comma-separated message IDs to mark as read")),
+		),
+		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			acct, errResult := requireConnectedAccount(ctx, mgr, req)
+			if errResult != nil {
+				return errResult, nil
+			}
+
+			chatJID, err := req.RequireString("chat_jid")
+			if err != nil {
+				return mcp.NewToolResultError("chat_jid is required"), nil
+			}
+			idsStr, err := req.RequireString("message_ids")
+			if err != nil {
+				return mcp.NewToolResultError("message_ids is required"), nil
+			}
+
+			if err := acct.MarkRead(ctx, chatJID, splitCSV(idsStr)); err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			return jsonResult(map[string]string{"status": "read"})
+		},
+	)
+
+	s.AddTool(
+		mcp.NewTool("revoke_message",
+			mcp.WithDescription("Revoke (delete for everyone) a previously sent WhatsApp message"),
+			mcp.WithString("account_id", mcp.Required(), mcp.Description("Account ID")),
+			mcp.WithString("chat_jid", mcp.Required(), mcp.Description("Chat JID where the message was sent")),
+			mcp.WithString("message_id", mcp.Required(), mcp.Description("ID of the message to revoke")),
+		),
+		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			acct, errResult := requireConnectedAccount(ctx, mgr, req)
+			if errResult != nil {
+				return errResult, nil
+			}
+
+			chatJID, err := req.RequireString("chat_jid")
+			if err != nil {
+				return mcp.NewToolResultError("chat_jid is required"), nil
+			}
+			messageID, err := req.RequireString("message_id")
+			if err != nil {
+				return mcp.NewToolResultError("message_id is required"), nil
+			}
+
+			result, err := acct.RevokeMessage(ctx, chatJID, messageID)
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			return jsonResult(result)
+		},
+	)
+
+	// ── Media ───────────────────────────────────────
+
+	s.AddTool(
+		mcp.NewTool("send_media",
+			mcp.WithDescription("Send a media file (image, video, audio, document) to a WhatsApp chat. Provide either media_base64 with the file data, or both are required along with filename and mimetype."),
+			mcp.WithString("account_id", mcp.Required(), mcp.Description("Account ID")),
+			mcp.WithString("jid", mcp.Required(), mcp.Description("Recipient JID (e.g. 919999999999@s.whatsapp.net)")),
+			mcp.WithString("media_base64", mcp.Required(), mcp.Description("Base64-encoded file data")),
+			mcp.WithString("filename", mcp.Required(), mcp.Description("Original filename (e.g. photo.jpg)")),
+			mcp.WithString("mimetype", mcp.Required(), mcp.Description("MIME type (e.g. image/jpeg, video/mp4, audio/ogg, application/pdf)")),
+			mcp.WithString("caption", mcp.Description("Optional caption for the media")),
+		),
+		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			acct, errResult := requireConnectedAccount(ctx, mgr, req)
+			if errResult != nil {
+				return errResult, nil
+			}
+
+			jid, err := req.RequireString("jid")
+			if err != nil {
+				return mcp.NewToolResultError("jid is required"), nil
+			}
+			b64, err := req.RequireString("media_base64")
+			if err != nil {
+				return mcp.NewToolResultError("media_base64 is required"), nil
+			}
+			filename, err := req.RequireString("filename")
+			if err != nil {
+				return mcp.NewToolResultError("filename is required"), nil
+			}
+			mimetype, err := req.RequireString("mimetype")
+			if err != nil {
+				return mcp.NewToolResultError("mimetype is required"), nil
+			}
+
+			data, err := base64.StdEncoding.DecodeString(b64)
+			if err != nil {
+				return mcp.NewToolResultError(fmt.Sprintf("invalid base64: %v", err)), nil
+			}
+
+			var caption *string
+			if c := req.GetString("caption", ""); c != "" {
+				caption = &c
+			}
+
+			msgID, err := acct.SendMedia(ctx, jid, data, filename, mimetype, caption)
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			return jsonResult(map[string]string{"status": "sent", "message_id": msgID})
+		},
+	)
+
+	// ── Presence ────────────────────────────────────
+
+	s.AddTool(
+		mcp.NewTool("send_presence",
+			mcp.WithDescription("Set global online/offline presence status"),
+			mcp.WithString("account_id", mcp.Required(), mcp.Description("Account ID")),
+			mcp.WithString("state", mcp.Required(), mcp.Description("Presence state: 'available' or 'unavailable'")),
+		),
+		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			acct, errResult := requireConnectedAccount(ctx, mgr, req)
+			if errResult != nil {
+				return errResult, nil
+			}
+
+			state, err := req.RequireString("state")
+			if err != nil {
+				return mcp.NewToolResultError("state is required"), nil
+			}
+
+			if err := acct.SendPresence(ctx, state); err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			return jsonResult(map[string]string{"status": "ok"})
+		},
+	)
+
+	s.AddTool(
+		mcp.NewTool("send_chat_presence",
+			mcp.WithDescription("Send typing/paused indicator in a specific WhatsApp chat"),
+			mcp.WithString("account_id", mcp.Required(), mcp.Description("Account ID")),
+			mcp.WithString("jid", mcp.Required(), mcp.Description("Chat JID")),
+			mcp.WithString("state", mcp.Required(), mcp.Description("Chat presence state: 'composing' or 'paused'")),
+		),
+		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			acct, errResult := requireConnectedAccount(ctx, mgr, req)
+			if errResult != nil {
+				return errResult, nil
+			}
+
+			jid, err := req.RequireString("jid")
+			if err != nil {
+				return mcp.NewToolResultError("jid is required"), nil
+			}
+			state, err := req.RequireString("state")
+			if err != nil {
+				return mcp.NewToolResultError("state is required"), nil
+			}
+
+			if err := acct.SendChatPresence(ctx, jid, state); err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			return jsonResult(map[string]string{"status": "ok"})
+		},
+	)
+
+	// ── Contacts (full list) ────────────────────────
+
+	s.AddTool(
+		mcp.NewTool("list_contacts",
+			mcp.WithDescription("List all WhatsApp contacts known to the account"),
+			mcp.WithString("account_id", mcp.Required(), mcp.Description("Account ID")),
+		),
+		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			acct, errResult := requireConnectedAccount(ctx, mgr, req)
+			if errResult != nil {
+				return errResult, nil
+			}
+
+			contacts, err := acct.ListContacts(ctx)
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			return jsonResult(map[string]any{"contacts": contacts, "total": len(contacts)})
+		},
+	)
+
+	// ── Group management ────────────────────────────
+
+	s.AddTool(
+		mcp.NewTool("create_group",
+			mcp.WithDescription("Create a new WhatsApp group"),
+			mcp.WithString("account_id", mcp.Required(), mcp.Description("Account ID")),
+			mcp.WithString("name", mcp.Required(), mcp.Description("Group name")),
+			mcp.WithString("participants", mcp.Required(), mcp.Description("Comma-separated participant JIDs")),
+		),
+		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			acct, errResult := requireConnectedAccount(ctx, mgr, req)
+			if errResult != nil {
+				return errResult, nil
+			}
+
+			name, err := req.RequireString("name")
+			if err != nil {
+				return mcp.NewToolResultError("name is required"), nil
+			}
+			participantsStr, err := req.RequireString("participants")
+			if err != nil {
+				return mcp.NewToolResultError("participants is required"), nil
+			}
+
+			group, err := acct.CreateGroup(ctx, name, splitCSV(participantsStr))
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			return jsonResult(group)
+		},
+	)
+
+	s.AddTool(
+		mcp.NewTool("update_group",
+			mcp.WithDescription("Update WhatsApp group settings (name, description, locked, announce)"),
+			mcp.WithString("account_id", mcp.Required(), mcp.Description("Account ID")),
+			mcp.WithString("jid", mcp.Required(), mcp.Description("Group JID")),
+			mcp.WithString("name", mcp.Description("New group name")),
+			mcp.WithString("description", mcp.Description("New group description")),
+			mcp.WithString("locked", mcp.Description("'true' or 'false' — restrict group info editing to admins")),
+			mcp.WithString("announce", mcp.Description("'true' or 'false' — restrict messaging to admins only")),
+		),
+		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			acct, errResult := requireConnectedAccount(ctx, mgr, req)
+			if errResult != nil {
+				return errResult, nil
+			}
+
+			jid, err := req.RequireString("jid")
+			if err != nil {
+				return mcp.NewToolResultError("jid is required"), nil
+			}
+
+			var updateReq model.UpdateGroupRequest
+			if n := req.GetString("name", ""); n != "" {
+				updateReq.Name = &n
+			}
+			if d := req.GetString("description", ""); d != "" {
+				updateReq.Description = &d
+			}
+			if l := req.GetString("locked", ""); l != "" {
+				v := l == "true"
+				updateReq.Locked = &v
+			}
+			if a := req.GetString("announce", ""); a != "" {
+				v := a == "true"
+				updateReq.Announce = &v
+			}
+
+			if err := acct.UpdateGroup(ctx, jid, updateReq); err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			return jsonResult(map[string]string{"status": "updated"})
+		},
+	)
+
+	s.AddTool(
+		mcp.NewTool("leave_group",
+			mcp.WithDescription("Leave a WhatsApp group"),
+			mcp.WithString("account_id", mcp.Required(), mcp.Description("Account ID")),
+			mcp.WithString("jid", mcp.Required(), mcp.Description("Group JID")),
+		),
+		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			acct, errResult := requireConnectedAccount(ctx, mgr, req)
+			if errResult != nil {
+				return errResult, nil
+			}
+
+			jid, err := req.RequireString("jid")
+			if err != nil {
+				return mcp.NewToolResultError("jid is required"), nil
+			}
+
+			if err := acct.LeaveGroup(ctx, jid); err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			return jsonResult(map[string]string{"status": "left"})
+		},
+	)
+
+	s.AddTool(
+		mcp.NewTool("update_participants",
+			mcp.WithDescription("Add, remove, promote, or demote participants in a WhatsApp group"),
+			mcp.WithString("account_id", mcp.Required(), mcp.Description("Account ID")),
+			mcp.WithString("jid", mcp.Required(), mcp.Description("Group JID")),
+			mcp.WithString("participants", mcp.Required(), mcp.Description("Comma-separated participant JIDs")),
+			mcp.WithString("action", mcp.Required(), mcp.Description("Action: 'add', 'remove', 'promote', or 'demote'")),
+		),
+		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			acct, errResult := requireConnectedAccount(ctx, mgr, req)
+			if errResult != nil {
+				return errResult, nil
+			}
+
+			jid, err := req.RequireString("jid")
+			if err != nil {
+				return mcp.NewToolResultError("jid is required"), nil
+			}
+			participantsStr, err := req.RequireString("participants")
+			if err != nil {
+				return mcp.NewToolResultError("participants is required"), nil
+			}
+			action, err := req.RequireString("action")
+			if err != nil {
+				return mcp.NewToolResultError("action is required"), nil
+			}
+
+			if err := acct.UpdateGroupParticipants(ctx, jid, splitCSV(participantsStr), action); err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			return jsonResult(map[string]string{"status": "ok"})
+		},
+	)
+
+	s.AddTool(
+		mcp.NewTool("get_group_invite",
+			mcp.WithDescription("Get the invite link for a WhatsApp group"),
+			mcp.WithString("account_id", mcp.Required(), mcp.Description("Account ID")),
+			mcp.WithString("jid", mcp.Required(), mcp.Description("Group JID")),
+			mcp.WithString("reset", mcp.Description("Set to 'true' to revoke the current link and generate a new one")),
+		),
+		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			acct, errResult := requireConnectedAccount(ctx, mgr, req)
+			if errResult != nil {
+				return errResult, nil
+			}
+
+			jid, err := req.RequireString("jid")
+			if err != nil {
+				return mcp.NewToolResultError("jid is required"), nil
+			}
+			reset := req.GetString("reset", "") == "true"
+
+			link, err := acct.GetGroupInviteLink(ctx, jid, reset)
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			return jsonResult(map[string]string{"invite_link": link})
 		},
 	)
 }
