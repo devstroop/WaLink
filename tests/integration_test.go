@@ -742,6 +742,102 @@ func TestPresenceWithoutConnection(t *testing.T) {
 	}
 }
 
+// ─── messages/send endpoint ─────────────────────────
+
+func TestSendEndpointMissingPhoneAndJID(t *testing.T) {
+	srv, _ := testServer(t)
+
+	resp := authReq(t, srv, "POST", "/api/v1/accounts",
+		`{"phone_number":"7771111111","account_name":"send1"}`)
+	var cr struct{ ID string `json:"id"` }
+	decodeJSON(t, resp, &cr)
+
+	// Neither phone nor jid → 400
+	resp = authReq(t, srv, "POST", "/api/v1/accounts/"+cr.ID+"/messages/send?text=Hello", "")
+	defer resp.Body.Close()
+	if resp.StatusCode != 400 {
+		t.Errorf("expected 400 missing phone/jid, got %d", resp.StatusCode)
+	}
+	var errBody map[string]string
+	decodeJSON(t, resp, &errBody)
+	if !strings.Contains(errBody["error"], "phone or jid") {
+		t.Errorf("expected 'phone or jid' in error, got %s", errBody["error"])
+	}
+}
+
+func TestSendEndpointBothPhoneAndJID(t *testing.T) {
+	srv, _ := testServer(t)
+
+	resp := authReq(t, srv, "POST", "/api/v1/accounts",
+		`{"phone_number":"7772222222","account_name":"send2"}`)
+	var cr struct{ ID string `json:"id"` }
+	decodeJSON(t, resp, &cr)
+
+	// Both phone and jid → 400
+	resp = authReq(t, srv, "POST",
+		"/api/v1/accounts/"+cr.ID+"/messages/send?phone=1234567890&jid=x@s.whatsapp.net&text=Hello", "")
+	defer resp.Body.Close()
+	if resp.StatusCode != 400 {
+		t.Errorf("expected 400 for both phone+jid, got %d", resp.StatusCode)
+	}
+}
+
+func TestSendEndpointUnconnectedWithJID(t *testing.T) {
+	srv, mgr := testServer(t)
+
+	resp := authReq(t, srv, "POST", "/api/v1/accounts",
+		`{"phone_number":"7773333333","account_name":"send3"}`)
+	var cr struct{ ID string `json:"id"` }
+	decodeJSON(t, resp, &cr)
+
+	blockDataDir(t, mgr, cr.ID)
+
+	// jid provided, but account can't connect → 500
+	resp = authReq(t, srv, "POST",
+		"/api/v1/accounts/"+cr.ID+"/messages/send?jid=123456@s.whatsapp.net&text=Hello", "")
+	defer resp.Body.Close()
+	if resp.StatusCode != 500 {
+		t.Errorf("expected 500 for unconnected send, got %d", resp.StatusCode)
+	}
+}
+
+func TestSendEndpointMissingText(t *testing.T) {
+	srv, _ := testServer(t)
+
+	resp := authReq(t, srv, "POST", "/api/v1/accounts",
+		`{"phone_number":"7774444444","account_name":"send4"}`)
+	var cr struct{ ID string `json:"id"` }
+	decodeJSON(t, resp, &cr)
+
+	// jid given but no text and no file → 400
+	resp = authReq(t, srv, "POST",
+		"/api/v1/accounts/"+cr.ID+"/messages/send?jid=123456@s.whatsapp.net", "")
+	defer resp.Body.Close()
+	if resp.StatusCode != 400 {
+		t.Errorf("expected 400 for missing text, got %d", resp.StatusCode)
+	}
+}
+
+func TestSendEndpointTextInBody(t *testing.T) {
+	srv, mgr := testServer(t)
+
+	resp := authReq(t, srv, "POST", "/api/v1/accounts",
+		`{"phone_number":"7775555555","account_name":"send5"}`)
+	var cr struct{ ID string `json:"id"` }
+	decodeJSON(t, resp, &cr)
+
+	blockDataDir(t, mgr, cr.ID)
+
+	// text in JSON body, jid in query → 500 (can't connect, but proves routing works)
+	resp = authReq(t, srv, "POST",
+		"/api/v1/accounts/"+cr.ID+"/messages/send?jid=123456@s.whatsapp.net",
+		`{"text":"from body"}`)
+	defer resp.Body.Close()
+	if resp.StatusCode != 500 {
+		t.Errorf("expected 500 (unconnected) for body text, got %d", resp.StatusCode)
+	}
+}
+
 // ─── Rate Limiting ──────────────────────────────────
 
 func TestRateLimitEnforced(t *testing.T) {

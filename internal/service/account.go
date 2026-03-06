@@ -287,6 +287,35 @@ func (a *Account) Logout() error {
 	return nil
 }
 
+// ResolvePhone checks whether a phone number is registered on WhatsApp and
+// returns the canonical JID string (e.g. "919999999999@s.whatsapp.net").
+// The phone can be in any format — it will be normalised to digits first.
+func (a *Account) ResolvePhone(ctx context.Context, phone string) (string, error) {
+	a.mu.RLock()
+	client := a.client
+	a.mu.RUnlock()
+
+	if client == nil || !client.IsConnected() {
+		return "", fmt.Errorf("not connected")
+	}
+
+	normalized := NormalizePhone(phone)
+	if len(normalized) < 7 || len(normalized) > 15 {
+		return "", fmt.Errorf("invalid phone number %q", phone)
+	}
+
+	resp, err := client.IsOnWhatsApp(ctx, []string{"+" + normalized})
+	if err != nil {
+		return "", fmt.Errorf("phone lookup: %w", err)
+	}
+	for _, r := range resp {
+		if r.IsIn {
+			return r.JID.String(), nil
+		}
+	}
+	return "", fmt.Errorf("phone %s is not registered on WhatsApp", normalized)
+}
+
 // SendMessage sends a text message to the given JID.
 func (a *Account) SendMessage(ctx context.Context, jid string, text string) (string, error) {
 	a.mu.RLock()

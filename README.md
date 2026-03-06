@@ -49,10 +49,24 @@ Base: `/api/v1/accounts`  |  `{id}` = account UUID
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/{id}/messages?chat=JID&limit=50&before=RFC3339` | Chat message history (paginated) |
-| POST | `/{id}/messages` | Send message (JSON or multipart) |
+| POST | `/{id}/messages/send?phone=NUM&text=...` | **Send message by phone** (resolves JID automatically) |
+| POST | `/{id}/messages/send?jid=JID&text=...` | Send message by JID |
+| POST | `/{id}/messages` | Send message — legacy (JSON body with `chat` field) |
 | POST | `/{id}/messages/react` | React to a message |
 | POST | `/{id}/messages/read` | Mark messages as read |
 | DELETE | `/{id}/messages/{msg_id}?chat=JID` | Revoke (delete for everyone) |
+
+#### `POST /{id}/messages/send`
+
+Single-call send — no need to resolve the JID first.
+
+| Param | In | Required | Description |
+|-------|------|----------|-------------|
+| `phone` | query | one of | Phone number (e.g. `919999999999`). Auto-resolved to JID via WhatsApp. |
+| `jid` | query | one of | WhatsApp JID (e.g. `919999999999@s.whatsapp.net`). Use when you already have it. |
+| `text` | query or body | yes* | Message text. Query param takes precedence over body. *Not required when sending a file. |
+| `reply_to` | query or body | no | Message ID to reply to. |
+| `file` | multipart body | no | File attachment. `text` becomes the caption. |
 
 ### Chats
 
@@ -152,7 +166,19 @@ curl -X POST http://localhost:3000/api/v1/accounts/{id}/messages \
   -H "$AUTH" -H "Content-Type: application/json" \
   -d '{"chat": "919876543210@s.whatsapp.net", "text": "Hello from WaLink!"}'
 
-# Send file with caption
+# Send text by phone number (single call — auto-resolves JID)
+curl -X POST "http://localhost:3000/api/v1/accounts/{id}/messages/send?phone=919876543210&text=Hello%20from%20WaLink!" \
+  -H "$AUTH"
+
+# Send text by JID
+curl -X POST "http://localhost:3000/api/v1/accounts/{id}/messages/send?jid=919876543210@s.whatsapp.net&text=Hello%20from%20WaLink!" \
+  -H "$AUTH"
+
+# Send file with caption (via /messages/send)
+curl -X POST "http://localhost:3000/api/v1/accounts/{id}/messages/send?phone=919876543210" \
+  -H "$AUTH" -F "text=Check this out" -F "file=@document.pdf"
+
+# Send file with caption (legacy)
 curl -X POST http://localhost:3000/api/v1/accounts/{id}/messages \
   -H "$AUTH" -F "chat=919876543210@s.whatsapp.net" \
   -F "text=Check this out" -F "file=@document.pdf"

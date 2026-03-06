@@ -121,7 +121,147 @@ func (a *API) DeleteSession(w http.ResponseWriter, r *http.Request) {
 
 // ── Messaging ───────────────────────────────────────
 
-// SendMessage — POST /api/v1/accounts/{account_id}/messages
+// SendMessageSend — POST /api/v1/accounts/{account_id}/messages/send
+//
+// A single-call endpoint that accepts phone or JID and text via query parameters.
+// Files are sent as multipart/form-data body. Text can appear in query (?text=...)
+// or in the multipart form field "text" (query takes precedence).
+//
+// Examples:
+//
+//	POST /{id}/messages/send?phone=919999999999&text=Hello
+//	POST /{id}/messages/send?jid=919999999999@s.whatsapp.net&text=Hello
+//	POST /{id}/messages/send?phone=919999999999          (text in body or multipart)
+//	POST /{id}/messages/send?phone=919999999999          (file in multipart, text as caption)
+func (a *API) SendMessageSend(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+
+	// ── Validate recipient params early (before connecting) ──
+	qJID := q.Get("jid")
+	phone := q.Get("phone")
+	if qJID == "" && phone == "" {
+		writeError(w, http.StatusBadRequest, "phone or jid query parameter required")
+		return
+	}
+	if qJID != "" && phone != "" {
+		writeError(w, http.StatusBadRequest, "provide phone or jid, not both")
+		return
+	}
+
+	// ── Pre-read text / body so we can validate before connecting ──
+	text := q.Get("text")
+	replyTo := q.Get("reply_to")
+	ct := r.Header.Get("Content-Type")
+	isMultipart := len(ct) > 19 && ct[:19] == "multipart/form-data"
+
+	// For non-multipart requests without query text, try parsing JSON body now.
+	var jsonReq model.SendMessageRequest
+	if !isMultipart && text == "" {
+		if err := readJSON(r, &jsonReq); err == nil {
+			if jsonReq.Text != nil && *jsonReq.Text != "" {
+				text = *jsonReq.Text
+			}
+			if replyTo == "" && jsonReq.ReplyTo != nil {
+				replyTo = *jsonReq.ReplyTo
+			}
+		}
+	}
+
+	// If not multipart and still no text, reject early.
+	if !isMultipart && text == "" {
+		writeError(w, http.StatusBadRequest, "text required (in query ?text=... or JSON body)")
+		return
+	}
+
+	// ── Now connect (expensive) ────────────────────
+	acct := a.requireConnectedAccount(w, r)
+	if acct == nil {
+		return
+	}
+
+	// ── Resolve recipient ──────────────────────────
+	chatJID := qJID
+	if phone != "" {
+		resolved, err := acct.ResolvePhone(r.Context(), phone)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		chatJID = resolved
+	}
+
+	// ── Multipart: may contain file and/or text ────
+	if isMultipart {
+		if err := r.ParseMultipartForm(10 << 20); err != nil {
+			writeError(w, http.StatusBadRequest, "parse multipart: "+err.Error())
+			return
+		}
+
+		// Body text is used only when query text was not provided.
+		if text == "" {
+			text = r.FormValue("text")
+		}
+		if replyTo == "" {
+			replyTo = r.FormValue("reply_to")
+		}
+
+		file, header, err := r.FormFile("file")
+		if err == nil {
+			defer file.Close()
+			data := make([]byte, header.Size)
+			if _, err := file.Read(data); err != nil {
+				writeError(w, http.StatusInternalServerError, "read file: "+err.Error())
+				return
+			}
+			var caption *string
+			if text != "" {
+				caption = &text
+			}
+			msgID, err := acct.SendMedia(r.Context(), chatJID, data, header.Filename, header.Header.Get("Content-Type"), caption)
+			if err != nil {
+				writeError(w, http.StatusInternalServerError, err.Error())
+				return
+			}
+			writeJSON(w, http.StatusOK, model.SendMessageResponse{Status: "sent", MessageID: msgID})
+			return
+		}
+
+		// No file — send text only
+		if text == "" {
+			writeError(w, http.StatusBadRequest, "text or file required")
+			return
+		}
+		var msgID string
+		var sendErr error
+		if replyTo != "" {
+			msgID, sendErr = acct.SendReply(r.Context(), chatJID, replyTo, text)
+		} else {
+			msgID, sendErr = acct.SendMessage(r.Context(), chatJID, text)
+		}
+		if sendErr != nil {
+			writeError(w, http.StatusInternalServerError, sendErr.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, model.SendMessageResponse{Status: "sent", MessageID: msgID})
+		return
+	}
+
+	// ── Non-multipart: text already resolved above ──
+	var msgID string
+	var err error
+	if replyTo != "" {
+		msgID, err = acct.SendReply(r.Context(), chatJID, replyTo, text)
+	} else {
+		msgID, err = acct.SendMessage(r.Context(), chatJID, text)
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, model.SendMessageResponse{Status: "sent", MessageID: msgID})
+}
+
+// SendMessage — POST /api/v1/accounts/{account_id}/messages  (legacy)
 func (a *API) SendMessage(w http.ResponseWriter, r *http.Request) {
 	acct := a.requireConnectedAccount(w, r)
 	if acct == nil {
