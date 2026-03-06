@@ -1,12 +1,14 @@
 # --- Build stage ---
 FROM golang:alpine AS builder
 
+RUN apk add --no-cache git
+
 WORKDIR /src
 
 # Copy all source (local replace directive requires full whatsmeow source)
 COPY . .
 
-RUN GOTOOLCHAIN=auto go build -trimpath -o /bin/walink ./cmd/walink
+RUN CGO_ENABLED=0 GOTOOLCHAIN=auto go build -trimpath -o /bin/walink ./cmd/walink
 
 # --- Runtime stage ---
 FROM alpine:3.21
