@@ -59,6 +59,6 @@ path = "/api-docs"
 
 ## Environment Notes
 
-- **SQLite**: Requires CGO (uses `mattn/go-sqlite3`). On Linux, ensure `gcc` is available.
+- **SQLite**: Uses pure-Go `modernc.org/sqlite` — no CGO or C compiler required.
 - **Idle timeout**: A background goroutine polls every 30s. When an account has been idle longer than `idle_timeout`, it disconnects automatically. Any API request to that account reconnects it on demand.
 - **secret_key**: Used for Bearer token auth. All API endpoints under `/api/v1/` require `Authorization: Bearer <secret_key>`. Health endpoints are unauthenticated.
