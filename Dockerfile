@@ -6,7 +6,6 @@ WORKDIR /src
 # Copy all source (local replace directive requires full whatsmeow source)
 COPY . .
 
-RUN go mod download
 RUN go build -trimpath -o /bin/walink ./cmd/walink
 
 # --- Runtime stage ---
