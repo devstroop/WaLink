@@ -1,8 +1,10 @@
 .git
 .gitignore
-*.md
-!whatsmeow/**
 Dockerfile
 docker-compose.yml
 .dockerignore
 tests/
+README.md
+ARCHITECTURE.md
+CHANGELOG.md
+CONFIGURATION.md

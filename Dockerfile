@@ -5,7 +5,7 @@ WORKDIR /src
 
 # Copy dependency files first for better layer caching
 COPY go.mod go.sum ./
-COPY whatsmeow/go.mod whatsmeow/go.sum ./whatsmeow/
+COPY whatsmeow/ ./whatsmeow/
 
 RUN go mod download
 
