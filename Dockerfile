@@ -1,12 +1,12 @@
 # --- Build stage ---
-FROM golang:1.25-alpine AS builder
+FROM golang:alpine AS builder
 
 WORKDIR /src
 
 # Copy all source (local replace directive requires full whatsmeow source)
 COPY . .
 
-RUN go build -trimpath -o /bin/walink ./cmd/walink
+RUN GOTOOLCHAIN=auto go build -trimpath -o /bin/walink ./cmd/walink
 
 # --- Runtime stage ---
 FROM alpine:3.21
