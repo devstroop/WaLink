@@ -98,9 +98,10 @@ type PhoneLinkResponse struct {
 // Messaging
 // ──────────────────────────────────────────────────────
 
-// SendMessageRequest is the JSON body for POST /accounts/{id}/messages.
+// SendMessageRequest is the JSON body for POST /accounts/{id}/messages/send.
 type SendMessageRequest struct {
-	Chat    string  `json:"chat"`
+	Chat    string  `json:"chat"`              // recipient JID (alternative to phone)
+	Phone   string  `json:"phone,omitempty"`   // phone number (alternative to chat/jid)
 	Text    *string `json:"text,omitempty"`
 	ReplyTo *string `json:"reply_to,omitempty"` // message ID to reply to
 	// File handled separately via multipart

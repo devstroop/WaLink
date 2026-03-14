@@ -138,20 +138,13 @@ func (a *API) DeleteSession(w http.ResponseWriter, r *http.Request) {
 //	POST /{id}/messages/send?jid=919999999999@s.whatsapp.net&text=Hello
 //	POST /{id}/messages/send?phone=919999999999          (text in body or multipart)
 //	POST /{id}/messages/send?phone=919999999999          (file in multipart, text as caption)
+//	POST /{id}/messages/send  {"chat":"...@s.whatsapp.net","text":"Hello"} (JSON body)
 func (a *API) SendMessageSend(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 
-	// ── Validate recipient params early (before connecting) ──
+	// ── Read recipient from query params ──
 	qJID := q.Get("jid")
 	phone := q.Get("phone")
-	if qJID == "" && phone == "" {
-		writeError(w, http.StatusBadRequest, "phone or jid query parameter required")
-		return
-	}
-	if qJID != "" && phone != "" {
-		writeError(w, http.StatusBadRequest, "provide phone or jid, not both")
-		return
-	}
 
 	// ── Pre-read text / body so we can validate before connecting ──
 	text := q.Get("text")
@@ -159,17 +152,35 @@ func (a *API) SendMessageSend(w http.ResponseWriter, r *http.Request) {
 	ct := r.Header.Get("Content-Type")
 	isMultipart := strings.HasPrefix(ct, "multipart/form-data")
 
-	// For non-multipart requests without query text, try parsing JSON body now.
+	// For non-multipart requests, try parsing JSON body to fill in missing params.
 	var jsonReq model.SendMessageRequest
-	if !isMultipart && text == "" {
+	if !isMultipart {
 		if err := readJSON(r, &jsonReq); err == nil {
-			if jsonReq.Text != nil && *jsonReq.Text != "" {
+			if text == "" && jsonReq.Text != nil && *jsonReq.Text != "" {
 				text = *jsonReq.Text
 			}
 			if replyTo == "" && jsonReq.ReplyTo != nil {
 				replyTo = *jsonReq.ReplyTo
 			}
+			// Accept recipient from JSON body when not provided via query.
+			if qJID == "" && phone == "" {
+				if jsonReq.Chat != "" {
+					qJID = jsonReq.Chat
+				} else if jsonReq.Phone != "" {
+					phone = jsonReq.Phone
+				}
+			}
 		}
+	}
+
+	// ── Validate recipient ──
+	if qJID == "" && phone == "" {
+		writeError(w, http.StatusBadRequest, "phone or jid/chat required (query param or JSON body)")
+		return
+	}
+	if qJID != "" && phone != "" {
+		writeError(w, http.StatusBadRequest, "provide phone or jid/chat, not both")
+		return
 	}
 
 	// If not multipart and still no text, reject early.

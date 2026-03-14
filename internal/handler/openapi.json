@@ -107,9 +107,9 @@
       },
       "SendMessageRequest": {
         "type": "object",
-        "required": ["chat"],
         "properties": {
-          "chat": { "type": "string", "example": "919876543210@s.whatsapp.net" },
+          "chat": { "type": "string", "example": "919876543210@s.whatsapp.net", "description": "Recipient JID (alternative to phone)" },
+          "phone": { "type": "string", "example": "919876543210", "description": "Phone number, digits only (alternative to chat)" },
           "text": { "type": "string", "example": "Hello from WaLink!" },
           "reply_to": { "type": "string", "description": "Message ID to reply to (optional)" }
         }
@@ -514,22 +514,29 @@
           "400": { "description": "Missing chat parameter" },
           "404": { "description": "Account not found" }
         }
-      },
+      }
+    },
+    "/api/v1/accounts/{account_id}/messages/send": {
+      "parameters": [{ "$ref": "#/components/parameters/AccountId" }],
       "post": {
         "tags": ["Messaging"],
         "summary": "Send a message",
-        "description": "Send text, file, or both. Use 'reply_to' to quote an existing message. Provide at least 'text' or 'file'.",
+        "description": "Send text, file, or both. Recipient can be specified via query params (?phone= or ?jid=) or in the JSON body (chat or phone field). Query params take precedence. Use 'reply_to' to quote an existing message.",
+        "parameters": [
+          { "name": "phone", "in": "query", "schema": { "type": "string" }, "description": "Phone number (international, digits only)" },
+          { "name": "jid", "in": "query", "schema": { "type": "string" }, "description": "WhatsApp JID (e.g. 919999999999@s.whatsapp.net)" },
+          { "name": "text", "in": "query", "schema": { "type": "string" }, "description": "Message text (alternative to JSON body)" },
+          { "name": "reply_to", "in": "query", "schema": { "type": "string" }, "description": "Message ID to reply to" }
+        ],
         "requestBody": {
-          "required": true,
           "content": {
             "multipart/form-data": {
               "schema": {
                 "type": "object",
-                "required": ["chat"],
                 "properties": {
-                  "chat": { "type": "string", "description": "Recipient JID" },
                   "text": { "type": "string", "description": "Text message or caption" },
-                  "file": { "type": "string", "format": "binary", "description": "File attachment" }
+                  "file": { "type": "string", "format": "binary", "description": "File attachment" },
+                  "reply_to": { "type": "string", "description": "Message ID to reply to" }
                 }
               }
             },
