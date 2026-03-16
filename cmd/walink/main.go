@@ -83,14 +83,11 @@ func main() {
 	if mailer.Enabled() {
 		log.Info().Str("host", cfg.SMTP.Host).Int("port", cfg.SMTP.Port).Msg("SMTP configured")
 	} else {
-		log.Warn().Msg("SMTP not configured — forgot-password emails will not be sent")
+		log.Warn().Msg("SMTP not configured — forgot-password tokens will be logged to console")
 	}
 
-	// Public base URL for reset links
-	baseURL := fmt.Sprintf("http://%s:%d", cfg.Server.Host, cfg.Server.Port)
-
 	// Public auth endpoints (no auth middleware)
-	authH := handler.NewAuthHandler(db, cfg.Auth.SecretKey, cfg.Auth.RegistrationEnabled, mailer, baseURL)
+	authH := handler.NewAuthHandler(db, cfg.Auth.SecretKey, cfg.Auth.RegistrationEnabled, mailer)
 	mux.HandleFunc("POST /api/v1/auth/login", authH.Login)
 	mux.HandleFunc("POST /api/v1/auth/register", authH.Register)
 	mux.HandleFunc("POST /api/v1/auth/forgot-password", authH.ForgotPassword)

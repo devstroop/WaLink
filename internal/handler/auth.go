@@ -23,12 +23,11 @@ type AuthHandler struct {
 	secretKey           string
 	registrationEnabled bool
 	smtp                *smtpclient.Client
-	baseURL             string // public base URL for reset links e.g. "http://localhost:3000"
 }
 
 // NewAuthHandler creates a new auth handler.
-func NewAuthHandler(db *database.DB, secretKey string, registrationEnabled bool, smtp *smtpclient.Client, baseURL string) *AuthHandler {
-	return &AuthHandler{db: db, secretKey: secretKey, registrationEnabled: registrationEnabled, smtp: smtp, baseURL: baseURL}
+func NewAuthHandler(db *database.DB, secretKey string, registrationEnabled bool, smtp *smtpclient.Client) *AuthHandler {
+	return &AuthHandler{db: db, secretKey: secretKey, registrationEnabled: registrationEnabled, smtp: smtp}
 }
 
 // Login authenticates a user and returns a JWT.
@@ -211,7 +210,7 @@ func (h *AuthHandler) ForgotPassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resetLink := h.baseURL + "/api/v1/auth/reset-password?token=" + plainToken
+	resetLink := requestBaseURL(r) + "/api/v1/auth/reset-password?token=" + plainToken
 
 	if h.smtp != nil && h.smtp.Enabled() {
 		// Send email
@@ -293,4 +292,13 @@ func (h *AuthHandler) ResetPassword(w http.ResponseWriter, r *http.Request) {
 	_ = h.db.MarkResetTokenUsed(rec.ID)
 
 	writeJSON(w, http.StatusOK, map[string]string{"message": "password reset successfully"})
+}
+
+// requestBaseURL derives the public base URL from the incoming request.
+func requestBaseURL(r *http.Request) string {
+	scheme := "http"
+	if r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https" {
+		scheme = "https"
+	}
+	return scheme + "://" + r.Host
 }
