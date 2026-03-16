@@ -152,3 +152,44 @@ The global `RateLimit` middleware limits concurrent requests, but there's no per
 
 ### ~~9. MCP Has No Reaction/Read Receipt Tools~~ ✅ Resolved
 `react_message` and `mark_read` tools now available.
+
+---
+
+## Feature: RBAC Authentication
+
+### 10. RBAC User Management & Authorization
+**Severity:** High  
+**Status:** ✅ Done
+
+Currently auth uses a single static `secret_key`. Need proper user management with role-based access control.
+
+#### Requirements
+- Users authenticate with **username + password** → JWT bearer token
+- `secret_key` remains as system admin backdoor (same `Authorization: Bearer` header)
+- Two built-in roles: `admin` (full access), `user` (restricted)
+- Accounts get associated to a user (`account.user_id` FK)
+- Admin sees all accounts; user sees only their own
+- No users exist initially — system admin uses `secret_key` to bootstrap
+
+#### Implementation Summary
+
+**DB tables added:** `role`, `role_permission`, `user` + `account.user_id` nullable FK  
+**Seed data:** `admin` role (`*` permission), `user` role (restricted set)  
+**Auth flow:** Bearer token → secret_key match (system admin) → JWT decode (user auth) → 401  
+**Password storage:** bcrypt  
+**JWT:** HS256, signed with `secret_key`, 24h expiry  
+**Account scoping:** non-admin users see only their own accounts (filtered in ListAccounts + requireAccount)  
+**Permissions:** `resource:action` strings with `*` wildcard support (`messages:*`, `*`)  
+
+#### Subtasks
+- [x] DB: `role`, `role_permission`, `user` tables + seed migration + `account.user_id`
+- [x] DB: user/role CRUD methods
+- [x] Model: auth/user/role request/response types
+- [x] Middleware: dual-path auth (secret vs JWT), `RequirePermission()`, context identity
+- [x] Handler: `/api/v1/auth/login`
+- [x] Handler: user CRUD
+- [x] Handler: role CRUD
+- [x] Routes: wire new endpoints + permission wrapping
+- [x] `main.go`: pass DB to auth middleware
+- [x] Account scoping by `user_id`
+- [x] MCP: auth middleware covers MCP endpoint; `GetIdentityFromContext()` available for future tool-level checks
