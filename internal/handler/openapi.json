@@ -9,11 +9,13 @@
   "security": [{ "BearerAuth": [] }],
   "components": {
     "securitySchemes": {
-      "BearerAuth": { "type": "http", "scheme": "bearer" }
+      "BearerAuth": { "type": "http", "scheme": "bearer", "description": "Use a static secret_key or a JWT token obtained from /api/v1/auth/login" }
     },
     "parameters": {
       "AccountId": { "name": "account_id", "in": "path", "required": true, "schema": { "type": "string" } },
-      "JID": { "name": "jid", "in": "path", "required": true, "schema": { "type": "string" } }
+      "JID": { "name": "jid", "in": "path", "required": true, "schema": { "type": "string" } },
+      "UserId": { "name": "user_id", "in": "path", "required": true, "schema": { "type": "string" } },
+      "RoleId": { "name": "role_id", "in": "path", "required": true, "schema": { "type": "string" } }
     },
     "schemas": {
       "AccountInfo": {
@@ -22,6 +24,7 @@
           "id": { "type": "string" },
           "phone_number": { "type": "string", "nullable": true },
           "account_name": { "type": "string" },
+          "user_id": { "type": "string", "description": "ID of the user who owns this account" },
           "authorized": { "type": "boolean" },
           "created_at": { "type": "string" }
         }
@@ -37,7 +40,8 @@
         "type": "object",
         "properties": {
           "phone_number": { "type": "string", "example": "919876543210" },
-          "account_name": { "type": "string", "example": "My Account" }
+          "account_name": { "type": "string", "example": "My Account" },
+          "user_id": { "type": "string", "description": "Assign to a specific user (admin only; defaults to caller)" }
         }
       },
       "CreateAccountResponse": {
@@ -363,6 +367,92 @@
       "ErrorResponse": {
         "type": "object",
         "properties": { "error": { "type": "string" } }
+      },
+      "LoginRequest": {
+        "type": "object",
+        "required": ["username", "password"],
+        "properties": {
+          "username": { "type": "string", "example": "admin" },
+          "password": { "type": "string", "format": "password", "example": "changeme" }
+        }
+      },
+      "LoginResponse": {
+        "type": "object",
+        "properties": {
+          "token": { "type": "string", "description": "JWT bearer token" },
+          "expires_at": { "type": "string", "format": "date-time" },
+          "user": { "$ref": "#/components/schemas/UserInfo" }
+        }
+      },
+      "UserInfo": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "username": { "type": "string" },
+          "role_id": { "type": "string" },
+          "role_name": { "type": "string" },
+          "enabled": { "type": "boolean" },
+          "created_at": { "type": "string", "format": "date-time" }
+        }
+      },
+      "CreateUserRequest": {
+        "type": "object",
+        "required": ["username", "password", "role_id"],
+        "properties": {
+          "username": { "type": "string", "example": "alice" },
+          "password": { "type": "string", "format": "password", "minLength": 8 },
+          "role_id": { "type": "string", "description": "UUID of the role to assign" }
+        }
+      },
+      "UpdateUserRequest": {
+        "type": "object",
+        "properties": {
+          "password": { "type": "string", "format": "password", "minLength": 8 },
+          "role_id": { "type": "string" },
+          "enabled": { "type": "boolean" }
+        }
+      },
+      "UserListResponse": {
+        "type": "object",
+        "properties": {
+          "users": { "type": "array", "items": { "$ref": "#/components/schemas/UserInfo" } },
+          "total": { "type": "integer" }
+        }
+      },
+      "RoleInfo": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "name": { "type": "string" },
+          "description": { "type": "string" },
+          "is_builtin": { "type": "boolean" },
+          "permissions": { "type": "array", "items": { "type": "string" } },
+          "created_at": { "type": "string", "format": "date-time" }
+        }
+      },
+      "CreateRoleRequest": {
+        "type": "object",
+        "required": ["name", "permissions"],
+        "properties": {
+          "name": { "type": "string", "example": "viewer" },
+          "description": { "type": "string" },
+          "permissions": { "type": "array", "items": { "type": "string" }, "example": ["accounts:read", "messages:read"] }
+        }
+      },
+      "UpdateRoleRequest": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string" },
+          "description": { "type": "string" },
+          "permissions": { "type": "array", "items": { "type": "string" } }
+        }
+      },
+      "RoleListResponse": {
+        "type": "object",
+        "properties": {
+          "roles": { "type": "array", "items": { "$ref": "#/components/schemas/RoleInfo" } },
+          "total": { "type": "integer" }
+        }
       }
     }
   },
@@ -774,11 +864,145 @@
           "404": { "description": "Account not found" }
         }
       }
+    },
+    "/api/v1/auth/login": {
+      "post": {
+        "tags": ["Auth"],
+        "summary": "Login with username and password",
+        "description": "Returns a JWT bearer token valid for 24 hours.",
+        "security": [],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/LoginRequest" } } } },
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/LoginResponse" } } } },
+          "400": { "description": "Missing fields" },
+          "401": { "description": "Invalid credentials or account disabled" }
+        }
+      }
+    },
+    "/api/v1/users": {
+      "get": {
+        "tags": ["Users"],
+        "summary": "List all users",
+        "description": "Requires users:* permission.",
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/UserListResponse" } } } },
+          "403": { "description": "Forbidden" }
+        }
+      },
+      "post": {
+        "tags": ["Users"],
+        "summary": "Create a new user",
+        "description": "Requires users:* permission. Password must be at least 8 characters.",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreateUserRequest" } } } },
+        "responses": {
+          "201": { "description": "Created", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/UserInfo" } } } },
+          "400": { "description": "Validation error" },
+          "403": { "description": "Forbidden" },
+          "409": { "description": "Username already exists" }
+        }
+      }
+    },
+    "/api/v1/users/{user_id}": {
+      "parameters": [{ "$ref": "#/components/parameters/UserId" }],
+      "get": {
+        "tags": ["Users"],
+        "summary": "Get user details",
+        "description": "Users can access their own record; others require users:* permission.",
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/UserInfo" } } } },
+          "403": { "description": "Forbidden" },
+          "404": { "description": "Not found" }
+        }
+      },
+      "patch": {
+        "tags": ["Users"],
+        "summary": "Update a user",
+        "description": "Requires users:* permission. Can update password, role, or enabled status.",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/UpdateUserRequest" } } } },
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/UserInfo" } } } },
+          "400": { "description": "Validation error" },
+          "403": { "description": "Forbidden" },
+          "404": { "description": "Not found" }
+        }
+      },
+      "delete": {
+        "tags": ["Users"],
+        "summary": "Delete a user",
+        "description": "Requires users:* permission.",
+        "responses": {
+          "200": { "description": "OK" },
+          "403": { "description": "Forbidden" },
+          "404": { "description": "Not found" }
+        }
+      }
+    },
+    "/api/v1/roles": {
+      "get": {
+        "tags": ["Roles"],
+        "summary": "List all roles",
+        "description": "Requires roles:read permission. Includes permissions for each role.",
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RoleListResponse" } } } },
+          "403": { "description": "Forbidden" }
+        }
+      },
+      "post": {
+        "tags": ["Roles"],
+        "summary": "Create a custom role",
+        "description": "Requires roles:write permission.",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreateRoleRequest" } } } },
+        "responses": {
+          "201": { "description": "Created", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RoleInfo" } } } },
+          "400": { "description": "Validation error" },
+          "403": { "description": "Forbidden" },
+          "409": { "description": "Role name already exists" }
+        }
+      }
+    },
+    "/api/v1/roles/{role_id}": {
+      "parameters": [{ "$ref": "#/components/parameters/RoleId" }],
+      "get": {
+        "tags": ["Roles"],
+        "summary": "Get role details",
+        "description": "Requires roles:read permission.",
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RoleInfo" } } } },
+          "403": { "description": "Forbidden" },
+          "404": { "description": "Not found" }
+        }
+      },
+      "patch": {
+        "tags": ["Roles"],
+        "summary": "Update a role",
+        "description": "Requires roles:write permission. Built-in roles (admin, user) cannot be modified.",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/UpdateRoleRequest" } } } },
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RoleInfo" } } } },
+          "400": { "description": "Validation error" },
+          "403": { "description": "Forbidden / built-in role" },
+          "404": { "description": "Not found" }
+        }
+      },
+      "delete": {
+        "tags": ["Roles"],
+        "summary": "Delete a role",
+        "description": "Requires roles:write permission. Built-in roles and roles with assigned users cannot be deleted.",
+        "responses": {
+          "200": { "description": "OK" },
+          "403": { "description": "Forbidden" },
+          "404": { "description": "Not found" },
+          "409": { "description": "Role has assigned users or is built-in" }
+        }
+      }
     }
   },
   "tags": [
     { "name": "Health", "description": "Server health" },
-    { "name": "Accounts", "description": "Account CRUD (Administration)" },
+    { "name": "Auth", "description": "Authentication (login, JWT tokens)" },
+    { "name": "Users", "description": "User management (RBAC)" },
+    { "name": "Roles", "description": "Role and permission management (RBAC)" },
+    { "name": "Accounts", "description": "WhatsApp account CRUD" },
     { "name": "Session", "description": "WhatsApp session lifecycle (QR, pair, logout)" },
     { "name": "Proxy", "description": "Proxy configuration" },
     { "name": "Messaging", "description": "Send messages, react, revoke, mark read" },
