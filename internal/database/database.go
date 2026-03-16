@@ -23,6 +23,7 @@ type AccountRecord struct {
 	PhoneNumber string
 	AccountName string
 	DataDir     string
+	UserID      string // FK to user.id (empty = unassigned / legacy)
 	CreatedAt   string
 	UpdatedAt   string
 }
@@ -58,6 +59,27 @@ type WebhookConfigRecord struct {
 	Secret    string // optional HMAC signing secret
 	Events    string // comma-separated event types, empty = all
 	Enabled   bool
+}
+
+// RoleRecord is a persistent role row.
+type RoleRecord struct {
+	ID          string
+	Name        string
+	Description string
+	IsBuiltin   bool // built-in roles (admin, user) cannot be deleted
+	CreatedAt   string
+}
+
+// UserRecord is a persistent user row.
+type UserRecord struct {
+	ID           string
+	Username     string
+	PasswordHash string
+	RoleID       string
+	RoleName     string // joined from role table (read-only)
+	Enabled      bool
+	CreatedAt    string
+	UpdatedAt    string
 }
 
 // Open creates or opens the SQLite database at path, running migrations.
@@ -149,7 +171,99 @@ func (d *DB) migrate() error {
 			enabled    INTEGER NOT NULL DEFAULT 1
 		);
 	`)
-	return err
+	if err != nil {
+		return err
+	}
+
+	// ── RBAC tables ─────────────────────────────────
+
+	_, err = d.db.Exec(`
+		CREATE TABLE IF NOT EXISTS role (
+			id          TEXT PRIMARY KEY,
+			name        TEXT NOT NULL UNIQUE,
+			description TEXT NOT NULL DEFAULT '',
+			is_builtin  INTEGER NOT NULL DEFAULT 0,
+			created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+		);
+	`)
+	if err != nil {
+		return err
+	}
+
+	_, err = d.db.Exec(`
+		CREATE TABLE IF NOT EXISTS role_permission (
+			role_id    TEXT NOT NULL REFERENCES role(id) ON DELETE CASCADE,
+			permission TEXT NOT NULL,
+			PRIMARY KEY (role_id, permission)
+		);
+	`)
+	if err != nil {
+		return err
+	}
+
+	_, err = d.db.Exec(`
+		CREATE TABLE IF NOT EXISTS user (
+			id            TEXT PRIMARY KEY,
+			username      TEXT NOT NULL UNIQUE,
+			password_hash TEXT NOT NULL,
+			role_id       TEXT NOT NULL REFERENCES role(id),
+			enabled       INTEGER NOT NULL DEFAULT 1,
+			created_at    TEXT NOT NULL DEFAULT (datetime('now')),
+			updated_at    TEXT NOT NULL DEFAULT (datetime('now'))
+		);
+	`)
+	if err != nil {
+		return err
+	}
+
+	// Add user_id to account (idempotent — SQLite ignores if column exists)
+	// NULL means no user assigned (legacy/unassigned accounts). FK only enforced when non-NULL.
+	d.db.Exec(`ALTER TABLE account ADD COLUMN user_id TEXT REFERENCES user(id) DEFAULT NULL`)
+
+	// ── Seed built-in roles ─────────────────────────
+	if err := d.seedRoles(); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// seedRoles inserts the built-in admin and user roles with default permissions.
+func (d *DB) seedRoles() error {
+	// Admin role — wildcard permission
+	_, err := d.db.Exec(`INSERT OR IGNORE INTO role (id, name, description, is_builtin) VALUES ('builtin-admin', 'admin', 'Full system access', 1)`)
+	if err != nil {
+		return err
+	}
+	_, err = d.db.Exec(`INSERT OR IGNORE INTO role_permission (role_id, permission) VALUES ('builtin-admin', '*')`)
+	if err != nil {
+		return err
+	}
+
+	// User role — restricted permissions
+	_, err = d.db.Exec(`INSERT OR IGNORE INTO role (id, name, description, is_builtin) VALUES ('builtin-user', 'user', 'Standard user access', 1)`)
+	if err != nil {
+		return err
+	}
+
+	userPerms := []string{
+		"accounts:read",
+		"session:*",
+		"messages:*",
+		"chats:read",
+		"contacts:*",
+		"groups:*",
+		"presence:*",
+		"profile:*",
+	}
+	for _, p := range userPerms {
+		_, err = d.db.Exec(`INSERT OR IGNORE INTO role_permission (role_id, permission) VALUES ('builtin-user', ?)`, p)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 // CreateAccount inserts a new account row.
