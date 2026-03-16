@@ -11,6 +11,7 @@ type AccountInfo struct {
 	ID          string    `json:"id"`
 	PhoneNumber *string   `json:"phone_number"`
 	AccountName string    `json:"account_name"`
+	UserID      string    `json:"user_id,omitempty"`
 	Authorized  bool      `json:"authorized"`
 	CreatedAt   time.Time `json:"created_at"`
 }
@@ -19,6 +20,7 @@ type AccountInfo struct {
 type CreateAccountRequest struct {
 	PhoneNumber string `json:"phone_number"`
 	AccountName string `json:"account_name"`
+	UserID      string `json:"user_id,omitempty"` // admin can assign to user; defaults to caller
 }
 
 // CreateAccountResponse is returned after creating an account.
@@ -366,6 +368,91 @@ type BusinessHoursSlot struct {
 // UpdateProfileRequest is the JSON body for PATCH /accounts/{id}/profile.
 type UpdateProfileRequest struct {
 	About *string `json:"about,omitempty"`
+}
+
+// ──────────────────────────────────────────────────────
+// Auth
+// ──────────────────────────────────────────────────────
+
+// LoginRequest is the JSON body for POST /api/v1/auth/login.
+type LoginRequest struct {
+	Username string `json:"username"`
+	Password string `json:"password"`
+}
+
+// LoginResponse is returned after successful login.
+type LoginResponse struct {
+	Token     string `json:"token"`
+	ExpiresAt string `json:"expires_at"`
+	User      UserInfo `json:"user"`
+}
+
+// ──────────────────────────────────────────────────────
+// Users
+// ──────────────────────────────────────────────────────
+
+// UserInfo is the API-facing user representation. Password never exposed.
+type UserInfo struct {
+	ID        string `json:"id"`
+	Username  string `json:"username"`
+	RoleID    string `json:"role_id"`
+	RoleName  string `json:"role_name"`
+	Enabled   bool   `json:"enabled"`
+	CreatedAt string `json:"created_at"`
+}
+
+// CreateUserRequest is the JSON body for POST /api/v1/users.
+type CreateUserRequest struct {
+	Username string `json:"username"`
+	Password string `json:"password"`
+	RoleID   string `json:"role_id"`
+}
+
+// UpdateUserRequest is the JSON body for PATCH /api/v1/users/{id}.
+type UpdateUserRequest struct {
+	Password *string `json:"password,omitempty"`
+	RoleID   *string `json:"role_id,omitempty"`
+	Enabled  *bool   `json:"enabled,omitempty"`
+}
+
+// UserListResponse is the response for GET /api/v1/users.
+type UserListResponse struct {
+	Users []UserInfo `json:"users"`
+	Total int        `json:"total"`
+}
+
+// ──────────────────────────────────────────────────────
+// Roles
+// ──────────────────────────────────────────────────────
+
+// RoleInfo is the API-facing role representation.
+type RoleInfo struct {
+	ID          string   `json:"id"`
+	Name        string   `json:"name"`
+	Description string   `json:"description"`
+	IsBuiltin   bool     `json:"is_builtin"`
+	Permissions []string `json:"permissions"`
+	CreatedAt   string   `json:"created_at"`
+}
+
+// CreateRoleRequest is the JSON body for POST /api/v1/roles.
+type CreateRoleRequest struct {
+	Name        string   `json:"name"`
+	Description string   `json:"description"`
+	Permissions []string `json:"permissions"`
+}
+
+// UpdateRoleRequest is the JSON body for PATCH /api/v1/roles/{id}.
+type UpdateRoleRequest struct {
+	Name        *string  `json:"name,omitempty"`
+	Description *string  `json:"description,omitempty"`
+	Permissions []string `json:"permissions,omitempty"`
+}
+
+// RoleListResponse is the response for GET /api/v1/roles.
+type RoleListResponse struct {
+	Roles []RoleInfo `json:"roles"`
+	Total int        `json:"total"`
 }
 
 // ──────────────────────────────────────────────────────
