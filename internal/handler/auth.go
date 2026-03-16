@@ -13,6 +13,7 @@ import (
 	smtpclient "github.com/devstroop/walink/internal/smtp"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
+	"github.com/rs/zerolog/log"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -163,7 +164,7 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 }
 
 // ForgotPassword generates a one-time reset token and emails it to the user.
-// Public endpoint — requires SMTP to be configured.
+// When SMTP is not configured, the token and reset link are printed to the server console.
 func (h *AuthHandler) ForgotPassword(w http.ResponseWriter, r *http.Request) {
 	var req model.ForgotPasswordRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -177,11 +178,6 @@ func (h *AuthHandler) ForgotPassword(w http.ResponseWriter, r *http.Request) {
 
 	// Always return success to prevent email enumeration
 	okResp := model.ForgotPasswordResponse{Message: "if an account with that email exists, a reset link has been sent"}
-
-	if h.smtp == nil || !h.smtp.Enabled() {
-		writeJSON(w, http.StatusServiceUnavailable, model.ErrorResponse{Error: "email service not configured"})
-		return
-	}
 
 	user, err := h.db.GetUserByEmail(req.Email)
 	if err != nil || user == nil {
@@ -215,19 +211,30 @@ func (h *AuthHandler) ForgotPassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Send email with reset link
 	resetLink := h.baseURL + "/api/v1/auth/reset-password?token=" + plainToken
-	body := "You requested a password reset for your WaLink account.\n\n" +
-		"Use this link to reset your password (valid for 1 hour):\n" +
-		resetLink + "\n\n" +
-		"Or use this token directly with the API:\n" +
-		plainToken + "\n\n" +
-		"If you did not request this, ignore this email."
 
-	if err := h.smtp.Send(req.Email, "WaLink Password Reset", body); err != nil {
-		// Token was created but email failed — log-worthy but don't expose internal details
-		writeJSON(w, http.StatusInternalServerError, model.ErrorResponse{Error: "failed to send reset email"})
-		return
+	if h.smtp != nil && h.smtp.Enabled() {
+		// Send email
+		body := "You requested a password reset for your WaLink account.\n\n" +
+			"Use this link to reset your password (valid for 1 hour):\n" +
+			resetLink + "\n\n" +
+			"Or use this token directly with the API:\n" +
+			plainToken + "\n\n" +
+			"If you did not request this, ignore this email."
+
+		if err := h.smtp.Send(req.Email, "WaLink Password Reset", body); err != nil {
+			writeJSON(w, http.StatusInternalServerError, model.ErrorResponse{Error: "failed to send reset email"})
+			return
+		}
+	} else {
+		// No SMTP — print to server console
+		log.Warn().
+			Str("username", user.Username).
+			Str("email", req.Email).
+			Str("token", plainToken).
+			Str("reset_link", resetLink).
+			Str("expires_at", expiresAt.Format(time.RFC3339)).
+			Msg("SMTP not configured — password reset token generated (share manually)")
 	}
 
 	writeJSON(w, http.StatusOK, okResp)
