@@ -11,8 +11,11 @@ import (
 
 // GetProxy — GET /api/v1/accounts/{account_id}/proxy
 func (a *API) GetProxy(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("account_id")
-	proxy, err := a.mgr.GetProxy(id)
+	acct := a.requireAccount(w, r)
+	if acct == nil {
+		return
+	}
+	proxy, err := a.mgr.GetProxy(acct.ID)
 	if err != nil {
 		writeError(w, http.StatusNotFound, err.Error())
 		return
@@ -68,8 +71,11 @@ func (a *API) SetProxy(w http.ResponseWriter, r *http.Request) {
 
 // DeleteProxy — DELETE /api/v1/accounts/{account_id}/proxy
 func (a *API) DeleteProxy(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("account_id")
-	if err := a.mgr.DeleteProxy(id); err != nil {
+	acct := a.requireAccount(w, r)
+	if acct == nil {
+		return
+	}
+	if err := a.mgr.DeleteProxy(acct.ID); err != nil {
 		if err.Error() == "account not found" {
 			writeError(w, http.StatusNotFound, err.Error())
 		} else {
@@ -79,7 +85,7 @@ func (a *API) DeleteProxy(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, map[string]string{
 		"message":    "proxy removed",
-		"account_id": id,
+		"account_id": acct.ID,
 	})
 }
 

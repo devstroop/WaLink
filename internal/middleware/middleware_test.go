@@ -16,7 +16,7 @@ var okHandler = http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 // --- Auth tests ---
 
 func TestAuthValidToken(t *testing.T) {
-	h := Auth("my-secret", okHandler)
+	h := Auth("my-secret", nil, okHandler)
 
 	req := httptest.NewRequest("GET", "/", nil)
 	req.Header.Set("Authorization", "Bearer my-secret")
@@ -30,7 +30,7 @@ func TestAuthValidToken(t *testing.T) {
 }
 
 func TestAuthMissingHeader(t *testing.T) {
-	h := Auth("my-secret", okHandler)
+	h := Auth("my-secret", nil, okHandler)
 
 	req := httptest.NewRequest("GET", "/", nil)
 	w := httptest.NewRecorder()
@@ -43,7 +43,7 @@ func TestAuthMissingHeader(t *testing.T) {
 }
 
 func TestAuthWrongToken(t *testing.T) {
-	h := Auth("my-secret", okHandler)
+	h := Auth("my-secret", nil, okHandler)
 
 	req := httptest.NewRequest("GET", "/", nil)
 	req.Header.Set("Authorization", "Bearer wrong-token")
@@ -57,7 +57,7 @@ func TestAuthWrongToken(t *testing.T) {
 }
 
 func TestAuthMalformedHeader(t *testing.T) {
-	h := Auth("my-secret", okHandler)
+	h := Auth("my-secret", nil, okHandler)
 
 	cases := []string{
 		"my-secret",            // no Bearer prefix
@@ -79,7 +79,7 @@ func TestAuthMalformedHeader(t *testing.T) {
 }
 
 func TestAuthBearerCaseInsensitive(t *testing.T) {
-	h := Auth("my-secret", okHandler)
+	h := Auth("my-secret", nil, okHandler)
 
 	req := httptest.NewRequest("GET", "/", nil)
 	req.Header.Set("Authorization", "bearer my-secret")

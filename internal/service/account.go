@@ -41,6 +41,7 @@ type Account struct {
 	PhoneNumber string
 	AccountName string
 	DataDir     string
+	UserID      string
 	CreatedAt   time.Time
 
 	Proxy        *ProxyConfig // nil = direct, set via PUT /accounts/{id}/proxy
@@ -51,12 +52,13 @@ type Account struct {
 }
 
 // NewAccount constructs an Account (not yet connected).
-func NewAccount(id, phone, name, dataDir string, createdAt time.Time, db *database.DB) *Account {
+func NewAccount(id, phone, name, dataDir, userID string, createdAt time.Time, db *database.DB) *Account {
 	return &Account{
 		ID:           id,
 		PhoneNumber:  phone,
 		AccountName:  name,
 		DataDir:      dataDir,
+		UserID:       userID,
 		CreatedAt:    createdAt,
 		db:           db,
 	}
@@ -410,6 +412,7 @@ func (a *Account) Info() model.AccountInfo {
 	info := model.AccountInfo{
 		ID:          a.ID,
 		AccountName: a.AccountName,
+		UserID:      a.UserID,
 		Authorized:  a.hasStoredSession(),
 		CreatedAt:   a.CreatedAt,
 	}

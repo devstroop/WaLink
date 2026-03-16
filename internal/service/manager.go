@@ -72,12 +72,13 @@ func (m *AccountManager) CreateAccount(req model.CreateAccountRequest) (*model.C
 		PhoneNumber: phone,
 		AccountName: name,
 		DataDir:     dataDir,
+		UserID:      req.UserID,
 	}
 	if err := m.db.CreateAccount(rec); err != nil {
 		return nil, fmt.Errorf("db insert: %w", err)
 	}
 
-	acct := NewAccount(id, phone, name, dataDir, now, m.db)
+	acct := NewAccount(id, phone, name, dataDir, req.UserID, now, m.db)
 
 	m.mu.Lock()
 	m.accounts[id] = acct
@@ -262,7 +263,7 @@ func (m *AccountManager) DiscoverAccounts(ctx context.Context) error {
 		}
 
 		created, _ := time.Parse(time.RFC3339, rec.CreatedAt)
-		acct := NewAccount(rec.ID, rec.PhoneNumber, rec.AccountName, rec.DataDir, created, m.db)
+		acct := NewAccount(rec.ID, rec.PhoneNumber, rec.AccountName, rec.DataDir, rec.UserID, created, m.db)
 
 		// Load proxy config if present
 		proxyCfg, err := m.db.GetProxyConfig(rec.ID)
