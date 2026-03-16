@@ -15,6 +15,7 @@ import (
 	"github.com/devstroop/walink/internal/mcpserver"
 	"github.com/devstroop/walink/internal/middleware"
 	"github.com/devstroop/walink/internal/service"
+	smtpclient "github.com/devstroop/walink/internal/smtp"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"go.mau.fi/whatsmeow/proto/waCompanionReg"
@@ -77,17 +78,29 @@ func main() {
 	// Health endpoint (no auth)
 	mux.HandleFunc("GET /api/health", handler.Health)
 
+	// SMTP client (for password reset emails)
+	mailer := smtpclient.New(cfg.SMTP)
+	if mailer.Enabled() {
+		log.Info().Str("host", cfg.SMTP.Host).Int("port", cfg.SMTP.Port).Msg("SMTP configured")
+	} else {
+		log.Warn().Msg("SMTP not configured — forgot-password emails will not be sent")
+	}
+
+	// Public base URL for reset links
+	baseURL := fmt.Sprintf("http://%s:%d", cfg.Server.Host, cfg.Server.Port)
+
 	// Public auth endpoints (no auth middleware)
-	authH := handler.NewAuthHandler(db, cfg.Auth.SecretKey, cfg.Auth.RegistrationEnabled)
+	authH := handler.NewAuthHandler(db, cfg.Auth.SecretKey, cfg.Auth.RegistrationEnabled, mailer, baseURL)
 	mux.HandleFunc("POST /api/v1/auth/login", authH.Login)
 	mux.HandleFunc("POST /api/v1/auth/register", authH.Register)
+	mux.HandleFunc("POST /api/v1/auth/forgot-password", authH.ForgotPassword)
 	mux.HandleFunc("POST /api/v1/auth/reset-password", authH.ResetPassword)
 
 	// API v1 — all routes require auth
 	api := handler.NewAPI(mgr, db)
 	apiMux := http.NewServeMux()
 	api.RegisterRoutes(apiMux)
-	handler.RegisterRBACRoutes(apiMux, db, cfg.Auth.SecretKey, cfg.Auth.RegistrationEnabled)
+	handler.RegisterRBACRoutes(apiMux, db)
 
 	// Wrap API routes with auth middleware
 	authed := middleware.Auth(cfg.Auth.SecretKey, db, apiMux)

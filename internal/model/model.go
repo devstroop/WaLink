@@ -391,18 +391,17 @@ type LoginResponse struct {
 type RegisterRequest struct {
 	Username string `json:"username"`
 	Password string `json:"password"`
+	Email    string `json:"email"`
 }
 
 // ForgotPasswordRequest is the JSON body for POST /api/v1/auth/forgot-password.
-// Admin-only: generates a one-time reset token for the given user.
 type ForgotPasswordRequest struct {
-	Username string `json:"username"`
+	Email string `json:"email"`
 }
 
-// ForgotPasswordResponse returns the reset token to be shared with the user.
+// ForgotPasswordResponse is returned after a forgot-password request.
 type ForgotPasswordResponse struct {
-	ResetToken string `json:"reset_token"`
-	ExpiresAt  string `json:"expires_at"`
+	Message string `json:"message"`
 }
 
 // ResetPasswordRequest is the JSON body for POST /api/v1/auth/reset-password.
@@ -419,6 +418,7 @@ type ResetPasswordRequest struct {
 type UserInfo struct {
 	ID        string `json:"id"`
 	Username  string `json:"username"`
+	Email     string `json:"email"`
 	RoleID    string `json:"role_id"`
 	RoleName  string `json:"role_name"`
 	Enabled   bool   `json:"enabled"`
@@ -429,12 +429,14 @@ type UserInfo struct {
 type CreateUserRequest struct {
 	Username string `json:"username"`
 	Password string `json:"password"`
+	Email    string `json:"email"`
 	RoleID   string `json:"role_id"`
 }
 
 // UpdateUserRequest is the JSON body for PATCH /api/v1/users/{id}.
 type UpdateUserRequest struct {
 	Password *string `json:"password,omitempty"`
+	Email    *string `json:"email,omitempty"`
 	RoleID   *string `json:"role_id,omitempty"`
 	Enabled  *bool   `json:"enabled,omitempty"`
 }

@@ -6,6 +6,15 @@ port = 3000
 secret_key = "change-this-secret-key-in-production"
 registration_enabled = false  # Set to true to allow public user registration
 
+[smtp]
+# host = "smtp.example.com"  # Required for forgot-password emails
+# port = 587
+# username = ""
+# password = ""
+# from = "WaLink <noreply@example.com>"
+# tls = false       # Use implicit TLS (port 465)
+# starttls = true   # Use STARTTLS (port 587)
+
 [logging]
 level = "info"
 

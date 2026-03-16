@@ -84,6 +84,7 @@ func (h *UserHandler) CreateUser(w http.ResponseWriter, r *http.Request) {
 	rec := &database.UserRecord{
 		ID:           uuid.New().String(),
 		Username:     req.Username,
+		Email:        req.Email,
 		PasswordHash: string(hash),
 		RoleID:       req.RoleID,
 		Enabled:      true,
@@ -163,6 +164,13 @@ func (h *UserHandler) UpdateUser(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	if req.Email != nil {
+		if err := h.db.UpdateUserEmail(id, *req.Email); err != nil {
+			writeJSON(w, http.StatusInternalServerError, model.ErrorResponse{Error: "failed to update email"})
+			return
+		}
+	}
+
 	roleID := user.RoleID
 	enabled := user.Enabled
 	if req.RoleID != nil {
@@ -223,6 +231,7 @@ func userToInfo(u *database.UserRecord) model.UserInfo {
 	return model.UserInfo{
 		ID:        u.ID,
 		Username:  u.Username,
+		Email:     u.Email,
 		RoleID:    u.RoleID,
 		RoleName:  u.RoleName,
 		Enabled:   u.Enabled,

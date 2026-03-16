@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/devstroop/walink/internal/database"
-	"github.com/devstroop/walink/internal/middleware"
 	"github.com/devstroop/walink/internal/model"
+	smtpclient "github.com/devstroop/walink/internal/smtp"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
@@ -21,11 +21,13 @@ type AuthHandler struct {
 	db                  *database.DB
 	secretKey           string
 	registrationEnabled bool
+	smtp                *smtpclient.Client
+	baseURL             string // public base URL for reset links e.g. "http://localhost:3000"
 }
 
 // NewAuthHandler creates a new auth handler.
-func NewAuthHandler(db *database.DB, secretKey string, registrationEnabled bool) *AuthHandler {
-	return &AuthHandler{db: db, secretKey: secretKey, registrationEnabled: registrationEnabled}
+func NewAuthHandler(db *database.DB, secretKey string, registrationEnabled bool, smtp *smtpclient.Client, baseURL string) *AuthHandler {
+	return &AuthHandler{db: db, secretKey: secretKey, registrationEnabled: registrationEnabled, smtp: smtp, baseURL: baseURL}
 }
 
 // Login authenticates a user and returns a JWT.
@@ -82,6 +84,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		User: model.UserInfo{
 			ID:        user.ID,
 			Username:  user.Username,
+			Email:     user.Email,
 			RoleID:    user.RoleID,
 			RoleName:  user.RoleName,
 			Enabled:   user.Enabled,
@@ -132,6 +135,7 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 	rec := &database.UserRecord{
 		ID:           uuid.New().String(),
 		Username:     req.Username,
+		Email:        req.Email,
 		PasswordHash: string(hash),
 		RoleID:       "builtin-user",
 		Enabled:      true,
@@ -147,42 +151,42 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusCreated, model.UserInfo{
 			ID:        user.ID,
 			Username:  user.Username,
+			Email:     user.Email,
 			RoleID:    user.RoleID,
 			RoleName:  user.RoleName,
 			Enabled:   user.Enabled,
 			CreatedAt: user.CreatedAt,
 		})
 	} else {
-		writeJSON(w, http.StatusCreated, model.UserInfo{ID: rec.ID, Username: rec.Username, RoleID: rec.RoleID, Enabled: true})
+		writeJSON(w, http.StatusCreated, model.UserInfo{ID: rec.ID, Username: rec.Username, Email: rec.Email, RoleID: rec.RoleID, Enabled: true})
 	}
 }
 
-// ForgotPassword generates a one-time reset token for a user.
-// Admin-only: the admin gives the token to the user out-of-band.
+// ForgotPassword generates a one-time reset token and emails it to the user.
+// Public endpoint — requires SMTP to be configured.
 func (h *AuthHandler) ForgotPassword(w http.ResponseWriter, r *http.Request) {
-	identity := middleware.GetIdentity(r)
-	if identity == nil || !identity.HasPermission("users:*") {
-		writeJSON(w, http.StatusForbidden, model.ErrorResponse{Error: "only administrators can generate reset tokens"})
-		return
-	}
-
 	var req model.ForgotPasswordRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, model.ErrorResponse{Error: "invalid request body"})
 		return
 	}
-	if req.Username == "" {
-		writeJSON(w, http.StatusBadRequest, model.ErrorResponse{Error: "username is required"})
+	if req.Email == "" {
+		writeJSON(w, http.StatusBadRequest, model.ErrorResponse{Error: "email is required"})
 		return
 	}
 
-	user, err := h.db.GetUserByUsername(req.Username)
-	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, model.ErrorResponse{Error: "internal error"})
+	// Always return success to prevent email enumeration
+	okResp := model.ForgotPasswordResponse{Message: "if an account with that email exists, a reset link has been sent"}
+
+	if h.smtp == nil || !h.smtp.Enabled() {
+		writeJSON(w, http.StatusServiceUnavailable, model.ErrorResponse{Error: "email service not configured"})
 		return
 	}
-	if user == nil {
-		writeJSON(w, http.StatusNotFound, model.ErrorResponse{Error: "user not found"})
+
+	user, err := h.db.GetUserByEmail(req.Email)
+	if err != nil || user == nil {
+		// Don't reveal whether the email exists
+		writeJSON(w, http.StatusOK, okResp)
 		return
 	}
 
@@ -211,10 +215,22 @@ func (h *AuthHandler) ForgotPassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, model.ForgotPasswordResponse{
-		ResetToken: plainToken,
-		ExpiresAt:  expiresAt.Format(time.RFC3339),
-	})
+	// Send email with reset link
+	resetLink := h.baseURL + "/api/v1/auth/reset-password?token=" + plainToken
+	body := "You requested a password reset for your WaLink account.\n\n" +
+		"Use this link to reset your password (valid for 1 hour):\n" +
+		resetLink + "\n\n" +
+		"Or use this token directly with the API:\n" +
+		plainToken + "\n\n" +
+		"If you did not request this, ignore this email."
+
+	if err := h.smtp.Send(req.Email, "WaLink Password Reset", body); err != nil {
+		// Token was created but email failed — log-worthy but don't expose internal details
+		writeJSON(w, http.StatusInternalServerError, model.ErrorResponse{Error: "failed to send reset email"})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, okResp)
 }
 
 // ResetPassword resets a user's password using a valid reset token.

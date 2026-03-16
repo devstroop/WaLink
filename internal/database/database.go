@@ -74,6 +74,7 @@ type RoleRecord struct {
 type UserRecord struct {
 	ID           string
 	Username     string
+	Email        string
 	PasswordHash string
 	RoleID       string
 	RoleName     string // joined from role table (read-only)
@@ -229,6 +230,7 @@ func (d *DB) migrate() error {
 		CREATE TABLE IF NOT EXISTS user (
 			id            TEXT PRIMARY KEY,
 			username      TEXT NOT NULL UNIQUE,
+			email         TEXT NOT NULL DEFAULT '',
 			password_hash TEXT NOT NULL,
 			role_id       TEXT NOT NULL REFERENCES role(id),
 			enabled       INTEGER NOT NULL DEFAULT 1,
@@ -236,6 +238,12 @@ func (d *DB) migrate() error {
 			updated_at    TEXT NOT NULL DEFAULT (datetime('now'))
 		);
 	`)
+	if err != nil {
+		return err
+	}
+
+	// Migration: add email column to user if missing (upgrade from earlier schema)
+	d.db.Exec(`ALTER TABLE user ADD COLUMN email TEXT NOT NULL DEFAULT ''`)
 	if err != nil {
 		return err
 	}
@@ -847,9 +855,9 @@ func (d *DB) CreateUser(rec *UserRecord) error {
 
 	now := time.Now().UTC().Format(time.RFC3339)
 	_, err := d.db.Exec(`
-		INSERT INTO user (id, username, password_hash, role_id, enabled, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?)`,
-		rec.ID, rec.Username, rec.PasswordHash, rec.RoleID, rec.Enabled, now, now)
+		INSERT INTO user (id, username, email, password_hash, role_id, enabled, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		rec.ID, rec.Username, rec.Email, rec.PasswordHash, rec.RoleID, rec.Enabled, now, now)
 	return err
 }
 
@@ -859,7 +867,7 @@ func (d *DB) GetUser(id string) (*UserRecord, error) {
 	defer d.mu.Unlock()
 
 	row := d.db.QueryRow(`
-		SELECT u.id, u.username, u.password_hash, u.role_id, r.name, u.enabled, u.created_at, u.updated_at
+		SELECT u.id, u.username, u.email, u.password_hash, u.role_id, r.name, u.enabled, u.created_at, u.updated_at
 		FROM user u JOIN role r ON u.role_id = r.id
 		WHERE u.id = ?`, id)
 	return scanUser(row)
@@ -871,9 +879,21 @@ func (d *DB) GetUserByUsername(username string) (*UserRecord, error) {
 	defer d.mu.Unlock()
 
 	row := d.db.QueryRow(`
-		SELECT u.id, u.username, u.password_hash, u.role_id, r.name, u.enabled, u.created_at, u.updated_at
+		SELECT u.id, u.username, u.email, u.password_hash, u.role_id, r.name, u.enabled, u.created_at, u.updated_at
 		FROM user u JOIN role r ON u.role_id = r.id
 		WHERE u.username = ?`, username)
+	return scanUser(row)
+}
+
+// GetUserByEmail retrieves a user by email address.
+func (d *DB) GetUserByEmail(email string) (*UserRecord, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	row := d.db.QueryRow(`
+		SELECT u.id, u.username, u.email, u.password_hash, u.role_id, r.name, u.enabled, u.created_at, u.updated_at
+		FROM user u JOIN role r ON u.role_id = r.id
+		WHERE u.email = ?`, email)
 	return scanUser(row)
 }
 
@@ -883,7 +903,7 @@ func (d *DB) ListUsers() ([]*UserRecord, error) {
 	defer d.mu.Unlock()
 
 	rows, err := d.db.Query(`
-		SELECT u.id, u.username, u.password_hash, u.role_id, r.name, u.enabled, u.created_at, u.updated_at
+		SELECT u.id, u.username, u.email, u.password_hash, u.role_id, r.name, u.enabled, u.created_at, u.updated_at
 		FROM user u JOIN role r ON u.role_id = r.id
 		ORDER BY u.created_at DESC`)
 	if err != nil {
@@ -895,7 +915,7 @@ func (d *DB) ListUsers() ([]*UserRecord, error) {
 	for rows.Next() {
 		var r UserRecord
 		var enabled int
-		if err := rows.Scan(&r.ID, &r.Username, &r.PasswordHash, &r.RoleID, &r.RoleName, &enabled, &r.CreatedAt, &r.UpdatedAt); err != nil {
+		if err := rows.Scan(&r.ID, &r.Username, &r.Email, &r.PasswordHash, &r.RoleID, &r.RoleName, &enabled, &r.CreatedAt, &r.UpdatedAt); err != nil {
 			return nil, err
 		}
 		r.Enabled = enabled != 0
@@ -924,6 +944,16 @@ func (d *DB) UpdateUserPassword(id, passwordHash string) error {
 	return err
 }
 
+// UpdateUserEmail updates a user's email address.
+func (d *DB) UpdateUserEmail(id, email string) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	_, err := d.db.Exec(`UPDATE user SET email = ?, updated_at = datetime('now') WHERE id = ?`,
+		email, id)
+	return err
+}
+
 // DeleteUser removes a user.
 func (d *DB) DeleteUser(id string) error {
 	d.mu.Lock()
@@ -946,7 +976,7 @@ func (d *DB) CountUsersByRole(roleID string) (int, error) {
 func scanUser(row *sql.Row) (*UserRecord, error) {
 	var r UserRecord
 	var enabled int
-	err := row.Scan(&r.ID, &r.Username, &r.PasswordHash, &r.RoleID, &r.RoleName, &enabled, &r.CreatedAt, &r.UpdatedAt)
+	err := row.Scan(&r.ID, &r.Username, &r.Email, &r.PasswordHash, &r.RoleID, &r.RoleName, &enabled, &r.CreatedAt, &r.UpdatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}

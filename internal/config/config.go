@@ -14,6 +14,7 @@ import (
 type Config struct {
 	Server   ServerConfig   `toml:"server"`
 	Auth     AuthConfig     `toml:"auth"`
+	SMTP     SMTPConfig     `toml:"smtp"`
 	Logging  LoggingConfig  `toml:"logging"`
 	Database DatabaseConfig `toml:"database"`
 	CORS     CORSConfig     `toml:"cors"`
@@ -31,6 +32,16 @@ type ServerConfig struct {
 type AuthConfig struct {
 	SecretKey           string `toml:"secret_key"`
 	RegistrationEnabled bool   `toml:"registration_enabled"`
+}
+
+type SMTPConfig struct {
+	Host     string `toml:"host"`
+	Port     int    `toml:"port"`
+	Username string `toml:"username"`
+	Password string `toml:"password"`
+	From     string `toml:"from"`     // sender address e.g. "WaLink <noreply@example.com>"
+	TLS      bool   `toml:"tls"`      // use implicit TLS (port 465)
+	StartTLS bool   `toml:"starttls"` // use STARTTLS (port 587)
 }
 
 type LoggingConfig struct {
@@ -166,6 +177,29 @@ func applyEnvOverrides(cfg *Config) {
 	if v := os.Getenv("WALINK_AUTH_REGISTRATION_ENABLED"); v != "" {
 		cfg.Auth.RegistrationEnabled = v == "true" || v == "1"
 	}
+	if v := os.Getenv("WALINK_SMTP_HOST"); v != "" {
+		cfg.SMTP.Host = v
+	}
+	if v := os.Getenv("WALINK_SMTP_PORT"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			cfg.SMTP.Port = n
+		}
+	}
+	if v := os.Getenv("WALINK_SMTP_USERNAME"); v != "" {
+		cfg.SMTP.Username = v
+	}
+	if v := os.Getenv("WALINK_SMTP_PASSWORD"); v != "" {
+		cfg.SMTP.Password = v
+	}
+	if v := os.Getenv("WALINK_SMTP_FROM"); v != "" {
+		cfg.SMTP.From = v
+	}
+	if v := os.Getenv("WALINK_SMTP_TLS"); v != "" {
+		cfg.SMTP.TLS = v == "true" || v == "1"
+	}
+	if v := os.Getenv("WALINK_SMTP_STARTTLS"); v != "" {
+		cfg.SMTP.StartTLS = v == "true" || v == "1"
+	}
 	if v := os.Getenv("WALINK_SWAGGER_ENABLED"); v != "" {
 		cfg.Swagger.Enabled = v == "true" || v == "1"
 	}
@@ -178,6 +212,7 @@ func defaults() *Config {
 	return &Config{
 		Server:  ServerConfig{Host: "0.0.0.0", Port: 3000},
 		Auth:    AuthConfig{SecretKey: "change-this-secret-key-in-production"},
+		SMTP:    SMTPConfig{Port: 587, StartTLS: true},
 		Logging: LoggingConfig{Level: "info"},
 		CORS: CORSConfig{
 			AllowOrigins: []string{"*"},

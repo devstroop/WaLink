@@ -393,21 +393,21 @@
         "required": ["username", "password"],
         "properties": {
           "username": { "type": "string", "example": "newuser" },
-          "password": { "type": "string", "format": "password", "minLength": 8, "example": "mySecurePass1" }
+          "password": { "type": "string", "format": "password", "minLength": 8, "example": "mySecurePass1" },
+          "email": { "type": "string", "format": "email", "example": "newuser@example.com" }
         }
       },
       "ForgotPasswordRequest": {
         "type": "object",
-        "required": ["username"],
+        "required": ["email"],
         "properties": {
-          "username": { "type": "string", "example": "johndoe" }
+          "email": { "type": "string", "format": "email", "example": "johndoe@example.com" }
         }
       },
       "ForgotPasswordResponse": {
         "type": "object",
         "properties": {
-          "reset_token": { "type": "string", "description": "One-time reset token (share with the user out-of-band)" },
-          "expires_at": { "type": "string", "format": "date-time" }
+          "message": { "type": "string", "example": "if an account with that email exists, a reset link has been sent" }
         }
       },
       "ResetPasswordRequest": {
@@ -423,6 +423,7 @@
         "properties": {
           "id": { "type": "string" },
           "username": { "type": "string" },
+          "email": { "type": "string" },
           "role_id": { "type": "string" },
           "role_name": { "type": "string" },
           "enabled": { "type": "boolean" },
@@ -435,6 +436,7 @@
         "properties": {
           "username": { "type": "string", "example": "alice" },
           "password": { "type": "string", "format": "password", "minLength": 8 },
+          "email": { "type": "string", "format": "email", "example": "alice@example.com" },
           "role_id": { "type": "string", "description": "UUID of the role to assign" }
         }
       },
@@ -442,6 +444,7 @@
         "type": "object",
         "properties": {
           "password": { "type": "string", "format": "password", "minLength": 8 },
+          "email": { "type": "string", "format": "email" },
           "role_id": { "type": "string" },
           "enabled": { "type": "boolean" }
         }
@@ -1047,14 +1050,14 @@
     "/api/v1/auth/forgot-password": {
       "post": {
         "tags": ["Auth"],
-        "summary": "Generate a password reset token",
-        "description": "Admin-only. Generates a one-time reset token (valid 1 hour) for the given user. Share the token with the user out-of-band.",
+        "summary": "Request a password reset email",
+        "description": "Public endpoint. Sends a password reset email to the user if the email exists. Requires SMTP to be configured.",
+        "security": [],
         "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ForgotPasswordRequest" } } } },
         "responses": {
-          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ForgotPasswordResponse" } } } },
-          "400": { "description": "Missing username" },
-          "403": { "description": "Forbidden — admin only" },
-          "404": { "description": "User not found" }
+          "200": { "description": "OK — reset email sent (if account exists)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ForgotPasswordResponse" } } } },
+          "400": { "description": "Missing email" },
+          "503": { "description": "Email service not configured" }
         }
       }
     },
