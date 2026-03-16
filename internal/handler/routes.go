@@ -104,4 +104,10 @@ func RegisterRBACRoutes(mux *http.ServeMux, db *database.DB, secretKey string) {
 	mux.HandleFunc("GET /api/v1/roles/{role_id}", perm("roles:read", roles.GetRole))
 	mux.HandleFunc("PATCH /api/v1/roles/{role_id}", perm("roles:write", roles.UpdateRole))
 	mux.HandleFunc("DELETE /api/v1/roles/{role_id}", perm("roles:write", roles.DeleteRole))
+
+	// API Keys
+	apiKeys := NewAPIKeyHandler(db)
+	mux.HandleFunc("GET /api/v1/api-keys", perm("api-keys:read", apiKeys.ListAPIKeys))
+	mux.HandleFunc("POST /api/v1/api-keys", perm("api-keys:write", apiKeys.CreateAPIKey))
+	mux.HandleFunc("DELETE /api/v1/api-keys/{key_id}", perm("api-keys:write", apiKeys.DeleteAPIKey))
 }

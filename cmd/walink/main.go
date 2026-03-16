@@ -91,10 +91,11 @@ func main() {
 	limited := middleware.RateLimit(cfg.Limits.MaxConcurrentRequests, authed)
 	mux.Handle("/api/v1/", limited)
 
-	// MCP (Model Context Protocol) endpoint — same auth as API
-	mcpSrv := mcpserver.New(mgr, version)
+	// MCP (Model Context Protocol) endpoint — auth + account scoping
+	mcpSrv := mcpserver.New(mgr, db, version)
 	mcpTransport := mcphttp.NewStreamableHTTPServer(mcpSrv)
-	mux.Handle("/mcp", middleware.Auth(cfg.Auth.SecretKey, db, mcpTransport))
+	mcpHandler := middleware.Auth(cfg.Auth.SecretKey, db, middleware.MCPScope(db, mcpTransport))
+	mux.Handle("/mcp", mcpHandler)
 	log.Info().Msg("MCP endpoint enabled at /mcp")
 
 	// Swagger UI (no auth)

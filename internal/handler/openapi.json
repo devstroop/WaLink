@@ -9,13 +9,14 @@
   "security": [{ "BearerAuth": [] }],
   "components": {
     "securitySchemes": {
-      "BearerAuth": { "type": "http", "scheme": "bearer", "description": "Use a static secret_key or a JWT token obtained from /api/v1/auth/login" }
+      "BearerAuth": { "type": "http", "scheme": "bearer", "description": "Use a static secret_key, a JWT token from /api/v1/auth/login, or an API key (walink_...)" }
     },
     "parameters": {
       "AccountId": { "name": "account_id", "in": "path", "required": true, "schema": { "type": "string" } },
       "JID": { "name": "jid", "in": "path", "required": true, "schema": { "type": "string" } },
       "UserId": { "name": "user_id", "in": "path", "required": true, "schema": { "type": "string" } },
-      "RoleId": { "name": "role_id", "in": "path", "required": true, "schema": { "type": "string" } }
+      "RoleId": { "name": "role_id", "in": "path", "required": true, "schema": { "type": "string" } },
+      "KeyId": { "name": "key_id", "in": "path", "required": true, "schema": { "type": "string" } }
     },
     "schemas": {
       "AccountInfo": {
@@ -454,6 +455,47 @@
         "type": "object",
         "properties": {
           "roles": { "type": "array", "items": { "$ref": "#/components/schemas/RoleInfo" } },
+          "total": { "type": "integer" }
+        }
+      },
+      "APIKeyInfo": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "name": { "type": "string" },
+          "prefix": { "type": "string", "description": "First 15 characters of the key for identification" },
+          "account_id": { "type": "string", "nullable": true, "description": "Bound account ID, null if not scoped to a specific account" },
+          "expires_at": { "type": "string", "nullable": true, "description": "RFC3339 expiry, null if never expires" },
+          "last_used": { "type": "string", "nullable": true, "description": "RFC3339 timestamp of last use" },
+          "enabled": { "type": "boolean" },
+          "created_at": { "type": "string" }
+        }
+      },
+      "CreateAPIKeyRequest": {
+        "type": "object",
+        "required": ["name"],
+        "properties": {
+          "name": { "type": "string", "example": "CI/CD Pipeline" },
+          "account_id": { "type": "string", "nullable": true, "description": "Optional: bind this key to a specific WhatsApp account. When set, the key is automatically scoped — no account_id needed in MCP config.", "example": "acc-12345" },
+          "expires_at": { "type": "string", "nullable": true, "description": "Optional RFC3339 expiry", "example": "2026-12-31T23:59:59Z" }
+        }
+      },
+      "CreateAPIKeyResponse": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "key": { "type": "string", "description": "The full API key — shown only once on creation" },
+          "name": { "type": "string" },
+          "prefix": { "type": "string" },
+          "account_id": { "type": "string", "nullable": true },
+          "expires_at": { "type": "string", "nullable": true },
+          "created_at": { "type": "string" }
+        }
+      },
+      "APIKeyListResponse": {
+        "type": "object",
+        "properties": {
+          "keys": { "type": "array", "items": { "$ref": "#/components/schemas/APIKeyInfo" } },
           "total": { "type": "integer" }
         }
       }
@@ -1073,6 +1115,44 @@
           "409": { "description": "Role has assigned users or is built-in" }
         }
       }
+    },
+    "/api/v1/api-keys": {
+      "get": {
+        "tags": ["API Keys"],
+        "summary": "List your API keys",
+        "description": "Returns all API keys belonging to the authenticated user. Requires api-keys:read permission.",
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/APIKeyListResponse" } } } },
+          "401": { "description": "Unauthorized" },
+          "403": { "description": "Forbidden" }
+        }
+      },
+      "post": {
+        "tags": ["API Keys"],
+        "summary": "Create an API key",
+        "description": "Generates a new API key for the authenticated user. Optionally bind to an account_id so the key is auto-scoped (no account_id needed in MCP config). The full key is returned only once in the response — store it securely. Requires api-keys:write permission.",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreateAPIKeyRequest" } } } },
+        "responses": {
+          "201": { "description": "Created", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreateAPIKeyResponse" } } } },
+          "400": { "description": "Validation error" },
+          "401": { "description": "Unauthorized" },
+          "403": { "description": "Forbidden" }
+        }
+      }
+    },
+    "/api/v1/api-keys/{key_id}": {
+      "parameters": [{ "$ref": "#/components/parameters/KeyId" }],
+      "delete": {
+        "tags": ["API Keys"],
+        "summary": "Revoke an API key",
+        "description": "Permanently deletes an API key. Users can revoke their own keys; admins can revoke any key. Requires api-keys:write permission.",
+        "responses": {
+          "200": { "description": "Deleted" },
+          "401": { "description": "Unauthorized" },
+          "403": { "description": "Forbidden" },
+          "404": { "description": "Not found" }
+        }
+      }
     }
   },
   "tags": [
@@ -1089,6 +1169,7 @@
     { "name": "Groups", "description": "Group management (create, update, participants, invite)" },
     { "name": "Presence", "description": "Online status and typing indicators" },
     { "name": "Profile", "description": "WhatsApp account profile (push name, about, picture, business info)" },
-    { "name": "Webhook", "description": "Webhook configuration for event delivery" }
+    { "name": "Webhook", "description": "Webhook configuration for event delivery" },
+    { "name": "API Keys", "description": "API key management for programmatic access" }
   ]
 }

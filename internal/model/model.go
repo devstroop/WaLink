@@ -456,6 +456,46 @@ type RoleListResponse struct {
 }
 
 // ──────────────────────────────────────────────────────
+// API Keys
+// ──────────────────────────────────────────────────────
+
+// APIKeyInfo is the safe representation of an API key (key value never shown).
+type APIKeyInfo struct {
+	ID        string  `json:"id"`
+	Name      string  `json:"name"`
+	Prefix    string  `json:"prefix"`
+	AccountID *string `json:"account_id,omitempty"`
+	ExpiresAt *string `json:"expires_at,omitempty"`
+	LastUsed  *string `json:"last_used,omitempty"`
+	Enabled   bool    `json:"enabled"`
+	CreatedAt string  `json:"created_at"`
+}
+
+// CreateAPIKeyRequest is the JSON body for POST /api/v1/api-keys.
+type CreateAPIKeyRequest struct {
+	Name      string  `json:"name"`
+	AccountID *string `json:"account_id,omitempty"` // optional: binds key to a specific account
+	ExpiresAt *string `json:"expires_at,omitempty"` // RFC3339, optional
+}
+
+// CreateAPIKeyResponse is returned once on creation — the key is never retrievable again.
+type CreateAPIKeyResponse struct {
+	ID        string  `json:"id"`
+	Key       string  `json:"key"`
+	Name      string  `json:"name"`
+	Prefix    string  `json:"prefix"`
+	AccountID *string `json:"account_id,omitempty"`
+	ExpiresAt *string `json:"expires_at,omitempty"`
+	CreatedAt string  `json:"created_at"`
+}
+
+// APIKeyListResponse is the response for GET /api/v1/api-keys.
+type APIKeyListResponse struct {
+	Keys  []APIKeyInfo `json:"keys"`
+	Total int          `json:"total"`
+}
+
+// ──────────────────────────────────────────────────────
 // Common
 // ──────────────────────────────────────────────────────
 

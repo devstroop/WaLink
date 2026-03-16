@@ -82,6 +82,20 @@ type UserRecord struct {
 	UpdatedAt    string
 }
 
+// APIKeyRecord is a persistent API key row.
+type APIKeyRecord struct {
+	ID        string
+	UserID    string  // FK to user.id
+	AccountID *string // FK to account.id, nil = not scoped to a specific account
+	Name      string  // human-readable label
+	Prefix    string  // first 8 chars of key for identification
+	KeyHash   string  // SHA-256 hash of full key
+	ExpiresAt *string // RFC3339, nil = never expires
+	LastUsed  *string // RFC3339, nil = never used
+	Enabled   bool
+	CreatedAt string
+}
+
 // Open creates or opens the SQLite database at path, running migrations.
 func Open(path string) (*DB, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
@@ -220,6 +234,28 @@ func (d *DB) migrate() error {
 	// NULL means no user assigned (legacy/unassigned accounts). FK only enforced when non-NULL.
 	d.db.Exec(`ALTER TABLE account ADD COLUMN user_id TEXT REFERENCES user(id) DEFAULT NULL`)
 
+	// ── API key table ───────────────────────────────
+	_, err = d.db.Exec(`
+		CREATE TABLE IF NOT EXISTS api_key (
+			id         TEXT PRIMARY KEY,
+			user_id    TEXT NOT NULL REFERENCES user(id) ON DELETE CASCADE,
+			account_id TEXT REFERENCES account(id) ON DELETE CASCADE,
+			name       TEXT NOT NULL DEFAULT '',
+			prefix     TEXT NOT NULL DEFAULT '',
+			key_hash   TEXT NOT NULL UNIQUE,
+			expires_at TEXT,
+			last_used  TEXT,
+			enabled    INTEGER NOT NULL DEFAULT 1,
+			created_at TEXT NOT NULL DEFAULT (datetime('now'))
+		);
+	`)
+	if err != nil {
+		return err
+	}
+
+	// Migration: add account_id column to api_key if missing (upgrade from earlier schema)
+	d.db.Exec(`ALTER TABLE api_key ADD COLUMN account_id TEXT REFERENCES account(id) ON DELETE CASCADE`)
+
 	// ── Seed built-in roles ─────────────────────────
 	if err := d.seedRoles(); err != nil {
 		return err
@@ -255,6 +291,7 @@ func (d *DB) seedRoles() error {
 		"groups:*",
 		"presence:*",
 		"profile:*",
+		"api-keys:*",
 	}
 	for _, p := range userPerms {
 		_, err = d.db.Exec(`INSERT OR IGNORE INTO role_permission (role_id, permission) VALUES ('builtin-user', ?)`, p)
@@ -892,5 +929,124 @@ func scanUser(row *sql.Row) (*UserRecord, error) {
 		return nil, err
 	}
 	r.Enabled = enabled != 0
+	return &r, nil
+}
+
+// ─── API Key CRUD ───────────────────────────────────────────
+
+// CreateAPIKey inserts a new API key.
+func (d *DB) CreateAPIKey(rec *APIKeyRecord) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	now := time.Now().UTC().Format(time.RFC3339)
+	_, err := d.db.Exec(`
+		INSERT INTO api_key (id, user_id, account_id, name, prefix, key_hash, expires_at, last_used, enabled, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)`,
+		rec.ID, rec.UserID, rec.AccountID, rec.Name, rec.Prefix, rec.KeyHash, rec.ExpiresAt, rec.Enabled, now)
+	return err
+}
+
+// GetAPIKey retrieves an API key by ID.
+func (d *DB) GetAPIKey(id string) (*APIKeyRecord, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	row := d.db.QueryRow(`SELECT id, user_id, account_id, name, prefix, key_hash, expires_at, last_used, enabled, created_at FROM api_key WHERE id = ?`, id)
+	return scanAPIKey(row)
+}
+
+// GetAPIKeyByHash retrieves an API key by its SHA-256 hash.
+func (d *DB) GetAPIKeyByHash(keyHash string) (*APIKeyRecord, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	row := d.db.QueryRow(`SELECT id, user_id, account_id, name, prefix, key_hash, expires_at, last_used, enabled, created_at FROM api_key WHERE key_hash = ?`, keyHash)
+	return scanAPIKey(row)
+}
+
+// ListAPIKeysByUser returns all API keys for a user.
+func (d *DB) ListAPIKeysByUser(userID string) ([]*APIKeyRecord, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	rows, err := d.db.Query(`SELECT id, user_id, account_id, name, prefix, key_hash, expires_at, last_used, enabled, created_at FROM api_key WHERE user_id = ? ORDER BY created_at DESC`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []*APIKeyRecord
+	for rows.Next() {
+		r, err := scanAPIKeyRow(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
+// DeleteAPIKey removes an API key.
+func (d *DB) DeleteAPIKey(id string) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	_, err := d.db.Exec(`DELETE FROM api_key WHERE id = ?`, id)
+	return err
+}
+
+// UpdateAPIKeyLastUsed updates the last_used timestamp.
+func (d *DB) UpdateAPIKeyLastUsed(id string) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	now := time.Now().UTC().Format(time.RFC3339)
+	_, err := d.db.Exec(`UPDATE api_key SET last_used = ? WHERE id = ?`, now, id)
+	return err
+}
+
+func scanAPIKey(row *sql.Row) (*APIKeyRecord, error) {
+	var r APIKeyRecord
+	var enabled int
+	var accountID, expiresAt, lastUsed sql.NullString
+	err := row.Scan(&r.ID, &r.UserID, &accountID, &r.Name, &r.Prefix, &r.KeyHash, &expiresAt, &lastUsed, &enabled, &r.CreatedAt)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	r.Enabled = enabled != 0
+	if accountID.Valid {
+		r.AccountID = &accountID.String
+	}
+	if expiresAt.Valid {
+		r.ExpiresAt = &expiresAt.String
+	}
+	if lastUsed.Valid {
+		r.LastUsed = &lastUsed.String
+	}
+	return &r, nil
+}
+
+func scanAPIKeyRow(rows *sql.Rows) (*APIKeyRecord, error) {
+	var r APIKeyRecord
+	var enabled int
+	var accountID, expiresAt, lastUsed sql.NullString
+	err := rows.Scan(&r.ID, &r.UserID, &accountID, &r.Name, &r.Prefix, &r.KeyHash, &expiresAt, &lastUsed, &enabled, &r.CreatedAt)
+	if err != nil {
+		return nil, err
+	}
+	r.Enabled = enabled != 0
+	if accountID.Valid {
+		r.AccountID = &accountID.String
+	}
+	if expiresAt.Valid {
+		r.ExpiresAt = &expiresAt.String
+	}
+	if lastUsed.Valid {
+		r.LastUsed = &lastUsed.String
+	}
 	return &r, nil
 }

@@ -12,13 +12,21 @@ import (
 	"github.com/mark3labs/mcp-go/server"
 	qrcode "github.com/skip2/go-qrcode"
 
+	"github.com/devstroop/walink/internal/database"
+	"github.com/devstroop/walink/internal/middleware"
 	"github.com/devstroop/walink/internal/model"
 	"github.com/devstroop/walink/internal/service"
 )
 
 // New creates an MCP server backed by the given AccountManager.
 // It exposes walink's core capabilities as MCP tools.
-func New(mgr *service.AccountManager, version string) *server.MCPServer {
+//
+// Auth + account scoping is handled by middleware before requests reach here.
+// Tool handlers read the caller's Identity and optional scoped account_id from context.
+//
+// Admin callers (Permission "*") may omit account_id to manage any account.
+// Standard users are pre-scoped to a single account_id (set by MCPScope middleware).
+func New(mgr *service.AccountManager, db *database.DB, version string) *server.MCPServer {
 	s := server.NewMCPServer(
 		"WaLink",
 		version,
@@ -26,7 +34,7 @@ func New(mgr *service.AccountManager, version string) *server.MCPServer {
 		server.WithRecovery(),
 	)
 
-	registerTools(s, mgr)
+	registerTools(s, mgr, db)
 	return s
 }
 
@@ -39,22 +47,56 @@ func jsonResult(v any) (*mcp.CallToolResult, error) {
 	return mcp.NewToolResultText(string(data)), nil
 }
 
-// requireAccount is a helper that looks up an account and returns an error result if not found.
-func requireAccount(mgr *service.AccountManager, req mcp.CallToolRequest) (*service.Account, *mcp.CallToolResult) {
-	id, err := req.RequireString("account_id")
-	if err != nil {
-		return nil, mcp.NewToolResultError("account_id is required")
+// resolveAccount determines the target account from context scope or tool param.
+//
+// Resolution order:
+//  1. Context scoped account_id (set by MCPScope middleware for non-admin users).
+//  2. "account_id" tool parameter (admin mode, or explicit override).
+//  3. Error if neither is available.
+//
+// For non-admin callers with a context scope, the tool parameter is ignored
+// (they are locked to their scoped account).
+func resolveAccount(ctx context.Context, mgr *service.AccountManager, db *database.DB, req mcp.CallToolRequest) (*service.Account, *mcp.CallToolResult) {
+	identity := middleware.GetIdentityFromContext(ctx)
+	scopedID := middleware.GetScopedAccountID(ctx)
+	isAdmin := identity != nil && identity.HasPermission("*")
+
+	var accountID string
+
+	if scopedID != "" {
+		// User-scoped (or admin who passed ?account_id=)
+		accountID = scopedID
+	} else if isAdmin {
+		// Admin without scope — require from tool param
+		id, err := req.RequireString("account_id")
+		if err != nil {
+			return nil, mcp.NewToolResultError("account_id is required (admin multi-account mode)")
+		}
+		accountID = id
+	} else {
+		// Non-admin without scope — should not happen (MCPScope rejects this)
+		return nil, mcp.NewToolResultError("account_id scope is required")
 	}
-	acct := mgr.GetAccount(id)
+
+	acct := mgr.GetAccount(accountID)
 	if acct == nil {
-		return nil, mcp.NewToolResultError(fmt.Sprintf("account %q not found", id))
+		return nil, mcp.NewToolResultError(fmt.Sprintf("account %q not found", accountID))
 	}
+
+	// Ownership check for non-admin callers
+	if !isAdmin && identity != nil {
+		rec, err := db.GetAccount(accountID)
+		if err != nil || rec == nil || rec.UserID != identity.UserID {
+			return nil, mcp.NewToolResultError("forbidden: you do not own this account")
+		}
+	}
+
 	return acct, nil
 }
 
-// requireConnectedAccount looks up an account and ensures it's connected.
-func requireConnectedAccount(ctx context.Context, mgr *service.AccountManager, req mcp.CallToolRequest) (*service.Account, *mcp.CallToolResult) {
-	acct, errResult := requireAccount(mgr, req)
+// resolveConnectedAccount resolves + ensures connected.
+func resolveConnectedAccount(ctx context.Context, mgr *service.AccountManager, db *database.DB, req mcp.CallToolRequest) (*service.Account, *mcp.CallToolResult) {
+	acct, errResult := resolveAccount(ctx, mgr, db, req)
 	if errResult != nil {
 		return nil, errResult
 	}
@@ -64,25 +106,56 @@ func requireConnectedAccount(ctx context.Context, mgr *service.AccountManager, r
 	return acct, nil
 }
 
-func registerTools(s *server.MCPServer, mgr *service.AccountManager) {
+func registerTools(s *server.MCPServer, mgr *service.AccountManager, db *database.DB) {
 	// ── Account management ──────────────────────────
 
 	s.AddTool(
 		mcp.NewTool("list_accounts",
-			mcp.WithDescription("List all WhatsApp accounts managed by WaLink"),
+			mcp.WithDescription("List WhatsApp accounts. Admins see all accounts; standard users see only their own. If scoped to one account, returns that account's info."),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-			return jsonResult(mgr.ListAccounts())
+			identity := middleware.GetIdentityFromContext(ctx)
+			scopedID := middleware.GetScopedAccountID(ctx)
+			isAdmin := identity != nil && identity.HasPermission("*")
+
+			if scopedID != "" {
+				// Scoped mode — return just the scoped account
+				acct := mgr.GetAccount(scopedID)
+				if acct == nil {
+					return mcp.NewToolResultError("scoped account not found"), nil
+				}
+				resp := model.AccountListResponse{
+					Accounts: []model.AccountInfo{acct.Info()},
+					Total:    1,
+				}
+				return jsonResult(resp)
+			}
+
+			resp := mgr.ListAccounts()
+
+			// Non-admin without scope: filter to own accounts only
+			if !isAdmin && identity != nil {
+				filtered := make([]model.AccountInfo, 0)
+				for _, a := range resp.Accounts {
+					if a.UserID == identity.UserID {
+						filtered = append(filtered, a)
+					}
+				}
+				resp.Accounts = filtered
+				resp.Total = len(filtered)
+			}
+
+			return jsonResult(resp)
 		},
 	)
 
 	s.AddTool(
 		mcp.NewTool("get_session",
 			mcp.WithDescription("Get session/authentication status for a WhatsApp account"),
-			mcp.WithString("account_id", mcp.Required(), mcp.Description("Account ID")),
+			mcp.WithString("account_id", mcp.Description("Account ID (optional when scoped to a single account)")),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-			acct, errResult := requireAccount(mgr, req)
+			acct, errResult := resolveAccount(ctx, mgr, db, req)
 			if errResult != nil {
 				return errResult, nil
 			}
@@ -93,10 +166,10 @@ func registerTools(s *server.MCPServer, mgr *service.AccountManager) {
 	s.AddTool(
 		mcp.NewTool("get_qr",
 			mcp.WithDescription("Get a QR code string for linking a WhatsApp account. The returned code can be rendered as a QR code for scanning with WhatsApp mobile. Only works if the account is not already logged in."),
-			mcp.WithString("account_id", mcp.Required(), mcp.Description("Account ID")),
+			mcp.WithString("account_id", mcp.Description("Account ID (optional when scoped to a single account)")),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-			acct, errResult := requireAccount(mgr, req)
+			acct, errResult := resolveAccount(ctx, mgr, db, req)
 			if errResult != nil {
 				return errResult, nil
 			}
@@ -131,11 +204,11 @@ func registerTools(s *server.MCPServer, mgr *service.AccountManager) {
 	s.AddTool(
 		mcp.NewTool("pair_phone",
 			mcp.WithDescription("Pair a WhatsApp account using a phone number. Returns a linking code to enter on WhatsApp mobile. The account must be connected but not yet logged in (call get_qr first to initialize the connection)."),
-			mcp.WithString("account_id", mcp.Required(), mcp.Description("Account ID")),
+			mcp.WithString("account_id", mcp.Description("Account ID (optional when scoped to a single account)")),
 			mcp.WithString("phone", mcp.Required(), mcp.Description("Phone number to pair (international format, digits only, e.g. 919999999999)")),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-			acct, errResult := requireAccount(mgr, req)
+			acct, errResult := resolveAccount(ctx, mgr, db, req)
 			if errResult != nil {
 				return errResult, nil
 			}
@@ -156,10 +229,10 @@ func registerTools(s *server.MCPServer, mgr *service.AccountManager) {
 	s.AddTool(
 		mcp.NewTool("logout",
 			mcp.WithDescription("Disconnect and log out a WhatsApp account, clearing session credentials"),
-			mcp.WithString("account_id", mcp.Required(), mcp.Description("Account ID")),
+			mcp.WithString("account_id", mcp.Description("Account ID (optional when scoped to a single account)")),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-			acct, errResult := requireAccount(mgr, req)
+			acct, errResult := resolveAccount(ctx, mgr, db, req)
 			if errResult != nil {
 				return errResult, nil
 			}
@@ -176,14 +249,14 @@ func registerTools(s *server.MCPServer, mgr *service.AccountManager) {
 	s.AddTool(
 		mcp.NewTool("send_message",
 			mcp.WithDescription("Send a text message to a WhatsApp chat or phone number"),
-			mcp.WithString("account_id", mcp.Required(), mcp.Description("Account ID")),
+			mcp.WithString("account_id", mcp.Description("Account ID (optional when scoped to a single account)")),
 			mcp.WithString("text", mcp.Required(), mcp.Description("Message text")),
 			mcp.WithString("phone", mcp.Description("Phone number (international, digits only). Provide phone or jid, not both.")),
 			mcp.WithString("jid", mcp.Description("WhatsApp JID (e.g. 919999999999@s.whatsapp.net). Provide phone or jid, not both.")),
 			mcp.WithString("reply_to", mcp.Description("Message ID to reply to (optional)")),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-			acct, errResult := requireConnectedAccount(ctx, mgr, req)
+			acct, errResult := resolveConnectedAccount(ctx, mgr, db, req)
 			if errResult != nil {
 				return errResult, nil
 			}
@@ -231,11 +304,11 @@ func registerTools(s *server.MCPServer, mgr *service.AccountManager) {
 	s.AddTool(
 		mcp.NewTool("check_contacts",
 			mcp.WithDescription("Check if phone numbers are registered on WhatsApp"),
-			mcp.WithString("account_id", mcp.Required(), mcp.Description("Account ID")),
+			mcp.WithString("account_id", mcp.Description("Account ID (optional when scoped to a single account)")),
 			mcp.WithString("phones", mcp.Required(), mcp.Description("Comma-separated phone numbers (international, digits only)")),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-			acct, errResult := requireConnectedAccount(ctx, mgr, req)
+			acct, errResult := resolveConnectedAccount(ctx, mgr, db, req)
 			if errResult != nil {
 				return errResult, nil
 			}
@@ -256,11 +329,11 @@ func registerTools(s *server.MCPServer, mgr *service.AccountManager) {
 	s.AddTool(
 		mcp.NewTool("get_contact",
 			mcp.WithDescription("Get contact details (name, picture) by JID"),
-			mcp.WithString("account_id", mcp.Required(), mcp.Description("Account ID")),
+			mcp.WithString("account_id", mcp.Description("Account ID (optional when scoped to a single account)")),
 			mcp.WithString("jid", mcp.Required(), mcp.Description("Contact JID (e.g. 919999999999@s.whatsapp.net)")),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-			acct, errResult := requireConnectedAccount(ctx, mgr, req)
+			acct, errResult := resolveConnectedAccount(ctx, mgr, db, req)
 			if errResult != nil {
 				return errResult, nil
 			}
@@ -283,10 +356,10 @@ func registerTools(s *server.MCPServer, mgr *service.AccountManager) {
 	s.AddTool(
 		mcp.NewTool("list_groups",
 			mcp.WithDescription("List all WhatsApp groups the account has joined"),
-			mcp.WithString("account_id", mcp.Required(), mcp.Description("Account ID")),
+			mcp.WithString("account_id", mcp.Description("Account ID (optional when scoped to a single account)")),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-			acct, errResult := requireConnectedAccount(ctx, mgr, req)
+			acct, errResult := resolveConnectedAccount(ctx, mgr, db, req)
 			if errResult != nil {
 				return errResult, nil
 			}
@@ -302,11 +375,11 @@ func registerTools(s *server.MCPServer, mgr *service.AccountManager) {
 	s.AddTool(
 		mcp.NewTool("get_group",
 			mcp.WithDescription("Get detailed info about a WhatsApp group"),
-			mcp.WithString("account_id", mcp.Required(), mcp.Description("Account ID")),
+			mcp.WithString("account_id", mcp.Description("Account ID (optional when scoped to a single account)")),
 			mcp.WithString("jid", mcp.Required(), mcp.Description("Group JID (e.g. 120363012345@g.us)")),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-			acct, errResult := requireConnectedAccount(ctx, mgr, req)
+			acct, errResult := resolveConnectedAccount(ctx, mgr, db, req)
 			if errResult != nil {
 				return errResult, nil
 			}
@@ -329,10 +402,10 @@ func registerTools(s *server.MCPServer, mgr *service.AccountManager) {
 	s.AddTool(
 		mcp.NewTool("get_profile",
 			mcp.WithDescription("Get the WhatsApp profile of an account (name, about, picture)"),
-			mcp.WithString("account_id", mcp.Required(), mcp.Description("Account ID")),
+			mcp.WithString("account_id", mcp.Description("Account ID (optional when scoped to a single account)")),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-			acct, errResult := requireConnectedAccount(ctx, mgr, req)
+			acct, errResult := resolveConnectedAccount(ctx, mgr, db, req)
 			if errResult != nil {
 				return errResult, nil
 			}
@@ -348,11 +421,11 @@ func registerTools(s *server.MCPServer, mgr *service.AccountManager) {
 	s.AddTool(
 		mcp.NewTool("update_profile",
 			mcp.WithDescription("Update the account's WhatsApp status/about text"),
-			mcp.WithString("account_id", mcp.Required(), mcp.Description("Account ID")),
+			mcp.WithString("account_id", mcp.Description("Account ID (optional when scoped to a single account)")),
 			mcp.WithString("about", mcp.Required(), mcp.Description("New status/about text")),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-			acct, errResult := requireConnectedAccount(ctx, mgr, req)
+			acct, errResult := resolveConnectedAccount(ctx, mgr, db, req)
 			if errResult != nil {
 				return errResult, nil
 			}
@@ -374,10 +447,10 @@ func registerTools(s *server.MCPServer, mgr *service.AccountManager) {
 	s.AddTool(
 		mcp.NewTool("list_chats",
 			mcp.WithDescription("List recent WhatsApp conversations with last message and unread count"),
-			mcp.WithString("account_id", mcp.Required(), mcp.Description("Account ID")),
+			mcp.WithString("account_id", mcp.Description("Account ID (optional when scoped to a single account)")),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-			acct, errResult := requireConnectedAccount(ctx, mgr, req)
+			acct, errResult := resolveConnectedAccount(ctx, mgr, db, req)
 			if errResult != nil {
 				return errResult, nil
 			}
@@ -395,13 +468,13 @@ func registerTools(s *server.MCPServer, mgr *service.AccountManager) {
 	s.AddTool(
 		mcp.NewTool("get_messages",
 			mcp.WithDescription("Get paginated message history for a WhatsApp chat"),
-			mcp.WithString("account_id", mcp.Required(), mcp.Description("Account ID")),
+			mcp.WithString("account_id", mcp.Description("Account ID (optional when scoped to a single account)")),
 			mcp.WithString("chat_jid", mcp.Required(), mcp.Description("Chat JID (e.g. 919999999999@s.whatsapp.net or 120363012345@g.us)")),
 			mcp.WithString("limit", mcp.Description("Max messages to return (default 50, max 200)")),
 			mcp.WithString("before", mcp.Description("Cursor: message ID to paginate before")),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-			acct, errResult := requireAccount(mgr, req)
+			acct, errResult := resolveAccount(ctx, mgr, db, req)
 			if errResult != nil {
 				return errResult, nil
 			}
@@ -434,13 +507,13 @@ func registerTools(s *server.MCPServer, mgr *service.AccountManager) {
 	s.AddTool(
 		mcp.NewTool("react_message",
 			mcp.WithDescription("Send an emoji reaction to a WhatsApp message"),
-			mcp.WithString("account_id", mcp.Required(), mcp.Description("Account ID")),
+			mcp.WithString("account_id", mcp.Description("Account ID (optional when scoped to a single account)")),
 			mcp.WithString("chat_jid", mcp.Required(), mcp.Description("Chat JID where the message is")),
 			mcp.WithString("message_id", mcp.Required(), mcp.Description("ID of the message to react to")),
 			mcp.WithString("emoji", mcp.Required(), mcp.Description("Emoji to react with (e.g. 👍). Send empty string to remove reaction.")),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-			acct, errResult := requireConnectedAccount(ctx, mgr, req)
+			acct, errResult := resolveConnectedAccount(ctx, mgr, db, req)
 			if errResult != nil {
 				return errResult, nil
 			}
@@ -468,12 +541,12 @@ func registerTools(s *server.MCPServer, mgr *service.AccountManager) {
 	s.AddTool(
 		mcp.NewTool("mark_read",
 			mcp.WithDescription("Mark messages as read in a WhatsApp chat"),
-			mcp.WithString("account_id", mcp.Required(), mcp.Description("Account ID")),
+			mcp.WithString("account_id", mcp.Description("Account ID (optional when scoped to a single account)")),
 			mcp.WithString("chat_jid", mcp.Required(), mcp.Description("Chat JID")),
 			mcp.WithString("message_ids", mcp.Required(), mcp.Description("Comma-separated message IDs to mark as read")),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-			acct, errResult := requireConnectedAccount(ctx, mgr, req)
+			acct, errResult := resolveConnectedAccount(ctx, mgr, db, req)
 			if errResult != nil {
 				return errResult, nil
 			}
@@ -497,12 +570,12 @@ func registerTools(s *server.MCPServer, mgr *service.AccountManager) {
 	s.AddTool(
 		mcp.NewTool("revoke_message",
 			mcp.WithDescription("Revoke (delete for everyone) a previously sent WhatsApp message"),
-			mcp.WithString("account_id", mcp.Required(), mcp.Description("Account ID")),
+			mcp.WithString("account_id", mcp.Description("Account ID (optional when scoped to a single account)")),
 			mcp.WithString("chat_jid", mcp.Required(), mcp.Description("Chat JID where the message was sent")),
 			mcp.WithString("message_id", mcp.Required(), mcp.Description("ID of the message to revoke")),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-			acct, errResult := requireConnectedAccount(ctx, mgr, req)
+			acct, errResult := resolveConnectedAccount(ctx, mgr, db, req)
 			if errResult != nil {
 				return errResult, nil
 			}
@@ -529,7 +602,7 @@ func registerTools(s *server.MCPServer, mgr *service.AccountManager) {
 	s.AddTool(
 		mcp.NewTool("send_media",
 			mcp.WithDescription("Send a media file (image, video, audio, document) to a WhatsApp chat. Provide either media_base64 with the file data, or both are required along with filename and mimetype."),
-			mcp.WithString("account_id", mcp.Required(), mcp.Description("Account ID")),
+			mcp.WithString("account_id", mcp.Description("Account ID (optional when scoped to a single account)")),
 			mcp.WithString("jid", mcp.Required(), mcp.Description("Recipient JID (e.g. 919999999999@s.whatsapp.net)")),
 			mcp.WithString("media_base64", mcp.Required(), mcp.Description("Base64-encoded file data")),
 			mcp.WithString("filename", mcp.Required(), mcp.Description("Original filename (e.g. photo.jpg)")),
@@ -537,7 +610,7 @@ func registerTools(s *server.MCPServer, mgr *service.AccountManager) {
 			mcp.WithString("caption", mcp.Description("Optional caption for the media")),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-			acct, errResult := requireConnectedAccount(ctx, mgr, req)
+			acct, errResult := resolveConnectedAccount(ctx, mgr, db, req)
 			if errResult != nil {
 				return errResult, nil
 			}
@@ -582,11 +655,11 @@ func registerTools(s *server.MCPServer, mgr *service.AccountManager) {
 	s.AddTool(
 		mcp.NewTool("send_presence",
 			mcp.WithDescription("Set global online/offline presence status"),
-			mcp.WithString("account_id", mcp.Required(), mcp.Description("Account ID")),
+			mcp.WithString("account_id", mcp.Description("Account ID (optional when scoped to a single account)")),
 			mcp.WithString("state", mcp.Required(), mcp.Description("Presence state: 'available' or 'unavailable'")),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-			acct, errResult := requireConnectedAccount(ctx, mgr, req)
+			acct, errResult := resolveConnectedAccount(ctx, mgr, db, req)
 			if errResult != nil {
 				return errResult, nil
 			}
@@ -606,12 +679,12 @@ func registerTools(s *server.MCPServer, mgr *service.AccountManager) {
 	s.AddTool(
 		mcp.NewTool("send_chat_presence",
 			mcp.WithDescription("Send typing/paused indicator in a specific WhatsApp chat"),
-			mcp.WithString("account_id", mcp.Required(), mcp.Description("Account ID")),
+			mcp.WithString("account_id", mcp.Description("Account ID (optional when scoped to a single account)")),
 			mcp.WithString("jid", mcp.Required(), mcp.Description("Chat JID")),
 			mcp.WithString("state", mcp.Required(), mcp.Description("Chat presence state: 'composing' or 'paused'")),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-			acct, errResult := requireConnectedAccount(ctx, mgr, req)
+			acct, errResult := resolveConnectedAccount(ctx, mgr, db, req)
 			if errResult != nil {
 				return errResult, nil
 			}
@@ -637,10 +710,10 @@ func registerTools(s *server.MCPServer, mgr *service.AccountManager) {
 	s.AddTool(
 		mcp.NewTool("list_contacts",
 			mcp.WithDescription("List all WhatsApp contacts known to the account"),
-			mcp.WithString("account_id", mcp.Required(), mcp.Description("Account ID")),
+			mcp.WithString("account_id", mcp.Description("Account ID (optional when scoped to a single account)")),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-			acct, errResult := requireConnectedAccount(ctx, mgr, req)
+			acct, errResult := resolveConnectedAccount(ctx, mgr, db, req)
 			if errResult != nil {
 				return errResult, nil
 			}
@@ -658,12 +731,12 @@ func registerTools(s *server.MCPServer, mgr *service.AccountManager) {
 	s.AddTool(
 		mcp.NewTool("create_group",
 			mcp.WithDescription("Create a new WhatsApp group"),
-			mcp.WithString("account_id", mcp.Required(), mcp.Description("Account ID")),
+			mcp.WithString("account_id", mcp.Description("Account ID (optional when scoped to a single account)")),
 			mcp.WithString("name", mcp.Required(), mcp.Description("Group name")),
 			mcp.WithString("participants", mcp.Required(), mcp.Description("Comma-separated participant JIDs")),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-			acct, errResult := requireConnectedAccount(ctx, mgr, req)
+			acct, errResult := resolveConnectedAccount(ctx, mgr, db, req)
 			if errResult != nil {
 				return errResult, nil
 			}
@@ -688,7 +761,7 @@ func registerTools(s *server.MCPServer, mgr *service.AccountManager) {
 	s.AddTool(
 		mcp.NewTool("update_group",
 			mcp.WithDescription("Update WhatsApp group settings (name, description, locked, announce)"),
-			mcp.WithString("account_id", mcp.Required(), mcp.Description("Account ID")),
+			mcp.WithString("account_id", mcp.Description("Account ID (optional when scoped to a single account)")),
 			mcp.WithString("jid", mcp.Required(), mcp.Description("Group JID")),
 			mcp.WithString("name", mcp.Description("New group name")),
 			mcp.WithString("description", mcp.Description("New group description")),
@@ -696,7 +769,7 @@ func registerTools(s *server.MCPServer, mgr *service.AccountManager) {
 			mcp.WithString("announce", mcp.Description("'true' or 'false' — restrict messaging to admins only")),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-			acct, errResult := requireConnectedAccount(ctx, mgr, req)
+			acct, errResult := resolveConnectedAccount(ctx, mgr, db, req)
 			if errResult != nil {
 				return errResult, nil
 			}
@@ -732,11 +805,11 @@ func registerTools(s *server.MCPServer, mgr *service.AccountManager) {
 	s.AddTool(
 		mcp.NewTool("leave_group",
 			mcp.WithDescription("Leave a WhatsApp group"),
-			mcp.WithString("account_id", mcp.Required(), mcp.Description("Account ID")),
+			mcp.WithString("account_id", mcp.Description("Account ID (optional when scoped to a single account)")),
 			mcp.WithString("jid", mcp.Required(), mcp.Description("Group JID")),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-			acct, errResult := requireConnectedAccount(ctx, mgr, req)
+			acct, errResult := resolveConnectedAccount(ctx, mgr, db, req)
 			if errResult != nil {
 				return errResult, nil
 			}
@@ -756,13 +829,13 @@ func registerTools(s *server.MCPServer, mgr *service.AccountManager) {
 	s.AddTool(
 		mcp.NewTool("update_participants",
 			mcp.WithDescription("Add, remove, promote, or demote participants in a WhatsApp group"),
-			mcp.WithString("account_id", mcp.Required(), mcp.Description("Account ID")),
+			mcp.WithString("account_id", mcp.Description("Account ID (optional when scoped to a single account)")),
 			mcp.WithString("jid", mcp.Required(), mcp.Description("Group JID")),
 			mcp.WithString("participants", mcp.Required(), mcp.Description("Comma-separated participant JIDs")),
 			mcp.WithString("action", mcp.Required(), mcp.Description("Action: 'add', 'remove', 'promote', or 'demote'")),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-			acct, errResult := requireConnectedAccount(ctx, mgr, req)
+			acct, errResult := resolveConnectedAccount(ctx, mgr, db, req)
 			if errResult != nil {
 				return errResult, nil
 			}
@@ -790,12 +863,12 @@ func registerTools(s *server.MCPServer, mgr *service.AccountManager) {
 	s.AddTool(
 		mcp.NewTool("get_group_invite",
 			mcp.WithDescription("Get the invite link for a WhatsApp group"),
-			mcp.WithString("account_id", mcp.Required(), mcp.Description("Account ID")),
+			mcp.WithString("account_id", mcp.Description("Account ID (optional when scoped to a single account)")),
 			mcp.WithString("jid", mcp.Required(), mcp.Description("Group JID")),
 			mcp.WithString("reset", mcp.Description("Set to 'true' to revoke the current link and generate a new one")),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-			acct, errResult := requireConnectedAccount(ctx, mgr, req)
+			acct, errResult := resolveConnectedAccount(ctx, mgr, db, req)
 			if errResult != nil {
 				return errResult, nil
 			}

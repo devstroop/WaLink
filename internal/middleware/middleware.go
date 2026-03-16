@@ -2,10 +2,13 @@ package middleware
 
 import (
 	"context"
+	"crypto/sha256"
 	"crypto/subtle"
+	"encoding/hex"
 	"encoding/json"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/devstroop/walink/internal/config"
 	"github.com/devstroop/walink/internal/database"
@@ -17,6 +20,7 @@ import (
 type contextKey string
 
 const identityKey contextKey = "identity"
+const scopedAccountKey contextKey = "scoped_account_id"
 
 // Identity represents the authenticated caller.
 type Identity struct {
@@ -102,41 +106,163 @@ func Auth(secretKey string, db *database.DB, next http.Handler) http.Handler {
 			}
 			return []byte(secretKey), nil
 		})
-		if err != nil || !parsed.Valid {
-			jsonError(w, "invalid credentials", http.StatusUnauthorized)
+		if err == nil && parsed.Valid {
+			userID := claims.Subject
+			if userID == "" {
+				jsonError(w, "invalid credentials", http.StatusUnauthorized)
+				return
+			}
+
+			user, err := db.GetUser(userID)
+			if err != nil || user == nil {
+				jsonError(w, "invalid credentials", http.StatusUnauthorized)
+				return
+			}
+			if !user.Enabled {
+				jsonError(w, "account disabled", http.StatusForbidden)
+				return
+			}
+
+			perms, err := db.GetRolePermissions(user.RoleID)
+			if err != nil {
+				jsonError(w, "internal error", http.StatusInternalServerError)
+				return
+			}
+
+			id := &Identity{
+				UserID:      user.ID,
+				Username:    user.Username,
+				RoleName:    user.RoleName,
+				Permissions: perms,
+			}
+			ctx := context.WithValue(r.Context(), identityKey, id)
+			next.ServeHTTP(w, r.WithContext(ctx))
 			return
 		}
 
-		userID := claims.Subject
-		if userID == "" {
-			jsonError(w, "invalid credentials", http.StatusUnauthorized)
+		// Path 3: API key → user auth via key hash lookup
+		if strings.HasPrefix(token, "walink_") {
+			hash := sha256.Sum256([]byte(token))
+			keyHash := hex.EncodeToString(hash[:])
+
+			rec, err := db.GetAPIKeyByHash(keyHash)
+			if err != nil || rec == nil || !rec.Enabled {
+				jsonError(w, "invalid credentials", http.StatusUnauthorized)
+				return
+			}
+			if rec.ExpiresAt != nil {
+				if exp, err := time.Parse(time.RFC3339, *rec.ExpiresAt); err == nil && exp.Before(time.Now()) {
+					jsonError(w, "api key expired", http.StatusUnauthorized)
+					return
+				}
+			}
+
+			user, err := db.GetUser(rec.UserID)
+			if err != nil || user == nil {
+				jsonError(w, "invalid credentials", http.StatusUnauthorized)
+				return
+			}
+			if !user.Enabled {
+				jsonError(w, "account disabled", http.StatusForbidden)
+				return
+			}
+
+			perms, err := db.GetRolePermissions(user.RoleID)
+			if err != nil {
+				jsonError(w, "internal error", http.StatusInternalServerError)
+				return
+			}
+
+			// Update last_used in background
+			go func() { _ = db.UpdateAPIKeyLastUsed(rec.ID) }()
+
+			id := &Identity{
+				UserID:      user.ID,
+				Username:    user.Username,
+				RoleName:    user.RoleName,
+				Permissions: perms,
+			}
+			ctx := context.WithValue(r.Context(), identityKey, id)
+			// If API key is bound to an account, auto-scope it
+			if rec.AccountID != nil && *rec.AccountID != "" {
+				ctx = context.WithValue(ctx, scopedAccountKey, *rec.AccountID)
+			}
+			next.ServeHTTP(w, r.WithContext(ctx))
 			return
 		}
 
-		user, err := db.GetUser(userID)
-		if err != nil || user == nil {
-			jsonError(w, "invalid credentials", http.StatusUnauthorized)
-			return
-		}
-		if !user.Enabled {
-			jsonError(w, "account disabled", http.StatusForbidden)
+		jsonError(w, "invalid credentials", http.StatusUnauthorized)
+	})
+}
+
+// GetScopedAccountID returns the account_id from context (set by MCPScope), or "".
+func GetScopedAccountID(ctx context.Context) string {
+	v, _ := ctx.Value(scopedAccountKey).(string)
+	return v
+}
+
+// MCPScope wraps the MCP handler with account scoping.
+// Account resolution order:
+//  1. Already in context (from account-bound API key) — use as-is.
+//  2. ?account_id= query parameter — validated for ownership.
+//  3. Admin callers may omit account_id entirely (multi-account mode).
+//  4. Non-admin callers without scope → 400 error.
+func MCPScope(db *database.DB, next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		id := GetIdentity(r)
+		if id == nil {
+			jsonError(w, "missing authorization", http.StatusUnauthorized)
 			return
 		}
 
-		perms, err := db.GetRolePermissions(user.RoleID)
-		if err != nil {
-			jsonError(w, "internal error", http.StatusInternalServerError)
+		isAdmin := id.HasPermission("*")
+
+		// Check if account_id is already set (e.g. from account-bound API key)
+		if existing := GetScopedAccountID(r.Context()); existing != "" {
+			// Validate the bound account still exists and is owned by caller
+			if !isAdmin {
+				acct, err := db.GetAccount(existing)
+				if err != nil || acct == nil {
+					jsonError(w, "bound account not found", http.StatusNotFound)
+					return
+				}
+				if acct.UserID != id.UserID {
+					jsonError(w, "forbidden: you do not own the bound account", http.StatusForbidden)
+					return
+				}
+			}
+			next.ServeHTTP(w, r)
 			return
 		}
 
-		id := &Identity{
-			UserID:      user.ID,
-			Username:    user.Username,
-			RoleName:    user.RoleName,
-			Permissions: perms,
+		accountID := r.URL.Query().Get("account_id")
+
+		if !isAdmin {
+			// Non-admin: account_id is mandatory (from query param)
+			if accountID == "" {
+				jsonError(w, "account_id query parameter is required (or use an account-bound API key)", http.StatusBadRequest)
+				return
+			}
+
+			// Verify account exists and user owns it
+			acct, err := db.GetAccount(accountID)
+			if err != nil || acct == nil {
+				jsonError(w, "account not found", http.StatusNotFound)
+				return
+			}
+			if acct.UserID != id.UserID {
+				jsonError(w, "forbidden: you do not own this account", http.StatusForbidden)
+				return
+			}
 		}
-		ctx := context.WithValue(r.Context(), identityKey, id)
-		next.ServeHTTP(w, r.WithContext(ctx))
+
+		// If account_id is provided (admin or user), put it in context
+		if accountID != "" {
+			ctx := context.WithValue(r.Context(), scopedAccountKey, accountID)
+			r = r.WithContext(ctx)
+		}
+
+		next.ServeHTTP(w, r)
 	})
 }
 
