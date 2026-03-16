@@ -77,20 +77,24 @@ func main() {
 	// Health endpoint (no auth)
 	mux.HandleFunc("GET /api/health", handler.Health)
 
+	// Login endpoint (no auth — before the auth middleware)
+	mux.HandleFunc("POST /api/v1/auth/login", handler.NewAuthHandler(db, cfg.Auth.SecretKey).Login)
+
 	// API v1 — all routes require auth
-	api := handler.NewAPI(mgr)
+	api := handler.NewAPI(mgr, db)
 	apiMux := http.NewServeMux()
 	api.RegisterRoutes(apiMux)
+	handler.RegisterRBACRoutes(apiMux, db, cfg.Auth.SecretKey)
 
 	// Wrap API routes with auth middleware
-	authed := middleware.Auth(cfg.Auth.SecretKey, apiMux)
+	authed := middleware.Auth(cfg.Auth.SecretKey, db, apiMux)
 	limited := middleware.RateLimit(cfg.Limits.MaxConcurrentRequests, authed)
 	mux.Handle("/api/v1/", limited)
 
 	// MCP (Model Context Protocol) endpoint — same auth as API
 	mcpSrv := mcpserver.New(mgr, version)
 	mcpTransport := mcphttp.NewStreamableHTTPServer(mcpSrv)
-	mux.Handle("/mcp", middleware.Auth(cfg.Auth.SecretKey, mcpTransport))
+	mux.Handle("/mcp", middleware.Auth(cfg.Auth.SecretKey, db, mcpTransport))
 	log.Info().Msg("MCP endpoint enabled at /mcp")
 
 	// Swagger UI (no auth)

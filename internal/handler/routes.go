@@ -3,77 +3,105 @@ package handler
 import (
 	"net/http"
 
+	"github.com/devstroop/walink/internal/database"
+	"github.com/devstroop/walink/internal/middleware"
 	"github.com/devstroop/walink/internal/service"
 )
 
 // API groups all route handlers.
 type API struct {
 	mgr *service.AccountManager
+	db  *database.DB
 }
 
 // NewAPI creates a new API handler group.
-func NewAPI(mgr *service.AccountManager) *API {
-	return &API{mgr: mgr}
+func NewAPI(mgr *service.AccountManager, db *database.DB) *API {
+	return &API{mgr: mgr, db: db}
 }
 
 // RegisterRoutes wires every endpoint into the mux.
 // All paths are under /api/v1/accounts.
 func (a *API) RegisterRoutes(mux *http.ServeMux) {
+	perm := middleware.RequirePermission
 	base := "/api/v1/accounts"
 	acct := base + "/{account_id}"
 
 	// ── Account CRUD ────────────────────────────────
-	mux.HandleFunc("GET "+base, a.ListAccounts)
-	mux.HandleFunc("POST "+base, a.CreateAccount)
-	mux.HandleFunc("GET "+acct, a.GetAccount)
-	mux.HandleFunc("PATCH "+acct, a.UpdateAccount)
-	mux.HandleFunc("DELETE "+acct, a.DeleteAccount)
+	mux.HandleFunc("GET "+base, perm("accounts:read", a.ListAccounts))
+	mux.HandleFunc("POST "+base, perm("accounts:write", a.CreateAccount))
+	mux.HandleFunc("GET "+acct, perm("accounts:read", a.GetAccount))
+	mux.HandleFunc("PATCH "+acct, perm("accounts:write", a.UpdateAccount))
+	mux.HandleFunc("DELETE "+acct, perm("accounts:write", a.DeleteAccount))
 
 	// ── Session (auth/linking lifecycle) ────────────
-	mux.HandleFunc("GET "+acct+"/session", a.GetSession)
-	mux.HandleFunc("GET "+acct+"/session/qr", a.GetQR)
-	mux.HandleFunc("POST "+acct+"/session/pair", a.PairPhone)
-	mux.HandleFunc("DELETE "+acct+"/session", a.DeleteSession)
+	mux.HandleFunc("GET "+acct+"/session", perm("session:read", a.GetSession))
+	mux.HandleFunc("GET "+acct+"/session/qr", perm("session:write", a.GetQR))
+	mux.HandleFunc("POST "+acct+"/session/pair", perm("session:write", a.PairPhone))
+	mux.HandleFunc("DELETE "+acct+"/session", perm("session:write", a.DeleteSession))
 
 	// ── Proxy ───────────────────────────────────────
-	mux.HandleFunc("GET "+acct+"/proxy", a.GetProxy)
-	mux.HandleFunc("PUT "+acct+"/proxy", a.SetProxy)
-	mux.HandleFunc("DELETE "+acct+"/proxy", a.DeleteProxy)
+	mux.HandleFunc("GET "+acct+"/proxy", perm("proxy:read", a.GetProxy))
+	mux.HandleFunc("PUT "+acct+"/proxy", perm("proxy:write", a.SetProxy))
+	mux.HandleFunc("DELETE "+acct+"/proxy", perm("proxy:write", a.DeleteProxy))
 
 	// ── Messaging ───────────────────────────────────
-	mux.HandleFunc("GET "+acct+"/messages", a.GetMessages)
-	mux.HandleFunc("POST "+acct+"/messages/send", a.SendMessageSend)
-	mux.HandleFunc("POST "+acct+"/messages/react", a.ReactMessage)
-	mux.HandleFunc("POST "+acct+"/messages/read", a.MarkRead)
-	mux.HandleFunc("DELETE "+acct+"/messages/{message_id}", a.RevokeMessage)
+	mux.HandleFunc("GET "+acct+"/messages", perm("messages:read", a.GetMessages))
+	mux.HandleFunc("POST "+acct+"/messages/send", perm("messages:write", a.SendMessageSend))
+	mux.HandleFunc("POST "+acct+"/messages/react", perm("messages:write", a.ReactMessage))
+	mux.HandleFunc("POST "+acct+"/messages/read", perm("messages:write", a.MarkRead))
+	mux.HandleFunc("DELETE "+acct+"/messages/{message_id}", perm("messages:write", a.RevokeMessage))
 
 	// ── Webhook ─────────────────────────────────────
-	mux.HandleFunc("GET "+acct+"/webhook", a.GetWebhook)
-	mux.HandleFunc("PUT "+acct+"/webhook", a.SetWebhook)
-	mux.HandleFunc("DELETE "+acct+"/webhook", a.DeleteWebhook)
+	mux.HandleFunc("GET "+acct+"/webhook", perm("webhooks:read", a.GetWebhook))
+	mux.HandleFunc("PUT "+acct+"/webhook", perm("webhooks:write", a.SetWebhook))
+	mux.HandleFunc("DELETE "+acct+"/webhook", perm("webhooks:write", a.DeleteWebhook))
 
 	// ── Chats ───────────────────────────────────────
-	mux.HandleFunc("GET "+acct+"/chats", a.ListChats)
-
+	mux.HandleFunc("GET "+acct+"/chats", perm("chats:read", a.ListChats))
 
 	// ── Contacts ────────────────────────────────────
-	mux.HandleFunc("GET "+acct+"/contacts", a.ListContacts)
-	mux.HandleFunc("POST "+acct+"/contacts/check", a.CheckContacts)
-	mux.HandleFunc("GET "+acct+"/contacts/{jid}", a.GetContact)
+	mux.HandleFunc("GET "+acct+"/contacts", perm("contacts:read", a.ListContacts))
+	mux.HandleFunc("POST "+acct+"/contacts/check", perm("contacts:write", a.CheckContacts))
+	mux.HandleFunc("GET "+acct+"/contacts/{jid}", perm("contacts:read", a.GetContact))
 
 	// ── Groups ──────────────────────────────────────
-	mux.HandleFunc("GET "+acct+"/groups", a.ListGroups)
-	mux.HandleFunc("POST "+acct+"/groups", a.CreateGroup)
-	mux.HandleFunc("GET "+acct+"/groups/{jid}", a.GetGroup)
-	mux.HandleFunc("PATCH "+acct+"/groups/{jid}", a.UpdateGroup)
-	mux.HandleFunc("DELETE "+acct+"/groups/{jid}", a.LeaveGroup)
-	mux.HandleFunc("GET "+acct+"/groups/{jid}/invite", a.GetGroupInvite)
-	mux.HandleFunc("POST "+acct+"/groups/{jid}/participants", a.UpdateGroupParticipants)
+	mux.HandleFunc("GET "+acct+"/groups", perm("groups:read", a.ListGroups))
+	mux.HandleFunc("POST "+acct+"/groups", perm("groups:write", a.CreateGroup))
+	mux.HandleFunc("GET "+acct+"/groups/{jid}", perm("groups:read", a.GetGroup))
+	mux.HandleFunc("PATCH "+acct+"/groups/{jid}", perm("groups:write", a.UpdateGroup))
+	mux.HandleFunc("DELETE "+acct+"/groups/{jid}", perm("groups:write", a.LeaveGroup))
+	mux.HandleFunc("GET "+acct+"/groups/{jid}/invite", perm("groups:read", a.GetGroupInvite))
+	mux.HandleFunc("POST "+acct+"/groups/{jid}/participants", perm("groups:write", a.UpdateGroupParticipants))
 
 	// ── Presence ────────────────────────────────────
-	mux.HandleFunc("POST "+acct+"/presence", a.SendPresence)
+	mux.HandleFunc("POST "+acct+"/presence", perm("presence:write", a.SendPresence))
 
 	// ── Profile ─────────────────────────────────────
-	mux.HandleFunc("GET "+acct+"/profile", a.GetProfile)
-	mux.HandleFunc("PATCH "+acct+"/profile", a.UpdateProfile)
+	mux.HandleFunc("GET "+acct+"/profile", perm("profile:read", a.GetProfile))
+	mux.HandleFunc("PATCH "+acct+"/profile", perm("profile:write", a.UpdateProfile))
+}
+
+// RegisterRBACRoutes wires user and role management endpoints.
+func RegisterRBACRoutes(mux *http.ServeMux, db *database.DB, secretKey string) {
+	perm := middleware.RequirePermission
+
+	// Auth (no permission needed — public)
+	auth := NewAuthHandler(db, secretKey)
+	mux.HandleFunc("POST /api/v1/auth/login", auth.Login)
+
+	// Users
+	users := NewUserHandler(db)
+	mux.HandleFunc("GET /api/v1/users", perm("users:*", users.ListUsers))
+	mux.HandleFunc("POST /api/v1/users", perm("users:*", users.CreateUser))
+	mux.HandleFunc("GET /api/v1/users/{user_id}", users.GetUser) // self-access handled inside
+	mux.HandleFunc("PATCH /api/v1/users/{user_id}", perm("users:*", users.UpdateUser))
+	mux.HandleFunc("DELETE /api/v1/users/{user_id}", perm("users:*", users.DeleteUser))
+
+	// Roles
+	roles := NewRoleHandler(db)
+	mux.HandleFunc("GET /api/v1/roles", perm("roles:read", roles.ListRoles))
+	mux.HandleFunc("POST /api/v1/roles", perm("roles:write", roles.CreateRole))
+	mux.HandleFunc("GET /api/v1/roles/{role_id}", perm("roles:read", roles.GetRole))
+	mux.HandleFunc("PATCH /api/v1/roles/{role_id}", perm("roles:write", roles.UpdateRole))
+	mux.HandleFunc("DELETE /api/v1/roles/{role_id}", perm("roles:write", roles.DeleteRole))
 }
