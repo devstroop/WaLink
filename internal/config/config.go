@@ -29,7 +29,8 @@ type ServerConfig struct {
 }
 
 type AuthConfig struct {
-	SecretKey string `toml:"secret_key"`
+	SecretKey           string `toml:"secret_key"`
+	RegistrationEnabled bool   `toml:"registration_enabled"`
 }
 
 type LoggingConfig struct {
@@ -161,6 +162,9 @@ func applyEnvOverrides(cfg *Config) {
 		if n, err := strconv.ParseInt(v, 10, 64); err == nil {
 			cfg.Webhooks.RetryDelay = n
 		}
+	}
+	if v := os.Getenv("WALINK_AUTH_REGISTRATION_ENABLED"); v != "" {
+		cfg.Auth.RegistrationEnabled = v == "true" || v == "1"
 	}
 	if v := os.Getenv("WALINK_SWAGGER_ENABLED"); v != "" {
 		cfg.Swagger.Enabled = v == "true" || v == "1"

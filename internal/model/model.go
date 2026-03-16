@@ -382,9 +382,33 @@ type LoginRequest struct {
 
 // LoginResponse is returned after successful login.
 type LoginResponse struct {
-	Token     string `json:"token"`
-	ExpiresAt string `json:"expires_at"`
+	Token     string   `json:"token"`
+	ExpiresAt string   `json:"expires_at"`
 	User      UserInfo `json:"user"`
+}
+
+// RegisterRequest is the JSON body for POST /api/v1/auth/register.
+type RegisterRequest struct {
+	Username string `json:"username"`
+	Password string `json:"password"`
+}
+
+// ForgotPasswordRequest is the JSON body for POST /api/v1/auth/forgot-password.
+// Admin-only: generates a one-time reset token for the given user.
+type ForgotPasswordRequest struct {
+	Username string `json:"username"`
+}
+
+// ForgotPasswordResponse returns the reset token to be shared with the user.
+type ForgotPasswordResponse struct {
+	ResetToken string `json:"reset_token"`
+	ExpiresAt  string `json:"expires_at"`
+}
+
+// ResetPasswordRequest is the JSON body for POST /api/v1/auth/reset-password.
+type ResetPasswordRequest struct {
+	Token       string `json:"token"`
+	NewPassword string `json:"new_password"`
 }
 
 // ──────────────────────────────────────────────────────

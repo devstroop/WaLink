@@ -96,6 +96,16 @@ type APIKeyRecord struct {
 	CreatedAt string
 }
 
+// ResetTokenRecord is a password-reset token stored in the DB.
+type ResetTokenRecord struct {
+	ID        string
+	UserID    string
+	TokenHash string
+	ExpiresAt string // RFC3339
+	Used      bool
+	CreatedAt string
+}
+
 // Open creates or opens the SQLite database at path, running migrations.
 func Open(path string) (*DB, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
@@ -255,6 +265,21 @@ func (d *DB) migrate() error {
 
 	// Migration: add account_id column to api_key if missing (upgrade from earlier schema)
 	d.db.Exec(`ALTER TABLE api_key ADD COLUMN account_id TEXT REFERENCES account(id) ON DELETE CASCADE`)
+
+	// ── Password reset token table ──────────────────
+	_, err = d.db.Exec(`
+		CREATE TABLE IF NOT EXISTS password_reset_token (
+			id         TEXT PRIMARY KEY,
+			user_id    TEXT NOT NULL REFERENCES user(id) ON DELETE CASCADE,
+			token_hash TEXT NOT NULL UNIQUE,
+			expires_at TEXT NOT NULL,
+			used       INTEGER NOT NULL DEFAULT 0,
+			created_at TEXT NOT NULL DEFAULT (datetime('now'))
+		);
+	`)
+	if err != nil {
+		return err
+	}
 
 	// ── Seed built-in roles ─────────────────────────
 	if err := d.seedRoles(); err != nil {
@@ -987,6 +1012,28 @@ func (d *DB) ListAPIKeysByUser(userID string) ([]*APIKeyRecord, error) {
 	return out, rows.Err()
 }
 
+// ListAllAPIKeys returns all API keys (admin use).
+func (d *DB) ListAllAPIKeys() ([]*APIKeyRecord, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	rows, err := d.db.Query(`SELECT id, user_id, account_id, name, prefix, key_hash, expires_at, last_used, enabled, created_at FROM api_key ORDER BY created_at DESC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []*APIKeyRecord
+	for rows.Next() {
+		r, err := scanAPIKeyRow(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
 // DeleteAPIKey removes an API key.
 func (d *DB) DeleteAPIKey(id string) error {
 	d.mu.Lock()
@@ -1049,4 +1096,53 @@ func scanAPIKeyRow(rows *sql.Rows) (*APIKeyRecord, error) {
 		r.LastUsed = &lastUsed.String
 	}
 	return &r, nil
+}
+
+// ─── Password Reset Token CRUD ──────────────────────────────
+
+// CreateResetToken stores a hashed password reset token.
+func (d *DB) CreateResetToken(rec *ResetTokenRecord) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	// Invalidate any existing unused tokens for this user
+	d.db.Exec(`UPDATE password_reset_token SET used = 1 WHERE user_id = ? AND used = 0`, rec.UserID)
+
+	_, err := d.db.Exec(
+		`INSERT INTO password_reset_token (id, user_id, token_hash, expires_at) VALUES (?, ?, ?, ?)`,
+		rec.ID, rec.UserID, rec.TokenHash, rec.ExpiresAt,
+	)
+	return err
+}
+
+// GetResetTokenByHash finds an unused, non-expired reset token by its hash.
+func (d *DB) GetResetTokenByHash(tokenHash string) (*ResetTokenRecord, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	row := d.db.QueryRow(
+		`SELECT id, user_id, token_hash, expires_at, used, created_at FROM password_reset_token WHERE token_hash = ? AND used = 0`,
+		tokenHash,
+	)
+
+	var r ResetTokenRecord
+	var used int
+	err := row.Scan(&r.ID, &r.UserID, &r.TokenHash, &r.ExpiresAt, &used, &r.CreatedAt)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	r.Used = used != 0
+	return &r, nil
+}
+
+// MarkResetTokenUsed marks a token as consumed.
+func (d *DB) MarkResetTokenUsed(id string) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	_, err := d.db.Exec(`UPDATE password_reset_token SET used = 1 WHERE id = ?`, id)
+	return err
 }

@@ -1,25 +1,31 @@
 package handler
 
 import (
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"net/http"
 	"time"
 
 	"github.com/devstroop/walink/internal/database"
+	"github.com/devstroop/walink/internal/middleware"
 	"github.com/devstroop/walink/internal/model"
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
 )
 
-// AuthHandler handles login.
+// AuthHandler handles login, registration, and password reset.
 type AuthHandler struct {
-	db        *database.DB
-	secretKey string
+	db                  *database.DB
+	secretKey           string
+	registrationEnabled bool
 }
 
 // NewAuthHandler creates a new auth handler.
-func NewAuthHandler(db *database.DB, secretKey string) *AuthHandler {
-	return &AuthHandler{db: db, secretKey: secretKey}
+func NewAuthHandler(db *database.DB, secretKey string, registrationEnabled bool) *AuthHandler {
+	return &AuthHandler{db: db, secretKey: secretKey, registrationEnabled: registrationEnabled}
 }
 
 // Login authenticates a user and returns a JWT.
@@ -82,4 +88,186 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 			CreatedAt: user.CreatedAt,
 		},
 	})
+}
+
+// Register creates a new user account with the default user role.
+// Only available when registration is enabled in config.
+func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
+	if !h.registrationEnabled {
+		writeJSON(w, http.StatusForbidden, model.ErrorResponse{Error: "registration is disabled"})
+		return
+	}
+
+	var req model.RegisterRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, model.ErrorResponse{Error: "invalid request body"})
+		return
+	}
+
+	if req.Username == "" || req.Password == "" {
+		writeJSON(w, http.StatusBadRequest, model.ErrorResponse{Error: "username and password are required"})
+		return
+	}
+	if len(req.Password) < 8 {
+		writeJSON(w, http.StatusBadRequest, model.ErrorResponse{Error: "password must be at least 8 characters"})
+		return
+	}
+
+	existing, err := h.db.GetUserByUsername(req.Username)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, model.ErrorResponse{Error: "internal error"})
+		return
+	}
+	if existing != nil {
+		writeJSON(w, http.StatusConflict, model.ErrorResponse{Error: "username already exists"})
+		return
+	}
+
+	hash, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, model.ErrorResponse{Error: "internal error"})
+		return
+	}
+
+	rec := &database.UserRecord{
+		ID:           uuid.New().String(),
+		Username:     req.Username,
+		PasswordHash: string(hash),
+		RoleID:       "builtin-user",
+		Enabled:      true,
+	}
+
+	if err := h.db.CreateUser(rec); err != nil {
+		writeJSON(w, http.StatusInternalServerError, model.ErrorResponse{Error: "failed to create user"})
+		return
+	}
+
+	user, _ := h.db.GetUser(rec.ID)
+	if user != nil {
+		writeJSON(w, http.StatusCreated, model.UserInfo{
+			ID:        user.ID,
+			Username:  user.Username,
+			RoleID:    user.RoleID,
+			RoleName:  user.RoleName,
+			Enabled:   user.Enabled,
+			CreatedAt: user.CreatedAt,
+		})
+	} else {
+		writeJSON(w, http.StatusCreated, model.UserInfo{ID: rec.ID, Username: rec.Username, RoleID: rec.RoleID, Enabled: true})
+	}
+}
+
+// ForgotPassword generates a one-time reset token for a user.
+// Admin-only: the admin gives the token to the user out-of-band.
+func (h *AuthHandler) ForgotPassword(w http.ResponseWriter, r *http.Request) {
+	identity := middleware.GetIdentity(r)
+	if identity == nil || !identity.HasPermission("users:*") {
+		writeJSON(w, http.StatusForbidden, model.ErrorResponse{Error: "only administrators can generate reset tokens"})
+		return
+	}
+
+	var req model.ForgotPasswordRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, model.ErrorResponse{Error: "invalid request body"})
+		return
+	}
+	if req.Username == "" {
+		writeJSON(w, http.StatusBadRequest, model.ErrorResponse{Error: "username is required"})
+		return
+	}
+
+	user, err := h.db.GetUserByUsername(req.Username)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, model.ErrorResponse{Error: "internal error"})
+		return
+	}
+	if user == nil {
+		writeJSON(w, http.StatusNotFound, model.ErrorResponse{Error: "user not found"})
+		return
+	}
+
+	// Generate random token
+	rawBytes := make([]byte, 32)
+	if _, err := rand.Read(rawBytes); err != nil {
+		writeJSON(w, http.StatusInternalServerError, model.ErrorResponse{Error: "failed to generate token"})
+		return
+	}
+	plainToken := hex.EncodeToString(rawBytes)
+
+	tokenHash := sha256.Sum256([]byte(plainToken))
+	hashHex := hex.EncodeToString(tokenHash[:])
+
+	expiresAt := time.Now().Add(1 * time.Hour)
+
+	rec := &database.ResetTokenRecord{
+		ID:        uuid.New().String(),
+		UserID:    user.ID,
+		TokenHash: hashHex,
+		ExpiresAt: expiresAt.Format(time.RFC3339),
+	}
+
+	if err := h.db.CreateResetToken(rec); err != nil {
+		writeJSON(w, http.StatusInternalServerError, model.ErrorResponse{Error: "failed to create reset token"})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, model.ForgotPasswordResponse{
+		ResetToken: plainToken,
+		ExpiresAt:  expiresAt.Format(time.RFC3339),
+	})
+}
+
+// ResetPassword resets a user's password using a valid reset token.
+// Public endpoint — token is the proof of authorization.
+func (h *AuthHandler) ResetPassword(w http.ResponseWriter, r *http.Request) {
+	var req model.ResetPasswordRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, model.ErrorResponse{Error: "invalid request body"})
+		return
+	}
+	if req.Token == "" || req.NewPassword == "" {
+		writeJSON(w, http.StatusBadRequest, model.ErrorResponse{Error: "token and new_password are required"})
+		return
+	}
+	if len(req.NewPassword) < 8 {
+		writeJSON(w, http.StatusBadRequest, model.ErrorResponse{Error: "password must be at least 8 characters"})
+		return
+	}
+
+	tokenHash := sha256.Sum256([]byte(req.Token))
+	hashHex := hex.EncodeToString(tokenHash[:])
+
+	rec, err := h.db.GetResetTokenByHash(hashHex)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, model.ErrorResponse{Error: "internal error"})
+		return
+	}
+	if rec == nil {
+		writeJSON(w, http.StatusBadRequest, model.ErrorResponse{Error: "invalid or expired reset token"})
+		return
+	}
+
+	// Check expiry
+	expiresAt, err := time.Parse(time.RFC3339, rec.ExpiresAt)
+	if err != nil || expiresAt.Before(time.Now()) {
+		writeJSON(w, http.StatusBadRequest, model.ErrorResponse{Error: "reset token has expired"})
+		return
+	}
+
+	// Hash new password
+	hash, err := bcrypt.GenerateFromPassword([]byte(req.NewPassword), bcrypt.DefaultCost)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, model.ErrorResponse{Error: "internal error"})
+		return
+	}
+
+	if err := h.db.UpdateUserPassword(rec.UserID, string(hash)); err != nil {
+		writeJSON(w, http.StatusInternalServerError, model.ErrorResponse{Error: "failed to update password"})
+		return
+	}
+
+	// Mark token as used
+	_ = h.db.MarkResetTokenUsed(rec.ID)
+
+	writeJSON(w, http.StatusOK, map[string]string{"message": "password reset successfully"})
 }

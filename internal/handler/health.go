@@ -52,10 +52,14 @@ func (a *API) requireAccount(w http.ResponseWriter, r *http.Request) *service.Ac
 
 // requireConnectedAccount resolves the account from the path and ensures it has
 // an active WhatsApp connection. Returns nil and writes an error response if
-// the account doesn't exist or can't connect.
+// the account doesn't exist, isn't authorized, or can't connect.
 func (a *API) requireConnectedAccount(w http.ResponseWriter, r *http.Request) *service.Account {
 	acct := a.requireAccount(w, r)
 	if acct == nil {
+		return nil
+	}
+	if !acct.HasStoredCredentials() {
+		writeError(w, http.StatusConflict, "account is not linked to WhatsApp — scan QR or pair first")
 		return nil
 	}
 	if err := acct.EnsureConnected(r.Context()); err != nil {

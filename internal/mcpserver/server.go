@@ -100,6 +100,9 @@ func resolveConnectedAccount(ctx context.Context, mgr *service.AccountManager, d
 	if errResult != nil {
 		return nil, errResult
 	}
+	if !acct.HasStoredCredentials() {
+		return nil, mcp.NewToolResultError("account is not linked to WhatsApp — scan QR or pair first")
+	}
 	if err := acct.EnsureConnected(ctx); err != nil {
 		return nil, mcp.NewToolResultError(fmt.Sprintf("connect: %v", err))
 	}

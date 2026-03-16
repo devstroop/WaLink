@@ -28,7 +28,13 @@ func NewAPIKeyHandler(db *database.DB) *APIKeyHandler {
 func (h *APIKeyHandler) ListAPIKeys(w http.ResponseWriter, r *http.Request) {
 	identity := middleware.GetIdentity(r)
 
-	keys, err := h.db.ListAPIKeysByUser(identity.UserID)
+	var keys []*database.APIKeyRecord
+	var err error
+	if identity.HasPermission("*") {
+		keys, err = h.db.ListAllAPIKeys()
+	} else {
+		keys, err = h.db.ListAPIKeysByUser(identity.UserID)
+	}
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, model.ErrorResponse{Error: "failed to list api keys"})
 		return
@@ -77,6 +83,12 @@ func (h *APIKeyHandler) CreateAPIKey(w http.ResponseWriter, r *http.Request) {
 	}
 
 	identity := middleware.GetIdentity(r)
+
+	// System admin (secret_key) cannot create API keys — they are not a real user.
+	if identity.UserID == "system" {
+		writeError(w, http.StatusBadRequest, "API keys can only be created by authenticated users, not via secret_key")
+		return
+	}
 
 	// Validate account_id binding if provided
 	if req.AccountID != nil && *req.AccountID != "" {

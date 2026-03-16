@@ -9,7 +9,7 @@
   "security": [{ "BearerAuth": [] }],
   "components": {
     "securitySchemes": {
-      "BearerAuth": { "type": "http", "scheme": "bearer", "description": "Use a static secret_key, a JWT token from /api/v1/auth/login, or an API key (walink_...)" }
+      "BearerAuth": { "type": "http", "scheme": "bearer", "description": "Use secret_key or a JWT token from /api/v1/auth/login, or an API key (walink_...)" }
     },
     "parameters": {
       "AccountId": { "name": "account_id", "in": "path", "required": true, "schema": { "type": "string" } },
@@ -386,6 +386,36 @@
           "token": { "type": "string", "description": "JWT bearer token" },
           "expires_at": { "type": "string", "format": "date-time" },
           "user": { "$ref": "#/components/schemas/UserInfo" }
+        }
+      },
+      "RegisterRequest": {
+        "type": "object",
+        "required": ["username", "password"],
+        "properties": {
+          "username": { "type": "string", "example": "newuser" },
+          "password": { "type": "string", "format": "password", "minLength": 8, "example": "mySecurePass1" }
+        }
+      },
+      "ForgotPasswordRequest": {
+        "type": "object",
+        "required": ["username"],
+        "properties": {
+          "username": { "type": "string", "example": "johndoe" }
+        }
+      },
+      "ForgotPasswordResponse": {
+        "type": "object",
+        "properties": {
+          "reset_token": { "type": "string", "description": "One-time reset token (share with the user out-of-band)" },
+          "expires_at": { "type": "string", "format": "date-time" }
+        }
+      },
+      "ResetPasswordRequest": {
+        "type": "object",
+        "required": ["token", "new_password"],
+        "properties": {
+          "token": { "type": "string", "description": "One-time reset token from forgot-password" },
+          "new_password": { "type": "string", "format": "password", "minLength": 8 }
         }
       },
       "UserInfo": {
@@ -999,6 +1029,48 @@
         }
       }
     },
+    "/api/v1/auth/register": {
+      "post": {
+        "tags": ["Auth"],
+        "summary": "Register a new user account",
+        "description": "Creates a new user with the default user role. Only available when registration is enabled in config (`auth.registration_enabled = true`).",
+        "security": [],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RegisterRequest" } } } },
+        "responses": {
+          "201": { "description": "Created", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/UserInfo" } } } },
+          "400": { "description": "Validation error" },
+          "403": { "description": "Registration is disabled" },
+          "409": { "description": "Username already exists" }
+        }
+      }
+    },
+    "/api/v1/auth/forgot-password": {
+      "post": {
+        "tags": ["Auth"],
+        "summary": "Generate a password reset token",
+        "description": "Admin-only. Generates a one-time reset token (valid 1 hour) for the given user. Share the token with the user out-of-band.",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ForgotPasswordRequest" } } } },
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ForgotPasswordResponse" } } } },
+          "400": { "description": "Missing username" },
+          "403": { "description": "Forbidden — admin only" },
+          "404": { "description": "User not found" }
+        }
+      }
+    },
+    "/api/v1/auth/reset-password": {
+      "post": {
+        "tags": ["Auth"],
+        "summary": "Reset password using a reset token",
+        "description": "Public endpoint. Resets the user's password using a valid one-time token from forgot-password.",
+        "security": [],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ResetPasswordRequest" } } } },
+        "responses": {
+          "200": { "description": "Password reset successfully" },
+          "400": { "description": "Invalid/expired token or validation error" }
+        }
+      }
+    },
     "/api/v1/users": {
       "get": {
         "tags": ["Users"],
@@ -1157,7 +1229,7 @@
   },
   "tags": [
     { "name": "Health", "description": "Server health" },
-    { "name": "Auth", "description": "Authentication (login, JWT tokens)" },
+    { "name": "Auth", "description": "Authentication (login, registration, password reset)" },
     { "name": "Users", "description": "User management (RBAC)" },
     { "name": "Roles", "description": "Role and permission management (RBAC)" },
     { "name": "Accounts", "description": "WhatsApp account CRUD" },

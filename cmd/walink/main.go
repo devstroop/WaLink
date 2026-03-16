@@ -77,14 +77,17 @@ func main() {
 	// Health endpoint (no auth)
 	mux.HandleFunc("GET /api/health", handler.Health)
 
-	// Login endpoint (no auth — before the auth middleware)
-	mux.HandleFunc("POST /api/v1/auth/login", handler.NewAuthHandler(db, cfg.Auth.SecretKey).Login)
+	// Public auth endpoints (no auth middleware)
+	authH := handler.NewAuthHandler(db, cfg.Auth.SecretKey, cfg.Auth.RegistrationEnabled)
+	mux.HandleFunc("POST /api/v1/auth/login", authH.Login)
+	mux.HandleFunc("POST /api/v1/auth/register", authH.Register)
+	mux.HandleFunc("POST /api/v1/auth/reset-password", authH.ResetPassword)
 
 	// API v1 — all routes require auth
 	api := handler.NewAPI(mgr, db)
 	apiMux := http.NewServeMux()
 	api.RegisterRoutes(apiMux)
-	handler.RegisterRBACRoutes(apiMux, db, cfg.Auth.SecretKey)
+	handler.RegisterRBACRoutes(apiMux, db, cfg.Auth.SecretKey, cfg.Auth.RegistrationEnabled)
 
 	// Wrap API routes with auth middleware
 	authed := middleware.Auth(cfg.Auth.SecretKey, db, apiMux)

@@ -4,6 +4,7 @@ port = 3000
 
 [auth]
 secret_key = "change-this-secret-key-in-production"
+registration_enabled = false  # Set to true to allow public user registration
 
 [logging]
 level = "info"

@@ -82,12 +82,15 @@ func (a *API) RegisterRoutes(mux *http.ServeMux) {
 }
 
 // RegisterRBACRoutes wires user and role management endpoints.
-func RegisterRBACRoutes(mux *http.ServeMux, db *database.DB, secretKey string) {
+func RegisterRBACRoutes(mux *http.ServeMux, db *database.DB, secretKey string, registrationEnabled bool) {
 	perm := middleware.RequirePermission
 
 	// Auth (no permission needed — public)
-	auth := NewAuthHandler(db, secretKey)
+	auth := NewAuthHandler(db, secretKey, registrationEnabled)
 	mux.HandleFunc("POST /api/v1/auth/login", auth.Login)
+
+	// Forgot password — admin-only, requires auth
+	mux.HandleFunc("POST /api/v1/auth/forgot-password", perm("users:*", auth.ForgotPassword))
 
 	// Users
 	users := NewUserHandler(db)

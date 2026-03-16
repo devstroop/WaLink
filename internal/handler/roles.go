@@ -88,9 +88,16 @@ func (h *RoleHandler) CreateRole(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Re-read to get DB-generated created_at
+	created, _ := h.db.GetRole(rec.ID)
 	perms, _ := h.db.GetRolePermissions(rec.ID)
 	if perms == nil {
 		perms = []string{}
+	}
+
+	createdAt := ""
+	if created != nil {
+		createdAt = created.CreatedAt
 	}
 
 	writeJSON(w, http.StatusCreated, model.RoleInfo{
@@ -99,6 +106,7 @@ func (h *RoleHandler) CreateRole(w http.ResponseWriter, r *http.Request) {
 		Description: rec.Description,
 		IsBuiltin:   false,
 		Permissions: perms,
+		CreatedAt:   createdAt,
 	})
 }
 
