@@ -272,10 +272,15 @@ func (d *DB) CreateAccount(rec *AccountRecord) error {
 	defer d.mu.Unlock()
 
 	now := time.Now().UTC().Format(time.RFC3339)
+	// Map empty UserID to NULL for FK compatibility
+	var userID any
+	if rec.UserID != "" {
+		userID = rec.UserID
+	}
 	_, err := d.db.Exec(`
-		INSERT INTO account (id, phone_number, account_name, data_dir, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?)`,
-		rec.ID, rec.PhoneNumber, rec.AccountName, rec.DataDir, now, now,
+		INSERT INTO account (id, phone_number, account_name, data_dir, user_id, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		rec.ID, rec.PhoneNumber, rec.AccountName, rec.DataDir, userID, now, now,
 	)
 	return err
 }
@@ -286,7 +291,7 @@ func (d *DB) GetAccount(id string) (*AccountRecord, error) {
 	defer d.mu.Unlock()
 
 	row := d.db.QueryRow(
-		`SELECT id, phone_number, account_name, data_dir, created_at, updated_at
+		`SELECT id, phone_number, account_name, data_dir, COALESCE(user_id, ''), created_at, updated_at
 		 FROM account WHERE id = ?`, id)
 	return scanAccount(row)
 }
@@ -297,7 +302,7 @@ func (d *DB) GetAccountByPhone(phone string) (*AccountRecord, error) {
 	defer d.mu.Unlock()
 
 	row := d.db.QueryRow(
-		`SELECT id, phone_number, account_name, data_dir, created_at, updated_at
+		`SELECT id, phone_number, account_name, data_dir, COALESCE(user_id, ''), created_at, updated_at
 		 FROM account WHERE phone_number = ?`, phone)
 	return scanAccount(row)
 }
@@ -307,7 +312,7 @@ func (d *DB) ListAccounts() ([]*AccountRecord, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
-	query := `SELECT id, phone_number, account_name, data_dir, created_at, updated_at FROM account ORDER BY created_at DESC`
+	query := `SELECT id, phone_number, account_name, data_dir, COALESCE(user_id, ''), created_at, updated_at FROM account ORDER BY created_at DESC`
 
 	rows, err := d.db.Query(query)
 	if err != nil {
@@ -318,7 +323,7 @@ func (d *DB) ListAccounts() ([]*AccountRecord, error) {
 	var out []*AccountRecord
 	for rows.Next() {
 		var r AccountRecord
-		if err := rows.Scan(&r.ID, &r.PhoneNumber, &r.AccountName, &r.DataDir, &r.CreatedAt, &r.UpdatedAt); err != nil {
+		if err := rows.Scan(&r.ID, &r.PhoneNumber, &r.AccountName, &r.DataDir, &r.UserID, &r.CreatedAt, &r.UpdatedAt); err != nil {
 			return nil, err
 		}
 		out = append(out, &r)
@@ -353,9 +358,46 @@ func (d *DB) DeleteAccount(id string) error {
 	return err
 }
 
+// UpdateAccountUserID assigns an account to a user.
+func (d *DB) UpdateAccountUserID(id, userID string) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	var uid any
+	if userID != "" {
+		uid = userID
+	}
+	_, err := d.db.Exec(`UPDATE account SET user_id = ?, updated_at = datetime('now') WHERE id = ?`, uid, id)
+	return err
+}
+
+// ListAccountsByUser returns accounts belonging to a specific user.
+func (d *DB) ListAccountsByUser(userID string) ([]*AccountRecord, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	rows, err := d.db.Query(
+		`SELECT id, phone_number, account_name, data_dir, COALESCE(user_id, ''), created_at, updated_at
+		 FROM account WHERE user_id = ? ORDER BY created_at DESC`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []*AccountRecord
+	for rows.Next() {
+		var r AccountRecord
+		if err := rows.Scan(&r.ID, &r.PhoneNumber, &r.AccountName, &r.DataDir, &r.UserID, &r.CreatedAt, &r.UpdatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, &r)
+	}
+	return out, rows.Err()
+}
+
 func scanAccount(row *sql.Row) (*AccountRecord, error) {
 	var r AccountRecord
-	err := row.Scan(&r.ID, &r.PhoneNumber, &r.AccountName, &r.DataDir, &r.CreatedAt, &r.UpdatedAt)
+	err := row.Scan(&r.ID, &r.PhoneNumber, &r.AccountName, &r.DataDir, &r.UserID, &r.CreatedAt, &r.UpdatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -596,4 +638,259 @@ func (d *DB) DeleteWebhookConfig(accountID string) error {
 
 	_, err := d.db.Exec(`DELETE FROM webhook_config WHERE account_id = ?`, accountID)
 	return err
+}
+
+// ─── Role CRUD ──────────────────────────────────────────────
+
+// CreateRole inserts a new role.
+func (d *DB) CreateRole(rec *RoleRecord) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	_, err := d.db.Exec(`INSERT INTO role (id, name, description, is_builtin) VALUES (?, ?, ?, ?)`,
+		rec.ID, rec.Name, rec.Description, rec.IsBuiltin)
+	return err
+}
+
+// GetRole retrieves a role by ID.
+func (d *DB) GetRole(id string) (*RoleRecord, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	row := d.db.QueryRow(`SELECT id, name, description, is_builtin, created_at FROM role WHERE id = ?`, id)
+	var r RoleRecord
+	var builtin int
+	err := row.Scan(&r.ID, &r.Name, &r.Description, &builtin, &r.CreatedAt)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	r.IsBuiltin = builtin != 0
+	return &r, nil
+}
+
+// GetRoleByName retrieves a role by name.
+func (d *DB) GetRoleByName(name string) (*RoleRecord, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	row := d.db.QueryRow(`SELECT id, name, description, is_builtin, created_at FROM role WHERE name = ?`, name)
+	var r RoleRecord
+	var builtin int
+	err := row.Scan(&r.ID, &r.Name, &r.Description, &builtin, &r.CreatedAt)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	r.IsBuiltin = builtin != 0
+	return &r, nil
+}
+
+// ListRoles returns all roles.
+func (d *DB) ListRoles() ([]*RoleRecord, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	rows, err := d.db.Query(`SELECT id, name, description, is_builtin, created_at FROM role ORDER BY created_at`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []*RoleRecord
+	for rows.Next() {
+		var r RoleRecord
+		var builtin int
+		if err := rows.Scan(&r.ID, &r.Name, &r.Description, &builtin, &r.CreatedAt); err != nil {
+			return nil, err
+		}
+		r.IsBuiltin = builtin != 0
+		out = append(out, &r)
+	}
+	return out, rows.Err()
+}
+
+// UpdateRole updates a role's name and description.
+func (d *DB) UpdateRole(id, name, description string) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	_, err := d.db.Exec(`UPDATE role SET name = ?, description = ? WHERE id = ?`, name, description, id)
+	return err
+}
+
+// DeleteRole removes a role. Built-in roles should be checked by the caller.
+func (d *DB) DeleteRole(id string) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	_, err := d.db.Exec(`DELETE FROM role WHERE id = ?`, id)
+	return err
+}
+
+// GetRolePermissions returns the permission strings for a role.
+func (d *DB) GetRolePermissions(roleID string) ([]string, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	rows, err := d.db.Query(`SELECT permission FROM role_permission WHERE role_id = ? ORDER BY permission`, roleID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var perms []string
+	for rows.Next() {
+		var p string
+		if err := rows.Scan(&p); err != nil {
+			return nil, err
+		}
+		perms = append(perms, p)
+	}
+	return perms, rows.Err()
+}
+
+// SetRolePermissions replaces all permissions for a role.
+func (d *DB) SetRolePermissions(roleID string, permissions []string) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	tx, err := d.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.Exec(`DELETE FROM role_permission WHERE role_id = ?`, roleID); err != nil {
+		return err
+	}
+	for _, p := range permissions {
+		if _, err := tx.Exec(`INSERT INTO role_permission (role_id, permission) VALUES (?, ?)`, roleID, p); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
+// ─── User CRUD ──────────────────────────────────────────────
+
+// CreateUser inserts a new user.
+func (d *DB) CreateUser(rec *UserRecord) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	now := time.Now().UTC().Format(time.RFC3339)
+	_, err := d.db.Exec(`
+		INSERT INTO user (id, username, password_hash, role_id, enabled, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		rec.ID, rec.Username, rec.PasswordHash, rec.RoleID, rec.Enabled, now, now)
+	return err
+}
+
+// GetUser retrieves a user by ID (joins role name).
+func (d *DB) GetUser(id string) (*UserRecord, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	row := d.db.QueryRow(`
+		SELECT u.id, u.username, u.password_hash, u.role_id, r.name, u.enabled, u.created_at, u.updated_at
+		FROM user u JOIN role r ON u.role_id = r.id
+		WHERE u.id = ?`, id)
+	return scanUser(row)
+}
+
+// GetUserByUsername retrieves a user by username.
+func (d *DB) GetUserByUsername(username string) (*UserRecord, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	row := d.db.QueryRow(`
+		SELECT u.id, u.username, u.password_hash, u.role_id, r.name, u.enabled, u.created_at, u.updated_at
+		FROM user u JOIN role r ON u.role_id = r.id
+		WHERE u.username = ?`, username)
+	return scanUser(row)
+}
+
+// ListUsers returns all users.
+func (d *DB) ListUsers() ([]*UserRecord, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	rows, err := d.db.Query(`
+		SELECT u.id, u.username, u.password_hash, u.role_id, r.name, u.enabled, u.created_at, u.updated_at
+		FROM user u JOIN role r ON u.role_id = r.id
+		ORDER BY u.created_at DESC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []*UserRecord
+	for rows.Next() {
+		var r UserRecord
+		var enabled int
+		if err := rows.Scan(&r.ID, &r.Username, &r.PasswordHash, &r.RoleID, &r.RoleName, &enabled, &r.CreatedAt, &r.UpdatedAt); err != nil {
+			return nil, err
+		}
+		r.Enabled = enabled != 0
+		out = append(out, &r)
+	}
+	return out, rows.Err()
+}
+
+// UpdateUser updates a user's role and enabled status.
+func (d *DB) UpdateUser(id, roleID string, enabled bool) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	_, err := d.db.Exec(`UPDATE user SET role_id = ?, enabled = ?, updated_at = datetime('now') WHERE id = ?`,
+		roleID, enabled, id)
+	return err
+}
+
+// UpdateUserPassword updates a user's password hash.
+func (d *DB) UpdateUserPassword(id, passwordHash string) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	_, err := d.db.Exec(`UPDATE user SET password_hash = ?, updated_at = datetime('now') WHERE id = ?`,
+		passwordHash, id)
+	return err
+}
+
+// DeleteUser removes a user.
+func (d *DB) DeleteUser(id string) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	_, err := d.db.Exec(`DELETE FROM user WHERE id = ?`, id)
+	return err
+}
+
+// CountUsersByRole returns how many users have a given role.
+func (d *DB) CountUsersByRole(roleID string) (int, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	var count int
+	err := d.db.QueryRow(`SELECT COUNT(*) FROM user WHERE role_id = ?`, roleID).Scan(&count)
+	return count, err
+}
+
+func scanUser(row *sql.Row) (*UserRecord, error) {
+	var r UserRecord
+	var enabled int
+	err := row.Scan(&r.ID, &r.Username, &r.PasswordHash, &r.RoleID, &r.RoleName, &enabled, &r.CreatedAt, &r.UpdatedAt)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	r.Enabled = enabled != 0
+	return &r, nil
 }
