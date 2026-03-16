@@ -3,12 +3,27 @@ package handler
 import (
 	"net/http"
 
+	"github.com/devstroop/walink/internal/middleware"
 	"github.com/devstroop/walink/internal/model"
 )
 
 // ListAccounts — GET /api/v1/accounts
 func (a *API) ListAccounts(w http.ResponseWriter, r *http.Request) {
+	identity := middleware.GetIdentity(r)
 	resp := a.mgr.ListAccounts()
+
+	// Non-admin users only see their own accounts
+	if identity != nil && !identity.HasPermission("accounts:write") {
+		filtered := make([]model.AccountInfo, 0)
+		for _, acct := range resp.Accounts {
+			if acct.UserID == identity.UserID {
+				filtered = append(filtered, acct)
+			}
+		}
+		resp.Accounts = filtered
+		resp.Total = len(filtered)
+	}
+
 	writeJSON(w, http.StatusOK, resp)
 }
 
@@ -19,6 +34,13 @@ func (a *API) CreateAccount(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid json: "+err.Error())
 		return
 	}
+
+	// If no user_id specified, assign to the caller
+	identity := middleware.GetIdentity(r)
+	if req.UserID == "" && identity != nil && identity.UserID != "system" {
+		req.UserID = identity.UserID
+	}
+
 	resp, err := a.mgr.CreateAccount(req)
 	if err != nil {
 		writeError(w, http.StatusConflict, err.Error())

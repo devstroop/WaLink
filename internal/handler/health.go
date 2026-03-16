@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/devstroop/walink/internal/middleware"
 	"github.com/devstroop/walink/internal/service"
 )
 
@@ -31,13 +32,21 @@ func readJSON(r *http.Request, v any) error {
 }
 
 // requireAccount resolves the account from the path. Returns nil and writes a
-// 404 if the account doesn't exist.
+// 404 if the account doesn't exist. Non-admin users can only access their own accounts.
 func (a *API) requireAccount(w http.ResponseWriter, r *http.Request) *service.Account {
 	acct := a.mgr.GetAccount(r.PathValue("account_id"))
 	if acct == nil {
 		writeError(w, http.StatusNotFound, "account not found")
 		return nil
 	}
+
+	// Enforce ownership for non-admin users
+	identity := middleware.GetIdentity(r)
+	if identity != nil && !identity.HasPermission("accounts:write") && acct.UserID != identity.UserID {
+		writeError(w, http.StatusNotFound, "account not found")
+		return nil
+	}
+
 	return acct
 }
 
