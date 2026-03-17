@@ -14,6 +14,9 @@ import (
 // pageLayout maps each page template to its layout.
 var pageLayout = map[string]string{
 	"home":            "home",
+	"about":           "home",
+	"terms":           "home",
+	"privacy":         "home",
 	"dashboard":      "base",
 	"accounts":       "base",
 	"account-detail": "base",
@@ -153,6 +156,7 @@ func funcMap() template.FuncMap {
 			}
 			return s
 		},
+		"now": func() time.Time { return time.Now() },
 	}
 }
 

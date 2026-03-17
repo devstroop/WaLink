@@ -171,6 +171,24 @@ func (h *Handler) Root(w http.ResponseWriter, r *http.Request) {
 	h.render.Page(w, http.StatusOK, "home", data)
 }
 
+// AboutPage renders the public about page.
+func (h *Handler) AboutPage(w http.ResponseWriter, r *http.Request) {
+	data := PageData{Title: "About — WaLink", Page: "about", Version: h.version}
+	h.render.Page(w, http.StatusOK, "about", data)
+}
+
+// TermsPage renders the public terms of service page.
+func (h *Handler) TermsPage(w http.ResponseWriter, r *http.Request) {
+	data := PageData{Title: "Terms of Service — WaLink", Page: "terms", Version: h.version}
+	h.render.Page(w, http.StatusOK, "terms", data)
+}
+
+// PrivacyPage renders the public privacy policy page.
+func (h *Handler) PrivacyPage(w http.ResponseWriter, r *http.Request) {
+	data := PageData{Title: "Privacy Policy — WaLink", Page: "privacy", Version: h.version}
+	h.render.Page(w, http.StatusOK, "privacy", data)
+}
+
 // ForgotPasswordPage renders the forgot-password form.
 func (h *Handler) ForgotPasswordPage(w http.ResponseWriter, r *http.Request) {
 	data := PageData{
