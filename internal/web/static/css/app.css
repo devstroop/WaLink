@@ -88,3 +88,26 @@ dialog::backdrop {
   transform: translateY(-4px);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
 }
+
+/* ── Message status ticks ── */
+
+@keyframes msg-pop-in {
+  from { opacity: 0; transform: scale(0.85) translateY(6px); }
+  to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+.msg-optimistic {
+  animation: msg-pop-in 0.2s ease-out both;
+}
+
+.msg-failed {
+  opacity: 0.6;
+}
+
+@keyframes spin-slow {
+  to { transform: rotate(360deg); }
+}
+
+.status-sending {
+  animation: spin-slow 1.2s linear infinite;
+}

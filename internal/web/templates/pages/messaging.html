@@ -188,10 +188,10 @@
         <div x-show="msgsLoading" class="text-center py-4">
           <svg class="w-5 h-5 text-gray-300 animate-spin mx-auto" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
         </div>
-        <template x-for="(msg, idx) in messages" :key="msg.id || msg.message_id || idx">
-          <div class="flex" :class="msg.from_me ? 'justify-end' : 'justify-start'">
+        <template x-for="(msg, idx) in messages" :key="msg._localId || msg.id || msg.message_id || idx">
+          <div class="flex" :class="[msg.from_me ? 'justify-end' : 'justify-start', msg._status === 'sending' ? 'msg-optimistic' : '', msg._status === 'failed' ? 'msg-failed' : '']">
             <div class="max-w-[70%] rounded-xl px-3 py-2 text-sm shadow-sm relative group"
-              :class="msg.from_me ? 'bg-green-100 text-green-900 rounded-br-sm' : (activeChatIsChannel ? 'bg-purple-50 text-gray-900 rounded-bl-sm border border-purple-100' : 'bg-white text-gray-900 rounded-bl-sm border border-gray-100')">
+              :class="msg.from_me ? 'bg-green-100 text-green-900 rounded-br-sm' : (activeChatIsChannel ? 'bg-purple-50 text-gray-900 rounded-bl-sm border border-purple-100' : 'bg-white text-gray-900 rounded-bl-sm border border-gray-100')">>
               <!-- Sender name for group messages -->
               <p x-show="activeChatIsGroup && !msg.from_me && msg.sender_jid" class="text-[10px] font-semibold text-blue-600 mb-0.5" x-text="msg.sender_jid.split('@')[0]"></p>
               <!-- Body -->
@@ -200,7 +200,7 @@
               <p x-show="msg.media_type && !msg.body" class="text-xs italic text-gray-500">
                 <span x-text="'[' + (msg.media_type || msg.type) + ']'"></span>
               </p>
-              <!-- Time + type indicator -->
+              <!-- Time + type indicator + status -->
               <div class="flex items-center gap-1.5 mt-1">
                 <span class="text-[10px] opacity-60" x-text="formatMsgTime(msg.timestamp)"></span>
                 <span x-show="msg.media_type" class="text-[10px] opacity-50" x-text="msg.media_type"></span>
@@ -208,6 +208,17 @@
                   <svg class="w-3 h-3 inline -mt-px" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
                   <span x-text="msg.views_count"></span>
                 </span>
+                <!-- Message status for outgoing messages -->
+                <template x-if="msg.from_me">
+                  <span class="inline-flex items-center">
+                    <!-- Sending: clock spinner -->
+                    <svg x-show="msg._status === 'sending'" class="w-3.5 h-3.5 text-gray-400 status-sending" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+                    <!-- Failed: red exclamation -->
+                    <svg x-show="msg._status === 'failed'" class="w-3.5 h-3.5 text-red-500" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg>
+                    <!-- Sent: single check -->
+                    <svg x-show="!msg._status || msg._status === 'sent'" class="w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+                  </span>
+                </template>
               </div>
               <!-- Reaction counts for channel messages -->
               <div x-show="msg.reactions && Object.keys(msg.reactions).length > 0" class="flex flex-wrap gap-1 mt-1">
@@ -219,13 +230,19 @@
                 </template>
               </div>
               <!-- Hover actions (not for channels) -->
-              <div x-show="!activeChatIsChannel" class="absolute -top-2 opacity-0 group-hover:opacity-100 transition-opacity" :class="msg.from_me ? 'left-0' : 'right-0'">
+              <div x-show="!activeChatIsChannel && msg._status !== 'failed'" class="absolute -top-2 opacity-0 group-hover:opacity-100 transition-opacity" :class="msg.from_me ? 'left-0' : 'right-0'">
                 <div class="flex items-center gap-0.5 bg-white border border-gray-200 rounded-lg shadow-sm px-1 py-0.5">
                   <button @click="reactToMessage(msg, '👍')" class="w-6 h-6 flex items-center justify-center rounded hover:bg-gray-100 text-xs" title="Like">👍</button>
                   <button @click="replyTo = msg" class="w-6 h-6 flex items-center justify-center rounded hover:bg-gray-100 text-xs text-gray-500" title="Reply">
                     <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="m9 17-5-5 5-5"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/></svg>
                   </button>
                 </div>
+              </div>
+              <!-- Failed message: retry / delete -->
+              <div x-show="msg._status === 'failed'" class="flex items-center gap-2 mt-1.5 pt-1.5 border-t border-red-200">
+                <span class="text-[10px] text-red-500">Not sent</span>
+                <button @click="retryMessage(msg)" class="text-[10px] font-medium text-red-600 hover:text-red-800">Retry</button>
+                <button @click="messages.splice(messages.indexOf(msg), 1)" class="text-[10px] font-medium text-gray-400 hover:text-gray-600">Delete</button>
               </div>
             </div>
           </div>
@@ -453,12 +470,20 @@ function waApp() {
 
     async unfollowChannel() {
       if (!confirm('Unfollow this channel?')) return;
+      // Optimistic: remove from list and close immediately
+      const channelId = this.activeChat;
+      const channelIdx = this.channels.findIndex(c => c.id === channelId);
+      const channelBackup = channelIdx >= 0 ? this.channels[channelIdx] : null;
+      if (channelIdx >= 0) this.channels.splice(channelIdx, 1);
+      this.activeChat = '';
+      this.messages = [];
       try {
-        await this.api('POST', `/messaging/${this.sender}/newsletter-unfollow`, { jid: this.activeChat });
-        this.activeChat = '';
-        this.messages = [];
-        this.loadTab();
-      } catch (e) { alert('Unfollow failed: ' + e.message); }
+        await this.api('POST', `/messaging/${this.sender}/newsletter-unfollow`, { jid: channelId });
+      } catch (e) {
+        // Revert on failure
+        if (channelBackup) this.channels.splice(channelIdx, 0, channelBackup);
+        alert('Unfollow failed: ' + e.message);
+      }
     },
 
     async loadMessages() {
@@ -475,6 +500,7 @@ function waApp() {
     },
 
     // Silent refresh: merge new messages without flicker or spinner
+    // Preserves optimistic messages and updates their status from server data
     async pollMessages() {
       if (!this.activeChat || !this.sender) return;
       try {
@@ -482,14 +508,33 @@ function waApp() {
         const raw = r.messages || [];
         const fresh = raw.slice().reverse();
         if (fresh.length === 0) return;
-        // Build a set of existing message IDs for fast lookup
-        const existingIds = new Set(this.messages.map(m => m.id || m.message_id));
+
+        // Build lookup of server messages by ID
+        const serverById = new Map(fresh.map(m => [m.id || m.message_id, m]));
+
+        // Reconcile optimistic messages: if server returned the real version, replace it
+        for (let i = this.messages.length - 1; i >= 0; i--) {
+          const m = this.messages[i];
+          if (m._localId && m._status === 'sent' && m.id && serverById.has(m.id)) {
+            // Server confirmed — replace with full server object
+            this.messages.splice(i, 1, serverById.get(m.id));
+            serverById.delete(m.id);
+          }
+        }
+
+        // Build a set of existing real (non-local) IDs
+        const existingIds = new Set(this.messages.filter(m => !m._localId).map(m => m.id || m.message_id));
         const newMsgs = fresh.filter(m => !existingIds.has(m.id || m.message_id));
         if (newMsgs.length > 0) {
-          // Check if user is scrolled near bottom before adding
           const el = this.$refs.msgScroll;
           const wasAtBottom = el ? (el.scrollHeight - el.scrollTop - el.clientHeight < 80) : true;
-          this.messages.push(...newMsgs);
+          // Insert before any remaining optimistic (sending/failed) messages
+          const firstLocalIdx = this.messages.findIndex(m => m._localId && m._status !== 'sent');
+          if (firstLocalIdx >= 0) {
+            this.messages.splice(firstLocalIdx, 0, ...newMsgs);
+          } else {
+            this.messages.push(...newMsgs);
+          }
           if (wasAtBottom) this.$nextTick(() => this.scrollToBottom());
           this.markAsRead();
         }
@@ -525,30 +570,84 @@ function waApp() {
       if (!this.sender || !this.activeChat) return;
       if (!this.composeText.trim() && !this.composeFile) return;
       this.sending = true;
+
+      // Build optimistic message and insert immediately
+      const localId = '_local_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+      const optimistic = {
+        _localId: localId,
+        _status: 'sending',
+        id: localId,
+        from_me: true,
+        body: this.composeText.trim() || '',
+        media_type: this.composeFile ? this.composeFile.name.split('.').pop() : '',
+        timestamp: new Date().toISOString(),
+        reactions: {},
+      };
+      this.messages.push(optimistic);
+      this.$nextTick(() => this.scrollToBottom());
+
+      // Capture and clear compose state
+      const text = this.composeText;
+      const file = this.composeFile;
+      const reply = this.replyTo;
+      this.composeText = '';
+      this.composeFile = null;
+      this.replyTo = null;
+      const ta = this.$el.querySelector('textarea[x-model="composeText"]');
+      if (ta) ta.style.height = 'auto';
+
       try {
         const fd = new FormData();
-        // Send the full JID so LID and group JIDs are handled correctly
         fd.append('chat', this.activeChat);
-        if (this.composeText.trim()) fd.append('text', this.composeText);
-        if (this.composeFile) fd.append('file', this.composeFile);
+        if (text.trim()) fd.append('text', text);
+        if (file) fd.append('file', file);
         const res = await fetch(`/messaging/${this.sender}/send`, { method: 'POST', body: fd, credentials: 'same-origin' });
         if (!res.ok) { const b = await res.json().catch(() => ({})); throw new Error(b.error || res.statusText); }
-        this.composeText = '';
-        this.composeFile = null;
-        this.replyTo = null;
-        // Reset textarea height
-        const ta = this.$el.querySelector('textarea[x-model="composeText"]');
-        if (ta) ta.style.height = 'auto';
-        // Reload messages
-        await this.loadMessages();
-      } catch (e) { alert('Send failed: ' + e.message); }
+        const data = await res.json();
+        // Update optimistic message with server data
+        const msg = this.messages.find(m => m._localId === localId);
+        if (msg) {
+          msg._status = 'sent';
+          if (data.message_id) msg.id = data.message_id;
+        }
+        // Update chat list preview
+        const chat = this.chats.find(c => c.id === this.activeChat);
+        if (chat) {
+          chat.last_message = text.trim() || (file ? '[media]' : '');
+          chat.timestamp = new Date().toISOString();
+        }
+      } catch (e) {
+        const msg = this.messages.find(m => m._localId === localId);
+        if (msg) msg._status = 'failed';
+        // Show inline retry hint (no more alert)
+        console.error('Send failed:', e.message);
+      }
       this.sending = false;
     },
 
+    retryMessage(msg) {
+      // Remove the failed message from the list
+      const idx = this.messages.indexOf(msg);
+      if (idx >= 0) this.messages.splice(idx, 1);
+      // Restore the text and re-trigger send
+      this.composeText = msg.body || '';
+      this.$nextTick(() => this.sendMessage());
+    },
+
     async reactToMessage(msg, emoji) {
+      // Optimistic: update reaction count immediately
+      if (!msg.reactions) msg.reactions = {};
+      const prev = msg.reactions[emoji] || 0;
+      msg.reactions = { ...msg.reactions, [emoji]: prev + 1 };
       try {
         await this.api('POST', `/messaging/${this.sender}/react`, { chat_jid: this.activeChat, message_id: msg.id, emoji });
-      } catch (e) { console.error('react:', e); }
+      } catch (e) {
+        // Revert on failure
+        const cur = msg.reactions[emoji] || 1;
+        if (cur <= 1) { const copy = { ...msg.reactions }; delete copy[emoji]; msg.reactions = copy; }
+        else { msg.reactions = { ...msg.reactions, [emoji]: cur - 1 }; }
+        console.error('react:', e);
+      }
     },
 
     startNewChat() {
