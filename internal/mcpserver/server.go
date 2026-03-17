@@ -47,6 +47,19 @@ func jsonResult(v any) (*mcp.CallToolResult, error) {
 	return mcp.NewToolResultText(string(data)), nil
 }
 
+// requirePermission checks that the caller has the required RBAC permission.
+// Returns a tool-level error result if the check fails, nil otherwise.
+func requirePermission(ctx context.Context, perm string) *mcp.CallToolResult {
+	identity := middleware.GetIdentityFromContext(ctx)
+	if identity == nil {
+		return mcp.NewToolResultError("unauthorized: no identity in context")
+	}
+	if !identity.HasPermission(perm) {
+		return mcp.NewToolResultError(fmt.Sprintf("forbidden: requires %q permission", perm))
+	}
+	return nil
+}
+
 // resolveAccount determines the target account from context scope or tool param.
 //
 // Resolution order:
@@ -117,6 +130,9 @@ func registerTools(s *server.MCPServer, mgr *service.AccountManager, db *databas
 			mcp.WithDescription("List WhatsApp accounts. Admins see all accounts; standard users see only their own. If scoped to one account, returns that account's info."),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			if deny := requirePermission(ctx, "accounts:read"); deny != nil {
+				return deny, nil
+			}
 			identity := middleware.GetIdentityFromContext(ctx)
 			scopedID := middleware.GetScopedAccountID(ctx)
 			isAdmin := identity != nil && identity.HasPermission("*")
@@ -158,6 +174,9 @@ func registerTools(s *server.MCPServer, mgr *service.AccountManager, db *databas
 			mcp.WithString("account_id", mcp.Description("Account ID (optional when scoped to a single account)")),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			if deny := requirePermission(ctx, "session:read"); deny != nil {
+				return deny, nil
+			}
 			acct, errResult := resolveAccount(ctx, mgr, db, req)
 			if errResult != nil {
 				return errResult, nil
@@ -172,6 +191,9 @@ func registerTools(s *server.MCPServer, mgr *service.AccountManager, db *databas
 			mcp.WithString("account_id", mcp.Description("Account ID (optional when scoped to a single account)")),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			if deny := requirePermission(ctx, "session:write"); deny != nil {
+				return deny, nil
+			}
 			acct, errResult := resolveAccount(ctx, mgr, db, req)
 			if errResult != nil {
 				return errResult, nil
@@ -211,6 +233,9 @@ func registerTools(s *server.MCPServer, mgr *service.AccountManager, db *databas
 			mcp.WithString("phone", mcp.Required(), mcp.Description("Phone number to pair (international format, digits only, e.g. 919999999999)")),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			if deny := requirePermission(ctx, "session:write"); deny != nil {
+				return deny, nil
+			}
 			acct, errResult := resolveAccount(ctx, mgr, db, req)
 			if errResult != nil {
 				return errResult, nil
@@ -235,6 +260,9 @@ func registerTools(s *server.MCPServer, mgr *service.AccountManager, db *databas
 			mcp.WithString("account_id", mcp.Description("Account ID (optional when scoped to a single account)")),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			if deny := requirePermission(ctx, "session:write"); deny != nil {
+				return deny, nil
+			}
 			acct, errResult := resolveAccount(ctx, mgr, db, req)
 			if errResult != nil {
 				return errResult, nil
@@ -259,6 +287,9 @@ func registerTools(s *server.MCPServer, mgr *service.AccountManager, db *databas
 			mcp.WithString("reply_to", mcp.Description("Message ID to reply to (optional)")),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			if deny := requirePermission(ctx, "messages:write"); deny != nil {
+				return deny, nil
+			}
 			acct, errResult := resolveConnectedAccount(ctx, mgr, db, req)
 			if errResult != nil {
 				return errResult, nil
@@ -311,6 +342,9 @@ func registerTools(s *server.MCPServer, mgr *service.AccountManager, db *databas
 			mcp.WithString("phones", mcp.Required(), mcp.Description("Comma-separated phone numbers (international, digits only)")),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			if deny := requirePermission(ctx, "contacts:write"); deny != nil {
+				return deny, nil
+			}
 			acct, errResult := resolveConnectedAccount(ctx, mgr, db, req)
 			if errResult != nil {
 				return errResult, nil
@@ -336,6 +370,9 @@ func registerTools(s *server.MCPServer, mgr *service.AccountManager, db *databas
 			mcp.WithString("jid", mcp.Required(), mcp.Description("Contact JID (e.g. 919999999999@s.whatsapp.net)")),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			if deny := requirePermission(ctx, "contacts:read"); deny != nil {
+				return deny, nil
+			}
 			acct, errResult := resolveConnectedAccount(ctx, mgr, db, req)
 			if errResult != nil {
 				return errResult, nil
@@ -362,6 +399,9 @@ func registerTools(s *server.MCPServer, mgr *service.AccountManager, db *databas
 			mcp.WithString("account_id", mcp.Description("Account ID (optional when scoped to a single account)")),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			if deny := requirePermission(ctx, "groups:read"); deny != nil {
+				return deny, nil
+			}
 			acct, errResult := resolveConnectedAccount(ctx, mgr, db, req)
 			if errResult != nil {
 				return errResult, nil
@@ -382,6 +422,9 @@ func registerTools(s *server.MCPServer, mgr *service.AccountManager, db *databas
 			mcp.WithString("jid", mcp.Required(), mcp.Description("Group JID (e.g. 120363012345@g.us)")),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			if deny := requirePermission(ctx, "groups:read"); deny != nil {
+				return deny, nil
+			}
 			acct, errResult := resolveConnectedAccount(ctx, mgr, db, req)
 			if errResult != nil {
 				return errResult, nil
@@ -408,6 +451,9 @@ func registerTools(s *server.MCPServer, mgr *service.AccountManager, db *databas
 			mcp.WithString("account_id", mcp.Description("Account ID (optional when scoped to a single account)")),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			if deny := requirePermission(ctx, "profile:read"); deny != nil {
+				return deny, nil
+			}
 			acct, errResult := resolveConnectedAccount(ctx, mgr, db, req)
 			if errResult != nil {
 				return errResult, nil
@@ -428,6 +474,9 @@ func registerTools(s *server.MCPServer, mgr *service.AccountManager, db *databas
 			mcp.WithString("about", mcp.Required(), mcp.Description("New status/about text")),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			if deny := requirePermission(ctx, "profile:write"); deny != nil {
+				return deny, nil
+			}
 			acct, errResult := resolveConnectedAccount(ctx, mgr, db, req)
 			if errResult != nil {
 				return errResult, nil
@@ -453,6 +502,9 @@ func registerTools(s *server.MCPServer, mgr *service.AccountManager, db *databas
 			mcp.WithString("account_id", mcp.Description("Account ID (optional when scoped to a single account)")),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			if deny := requirePermission(ctx, "chats:read"); deny != nil {
+				return deny, nil
+			}
 			acct, errResult := resolveConnectedAccount(ctx, mgr, db, req)
 			if errResult != nil {
 				return errResult, nil
@@ -477,6 +529,9 @@ func registerTools(s *server.MCPServer, mgr *service.AccountManager, db *databas
 			mcp.WithString("before", mcp.Description("Cursor: message ID to paginate before")),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			if deny := requirePermission(ctx, "messages:read"); deny != nil {
+				return deny, nil
+			}
 			acct, errResult := resolveAccount(ctx, mgr, db, req)
 			if errResult != nil {
 				return errResult, nil
@@ -516,6 +571,9 @@ func registerTools(s *server.MCPServer, mgr *service.AccountManager, db *databas
 			mcp.WithString("emoji", mcp.Required(), mcp.Description("Emoji to react with (e.g. 👍). Send empty string to remove reaction.")),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			if deny := requirePermission(ctx, "messages:write"); deny != nil {
+				return deny, nil
+			}
 			acct, errResult := resolveConnectedAccount(ctx, mgr, db, req)
 			if errResult != nil {
 				return errResult, nil
@@ -549,6 +607,9 @@ func registerTools(s *server.MCPServer, mgr *service.AccountManager, db *databas
 			mcp.WithString("message_ids", mcp.Required(), mcp.Description("Comma-separated message IDs to mark as read")),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			if deny := requirePermission(ctx, "messages:write"); deny != nil {
+				return deny, nil
+			}
 			acct, errResult := resolveConnectedAccount(ctx, mgr, db, req)
 			if errResult != nil {
 				return errResult, nil
@@ -578,6 +639,9 @@ func registerTools(s *server.MCPServer, mgr *service.AccountManager, db *databas
 			mcp.WithString("message_id", mcp.Required(), mcp.Description("ID of the message to revoke")),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			if deny := requirePermission(ctx, "messages:write"); deny != nil {
+				return deny, nil
+			}
 			acct, errResult := resolveConnectedAccount(ctx, mgr, db, req)
 			if errResult != nil {
 				return errResult, nil
@@ -613,6 +677,9 @@ func registerTools(s *server.MCPServer, mgr *service.AccountManager, db *databas
 			mcp.WithString("caption", mcp.Description("Optional caption for the media")),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			if deny := requirePermission(ctx, "messages:write"); deny != nil {
+				return deny, nil
+			}
 			acct, errResult := resolveConnectedAccount(ctx, mgr, db, req)
 			if errResult != nil {
 				return errResult, nil
@@ -662,6 +729,9 @@ func registerTools(s *server.MCPServer, mgr *service.AccountManager, db *databas
 			mcp.WithString("state", mcp.Required(), mcp.Description("Presence state: 'available' or 'unavailable'")),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			if deny := requirePermission(ctx, "presence:write"); deny != nil {
+				return deny, nil
+			}
 			acct, errResult := resolveConnectedAccount(ctx, mgr, db, req)
 			if errResult != nil {
 				return errResult, nil
@@ -687,6 +757,9 @@ func registerTools(s *server.MCPServer, mgr *service.AccountManager, db *databas
 			mcp.WithString("state", mcp.Required(), mcp.Description("Chat presence state: 'composing' or 'paused'")),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			if deny := requirePermission(ctx, "presence:write"); deny != nil {
+				return deny, nil
+			}
 			acct, errResult := resolveConnectedAccount(ctx, mgr, db, req)
 			if errResult != nil {
 				return errResult, nil
@@ -716,6 +789,9 @@ func registerTools(s *server.MCPServer, mgr *service.AccountManager, db *databas
 			mcp.WithString("account_id", mcp.Description("Account ID (optional when scoped to a single account)")),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			if deny := requirePermission(ctx, "contacts:read"); deny != nil {
+				return deny, nil
+			}
 			acct, errResult := resolveConnectedAccount(ctx, mgr, db, req)
 			if errResult != nil {
 				return errResult, nil
@@ -739,6 +815,9 @@ func registerTools(s *server.MCPServer, mgr *service.AccountManager, db *databas
 			mcp.WithString("participants", mcp.Required(), mcp.Description("Comma-separated participant JIDs")),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			if deny := requirePermission(ctx, "groups:write"); deny != nil {
+				return deny, nil
+			}
 			acct, errResult := resolveConnectedAccount(ctx, mgr, db, req)
 			if errResult != nil {
 				return errResult, nil
@@ -772,6 +851,9 @@ func registerTools(s *server.MCPServer, mgr *service.AccountManager, db *databas
 			mcp.WithString("announce", mcp.Description("'true' or 'false' — restrict messaging to admins only")),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			if deny := requirePermission(ctx, "groups:write"); deny != nil {
+				return deny, nil
+			}
 			acct, errResult := resolveConnectedAccount(ctx, mgr, db, req)
 			if errResult != nil {
 				return errResult, nil
@@ -812,6 +894,9 @@ func registerTools(s *server.MCPServer, mgr *service.AccountManager, db *databas
 			mcp.WithString("jid", mcp.Required(), mcp.Description("Group JID")),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			if deny := requirePermission(ctx, "groups:write"); deny != nil {
+				return deny, nil
+			}
 			acct, errResult := resolveConnectedAccount(ctx, mgr, db, req)
 			if errResult != nil {
 				return errResult, nil
@@ -838,6 +923,9 @@ func registerTools(s *server.MCPServer, mgr *service.AccountManager, db *databas
 			mcp.WithString("action", mcp.Required(), mcp.Description("Action: 'add', 'remove', 'promote', or 'demote'")),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			if deny := requirePermission(ctx, "groups:write"); deny != nil {
+				return deny, nil
+			}
 			acct, errResult := resolveConnectedAccount(ctx, mgr, db, req)
 			if errResult != nil {
 				return errResult, nil
@@ -871,6 +959,9 @@ func registerTools(s *server.MCPServer, mgr *service.AccountManager, db *databas
 			mcp.WithString("reset", mcp.Description("Set to 'true' to revoke the current link and generate a new one")),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			if deny := requirePermission(ctx, "groups:read"); deny != nil {
+				return deny, nil
+			}
 			acct, errResult := resolveConnectedAccount(ctx, mgr, db, req)
 			if errResult != nil {
 				return errResult, nil
