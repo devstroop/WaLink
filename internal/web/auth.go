@@ -153,9 +153,22 @@ func (h *Handler) RegisterSubmit(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/login", http.StatusSeeOther)
 }
 
-// Root redirects to the dashboard.
+// Root serves the public landing page, or redirects to dashboard if
+// the user is already authenticated.
 func (h *Handler) Root(w http.ResponseWriter, r *http.Request) {
-	http.Redirect(w, r, "/dashboard", http.StatusSeeOther)
+	if id := getIdentity(r); id != nil {
+		http.Redirect(w, r, "/dashboard", http.StatusSeeOther)
+		return
+	}
+	data := PageData{
+		Title:   "WaLink — WhatsApp API Gateway",
+		Page:    "home",
+		Version: h.version,
+		Data: map[string]any{
+			"RegistrationEnabled": h.regEnabled,
+		},
+	}
+	h.render.Page(w, http.StatusOK, "home", data)
 }
 
 // ForgotPasswordPage renders the forgot-password form.

@@ -21,6 +21,7 @@ const sessionCookie = "walink_session"
 // Public paths (login, register, logout) are passed through without auth.
 func WebAuth(secret string, db *database.DB, regEnabled bool, next http.Handler) http.Handler {
 	publicPaths := map[string]bool{
+		"/":               true,
 		"/login":           true,
 		"/logout":          true,
 		"/forgot-password": true,

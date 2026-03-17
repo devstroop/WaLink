@@ -13,6 +13,7 @@ import (
 
 // pageLayout maps each page template to its layout.
 var pageLayout = map[string]string{
+	"home":            "home",
 	"dashboard":      "base",
 	"accounts":       "base",
 	"account-detail": "base",
