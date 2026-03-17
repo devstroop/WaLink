@@ -29,3 +29,6 @@ Thumbs.db
 
 # Config (user-specific)
 config/app.toml
+
+# Playwright
+.playwright-mcp

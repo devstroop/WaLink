@@ -61,11 +61,11 @@ func testServer(t *testing.T) (*httptest.Server, *service.AccountManager) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/health", handler.Health)
 
-	api := handler.NewAPI(mgr)
+	api := handler.NewAPI(mgr, db)
 	apiMux := http.NewServeMux()
 	api.RegisterRoutes(apiMux)
 
-	authed := middleware.Auth(cfg.Auth.SecretKey, apiMux)
+	authed := middleware.Auth(cfg.Auth.SecretKey, db, apiMux)
 	limited := middleware.RateLimit(cfg.Limits.MaxConcurrentRequests, authed)
 	mux.Handle("/api/v1/", limited)
 
@@ -882,7 +882,7 @@ func TestRateLimitEnforced(t *testing.T) {
 	})
 	_ = mgr
 
-	authed := middleware.Auth(cfg.Auth.SecretKey, apiMux)
+	authed := middleware.Auth(cfg.Auth.SecretKey, db, apiMux)
 	limited := middleware.RateLimit(cfg.Limits.MaxConcurrentRequests, authed)
 	mux.Handle("/api/v1/", limited)
 	root := middleware.CORS(cfg.CORS, mux)
