@@ -336,6 +336,7 @@ func (d *DB) seedRoles() error {
 		"presence:*",
 		"profile:*",
 		"api-keys:*",
+		"mcp:read",
 	}
 	for _, p := range userPerms {
 		_, err = d.db.Exec(`INSERT OR IGNORE INTO role_permission (role_id, permission) VALUES ('builtin-user', ?)`, p)

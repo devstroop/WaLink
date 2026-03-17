@@ -115,8 +115,8 @@ func RegisterRBACRoutes(mux *http.ServeMux, db *database.DB) {
 	mux.HandleFunc("POST /api/v1/api-keys", perm("api-keys:write", apiKeys.CreateAPIKey))
 	mux.HandleFunc("DELETE /api/v1/api-keys/{key_id}", perm("api-keys:write", apiKeys.DeleteAPIKey))
 
-	// MCP Settings (admin only)
+	// MCP Settings (read for all, write for admin)
 	mcpH := NewMCPHandler(db)
-	mux.HandleFunc("GET /api/v1/mcp", perm("*", mcpH.GetMCPSettings))
+	mux.HandleFunc("GET /api/v1/mcp", perm("mcp:read", mcpH.GetMCPSettings))
 	mux.HandleFunc("PATCH /api/v1/mcp", perm("*", mcpH.UpdateMCPSettings))
 }

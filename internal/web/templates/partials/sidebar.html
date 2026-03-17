@@ -35,7 +35,24 @@
       <span x-show="sidebarOpen">Messaging</span>
     </a>
 
-    {{if .Identity}}{{if .Identity.HasPermission "*"}}
+    {{if .Identity}}
+    <p class="px-3 pt-4 text-xs uppercase tracking-wider text-gray-500 mb-2" x-show="sidebarOpen">Tools</p>
+
+    <a href="/api-keys"
+       class="flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors
+              {{if eq .Page "api-keys"}}bg-gray-800 text-white{{else}}hover:bg-gray-800/50 hover:text-white{{end}}">
+      <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewBox="0 0 24 24"><path d="M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z"/><circle cx="16.5" cy="7.5" r=".5" fill="currentColor"/></svg>
+      <span x-show="sidebarOpen">API Keys</span>
+    </a>
+
+    <a href="/mcp-server"
+       class="flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors
+              {{if eq .Page "mcp"}}bg-gray-800 text-white{{else}}hover:bg-gray-800/50 hover:text-white{{end}}">
+      <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewBox="0 0 24 24"><path d="M12 2a4 4 0 0 0-4 4v2H6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V10a2 2 0 0 0-2-2h-2V6a4 4 0 0 0-4-4z"/><circle cx="12" cy="15" r="1"/></svg>
+      <span x-show="sidebarOpen">MCP Server</span>
+    </a>
+
+    {{if .Identity.HasPermission "*"}}
     <p class="px-3 pt-4 text-xs uppercase tracking-wider text-gray-500 mb-2" x-show="sidebarOpen">Admin</p>
 
     <a href="/admin/users"
@@ -51,21 +68,8 @@
       <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewBox="0 0 24 24"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/></svg>
       <span x-show="sidebarOpen">Roles</span>
     </a>
-
-    <a href="/admin/api-keys"
-       class="flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors
-              {{if eq .Page "api-keys"}}bg-gray-800 text-white{{else}}hover:bg-gray-800/50 hover:text-white{{end}}">
-      <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewBox="0 0 24 24"><path d="M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z"/><circle cx="16.5" cy="7.5" r=".5" fill="currentColor"/></svg>
-      <span x-show="sidebarOpen">API Keys</span>
-    </a>
-
-    <a href="/admin/mcp"
-       class="flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors
-              {{if eq .Page "mcp"}}bg-gray-800 text-white{{else}}hover:bg-gray-800/50 hover:text-white{{end}}">
-      <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewBox="0 0 24 24"><path d="M12 2a4 4 0 0 0-4 4v2H6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V10a2 2 0 0 0-2-2h-2V6a4 4 0 0 0-4-4z"/><circle cx="12" cy="15" r="1"/></svg>
-      <span x-show="sidebarOpen">MCP Server</span>
-    </a>
-    {{end}}{{end}}
+    {{end}}
+    {{end}}
   </nav>
 
   <!-- Footer -->

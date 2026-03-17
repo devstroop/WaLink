@@ -76,9 +76,9 @@
   <div x-show="createOpen" x-cloak class="fixed inset-0 z-[100] flex items-center justify-center">
     <div class="absolute inset-0 bg-black/30" @click="createOpen = false"></div>
     <div class="relative bg-white rounded-xl border border-gray-200 shadow-xl w-full max-w-md" @click.away="createOpen = false">
-      <form method="POST" action="/admin/api-keys" @submit.prevent="
+      <form method="POST" action="/api-keys" @submit.prevent="
         const fd = new FormData($el);
-        fetch('/admin/api-keys', {method:'POST', body: fd}).then(r=>r.json()).then(j=>{
+        fetch('/api-keys', {method:'POST', body: fd}).then(r=>r.json()).then(j=>{
           if(j.error){alert(j.error);return;}
           createdKey = j.key;
           createOpen = false;
@@ -132,7 +132,7 @@
       <div class="px-6 py-4 border-t border-gray-100 flex justify-end gap-3">
         <button @click="deleteOpen = false" class="px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50">Cancel</button>
         <button @click="
-          fetch('/admin/api-keys/'+deleteID+'/delete', {method:'POST'}).then(()=>{deleteOpen=false; location.reload();}).catch(e=>alert(e));
+          fetch('/api-keys/'+deleteID+'/delete', {method:'POST'}).then(()=>{deleteOpen=false; location.reload();}).catch(e=>alert(e));
         " class="px-4 py-2 text-sm text-white bg-red-600 rounded-lg hover:bg-red-700">Revoke</button>
       </div>
     </div>

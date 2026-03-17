@@ -180,7 +180,7 @@
       </div>
 
       <!-- Messages area -->
-      <div x-show="activeChat" x-ref="msgScroll" class="flex-1 overflow-y-auto px-4 py-3 space-y-1" @scroll="onMsgScroll($event)">
+      <div x-show="activeChat" x-ref="msgScroll" class="flex-1 overflow-y-auto px-4 py-3 space-y-1">
         <!-- Load older -->
         <div x-show="hasOlder && !msgsLoading" class="text-center py-2">
           <button @click="activeChatIsChannel ? loadOlderChannelMessages() : loadOlderMessages()" class="text-xs text-green-600 hover:text-green-700 font-medium">Load older messages</button>
@@ -407,6 +407,7 @@ function waApp() {
       this.composeText = '';
       this.composeFile = null;
       await this.loadMessages();
+      this.markAsRead();
       this.startPolling();
     },
 
@@ -490,6 +491,7 @@ function waApp() {
           const wasAtBottom = el ? (el.scrollHeight - el.scrollTop - el.clientHeight < 80) : true;
           this.messages.push(...newMsgs);
           if (wasAtBottom) this.$nextTick(() => this.scrollToBottom());
+          this.markAsRead();
         }
         this.hasOlder = raw.length >= 50;
       } catch (e) { /* silent */ }
@@ -623,6 +625,17 @@ function waApp() {
     scrollToBottom() {
       const el = this.$refs.msgScroll;
       if (el) el.scrollTop = el.scrollHeight;
+    },
+
+    markAsRead() {
+      if (!this.sender || !this.activeChat || this.activeChatIsChannel) return;
+      const unread = this.messages.filter(m => !m.from_me).map(m => m.id || m.message_id).filter(Boolean);
+      if (!unread.length) return;
+      // Fire-and-forget — don't block the UI
+      this.api('POST', `/messaging/${this.sender}/mark-read`, { chat_jid: this.activeChat, message_ids: unread }).catch(() => {});
+      // Clear the unread badge in the chat list
+      const chat = this.chats.find(c => c.id === this.activeChat);
+      if (chat) chat.unread_count = 0;
     },
 
     async api(method, path, body) {

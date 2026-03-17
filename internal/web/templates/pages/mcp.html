@@ -27,7 +27,8 @@
           {{end}}
         </div>
       </div>
-      <form method="POST" action="/admin/mcp">
+      {{if .Data.IsAdmin}}
+      <form method="POST" action="/mcp-server">
         {{if .Data.Enabled}}
         <input type="hidden" name="enabled" value="false">
         <button type="submit"
@@ -44,6 +45,7 @@
         </button>
         {{end}}
       </form>
+      {{end}}
     </div>
   </div>
 
@@ -115,7 +117,7 @@
         <h4 class="text-sm font-semibold text-gray-700 uppercase tracking-wider">Access Control</h4>
         <p class="text-sm text-gray-500 mt-1">MCP access is controlled via API keys. Each key can be scoped to a specific account.</p>
       </div>
-      <a href="/admin/api-keys"
+      <a href="/api-keys"
          class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-brand-700 bg-brand-50 border border-brand-200 rounded-lg hover:bg-brand-100 transition-colors">
         <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewBox="0 0 24 24"><path d="M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z"/><circle cx="16.5" cy="7.5" r=".5" fill="currentColor"/></svg>
         Manage API Keys ({{.Data.APIKeyCount}})

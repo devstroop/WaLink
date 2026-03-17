@@ -300,11 +300,12 @@ func (h *Handler) APIKeysList(w http.ResponseWriter, r *http.Request) {
 	pd := h.page(w, r, "API Keys", "api-keys", map[string]any{
 		"Keys":     keys,
 		"Accounts": rows,
+		"IsAdmin":  identity != nil && identity.HasPermission("*"),
 	})
 	h.render.Page(w, http.StatusOK, "api-keys", pd)
 }
 
-// APIKeysCreate handles POST /admin/api-keys — creates a key and returns JSON with the plain key.
+// APIKeysCreate handles POST /api-keys — creates a key and returns JSON with the plain key.
 func (h *Handler) APIKeysCreate(w http.ResponseWriter, r *http.Request) {
 	_ = r.ParseMultipartForm(1 << 20)
 	name := strings.TrimSpace(r.FormValue("name"))
@@ -371,7 +372,7 @@ func (h *Handler) APIKeysCreate(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, map[string]string{"key": plainKey, "id": rec.ID, "name": name, "prefix": prefix})
 }
 
-// APIKeysDelete handles POST /admin/api-keys/{id}/delete.
+// APIKeysDelete handles POST /api-keys/{id}/delete.
 func (h *Handler) APIKeysDelete(w http.ResponseWriter, r *http.Request) {
 	keyID := r.PathValue("id")
 	if keyID == "" {
@@ -406,19 +407,39 @@ func (h *Handler) MCPSettings(w http.ResponseWriter, r *http.Request) {
 	enabled := h.db.GetSettingBool("mcp.enabled", true)
 	path := h.db.GetSetting("mcp.path", "/mcp")
 
-	// Count API keys for display
+	identity := getIdentity(r)
+	isAdmin := identity != nil && identity.HasPermission("*")
+
+	// Count API keys — admins see all, regular users see their own
 	allKeys, _ := h.db.ListAllAPIKeys()
+	keyCount := len(allKeys)
+	if !isAdmin && identity != nil {
+		keyCount = 0
+		for _, k := range allKeys {
+			if k.UserID == identity.UserID {
+				keyCount++
+			}
+		}
+	}
 
 	pd := h.page(w, r, "MCP Server", "mcp", map[string]any{
 		"Enabled":     enabled,
 		"Path":        path,
-		"APIKeyCount": len(allKeys),
+		"APIKeyCount": keyCount,
+		"IsAdmin":     isAdmin,
 	})
 	h.render.Page(w, http.StatusOK, "mcp", pd)
 }
 
-// MCPSettingsUpdate handles POST /admin/mcp.
+// MCPSettingsUpdate handles POST /mcp-server (admin only).
 func (h *Handler) MCPSettingsUpdate(w http.ResponseWriter, r *http.Request) {
+	identity := getIdentity(r)
+	if identity == nil || !identity.HasPermission("*") {
+		setFlash(w, "error", "Admin access required.")
+		http.Redirect(w, r, "/mcp-server", http.StatusSeeOther)
+		return
+	}
+
 	enabled := r.FormValue("enabled") == "on" || r.FormValue("enabled") == "true"
 
 	val := "false"
@@ -427,7 +448,7 @@ func (h *Handler) MCPSettingsUpdate(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := h.db.SetSetting("mcp.enabled", val); err != nil {
 		setFlash(w, "error", "Failed to update MCP settings.")
-		http.Redirect(w, r, "/admin/mcp", http.StatusSeeOther)
+		http.Redirect(w, r, "/mcp-server", http.StatusSeeOther)
 		return
 	}
 
@@ -436,7 +457,7 @@ func (h *Handler) MCPSettingsUpdate(w http.ResponseWriter, r *http.Request) {
 	} else {
 		setFlash(w, "success", "MCP server disabled.")
 	}
-	http.Redirect(w, r, "/admin/mcp", http.StatusSeeOther)
+	http.Redirect(w, r, "/mcp-server", http.StatusSeeOther)
 }
 
 // Messaging renders the messaging page with sender account selection.

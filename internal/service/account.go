@@ -214,11 +214,13 @@ func (a *Account) EnsureConnected(ctx context.Context) error {
 // requireConnectedClient returns the WhatsApp client, or an error if not connected.
 // Replaces the repeated lock-check-unlock pattern across all methods.
 func (a *Account) requireConnectedClient() (*whatsmeow.Client, error) {
-	client, err := a.requireConnectedClient()
-	if err != nil {
-		return nil, err
+	a.mu.RLock()
+	c := a.client
+	a.mu.RUnlock()
+	if c == nil || !c.IsConnected() {
+		return nil, fmt.Errorf("client not connected")
 	}
-	return client, nil
+	return c, nil
 }
 
 // IsLoggedIn returns true if the client has a valid session.
