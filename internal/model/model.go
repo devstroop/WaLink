@@ -522,6 +522,62 @@ type APIKeyListResponse struct {
 }
 
 // ──────────────────────────────────────────────────────
+// Newsletters (Channels)
+// ──────────────────────────────────────────────────────
+
+// NewsletterInfo is the API-facing newsletter/channel representation.
+type NewsletterInfo struct {
+	ID              string  `json:"id"`
+	Name            string  `json:"name"`
+	Description     string  `json:"description,omitempty"`
+	SubscriberCount int     `json:"subscriber_count"`
+	Verification    string  `json:"verification"`
+	PictureURL      *string `json:"picture_url,omitempty"`
+	PreviewURL      *string `json:"preview_url,omitempty"`
+	InviteCode      string  `json:"invite_code,omitempty"`
+	Mute            string  `json:"mute,omitempty"`
+	Role            string  `json:"role,omitempty"`
+}
+
+// NewsletterListResponse is the response for GET /accounts/{id}/newsletters.
+type NewsletterListResponse struct {
+	Newsletters []NewsletterInfo `json:"newsletters"`
+	Total       int              `json:"total"`
+}
+
+// NewsletterMessageInfo is a single newsletter message.
+type NewsletterMessageInfo struct {
+	ServerID   int            `json:"server_id"`
+	MessageID  string         `json:"message_id"`
+	Type       string         `json:"type"`
+	Body       string         `json:"body,omitempty"`
+	Timestamp  string         `json:"timestamp"`
+	ViewsCount int            `json:"views_count"`
+	Reactions  map[string]int `json:"reactions,omitempty"`
+}
+
+// NewsletterMessageListResponse is the response for GET /accounts/{id}/newsletters/{jid}/messages.
+type NewsletterMessageListResponse struct {
+	Messages []NewsletterMessageInfo `json:"messages"`
+	Count    int                     `json:"count"`
+}
+
+// FollowNewsletterRequest is the JSON body for POST /accounts/{id}/newsletters/follow.
+type FollowNewsletterRequest struct {
+	JID string `json:"jid"`
+}
+
+// UnfollowNewsletterRequest is the JSON body for POST /accounts/{id}/newsletters/unfollow.
+type UnfollowNewsletterRequest struct {
+	JID string `json:"jid"`
+}
+
+// MuteNewsletterRequest is the JSON body for POST /accounts/{id}/newsletters/{jid}/mute.
+type MuteNewsletterRequest struct {
+	Mute bool `json:"mute"`
+}
+
+// ──────────────────────────────────────────────────────
 // Common
 // ──────────────────────────────────────────────────────
 

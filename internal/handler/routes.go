@@ -73,6 +73,14 @@ func (a *API) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET "+acct+"/groups/{jid}/invite", perm("groups:read", a.GetGroupInvite))
 	mux.HandleFunc("POST "+acct+"/groups/{jid}/participants", perm("groups:write", a.UpdateGroupParticipants))
 
+	// ── Newsletters (Channels) ──────────────────────
+	mux.HandleFunc("GET "+acct+"/newsletters", perm("newsletters:read", a.ListNewsletters))
+	mux.HandleFunc("POST "+acct+"/newsletters/follow", perm("newsletters:write", a.FollowNewsletter))
+	mux.HandleFunc("POST "+acct+"/newsletters/unfollow", perm("newsletters:write", a.UnfollowNewsletter))
+	mux.HandleFunc("GET "+acct+"/newsletters/{jid}", perm("newsletters:read", a.GetNewsletter))
+	mux.HandleFunc("GET "+acct+"/newsletters/{jid}/messages", perm("newsletters:read", a.GetNewsletterMessages))
+	mux.HandleFunc("POST "+acct+"/newsletters/{jid}/mute", perm("newsletters:write", a.MuteNewsletter))
+
 	// ── Presence ────────────────────────────────────
 	mux.HandleFunc("POST "+acct+"/presence", perm("presence:write", a.SendPresence))
 

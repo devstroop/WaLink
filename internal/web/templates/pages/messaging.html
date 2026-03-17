@@ -35,7 +35,7 @@
     <div class="w-80 xl:w-96 border-r border-gray-200 flex flex-col bg-white shrink-0">
       <!-- Tab bar -->
       <div class="flex border-b border-gray-200 shrink-0">
-        <template x-for="t in ['chats','contacts','groups']" :key="t">
+        <template x-for="t in ['chats','contacts','groups','channels']" :key="t">
           <button @click="tab = t; loadTab()" :class="tab === t ? 'border-green-500 text-green-700 bg-green-50/50' : 'border-transparent text-gray-500 hover:text-gray-700'"
             class="flex-1 px-3 py-2.5 text-xs font-semibold uppercase tracking-wider border-b-2 transition-colors" x-text="t"></button>
         </template>
@@ -117,6 +117,31 @@
           </template>
           <div x-show="filteredGroups.length === 0 && !loading && sender" class="px-4 py-12 text-center text-sm text-gray-400">No groups found</div>
         </div>
+
+        <!-- Channels tab -->
+        <div x-show="tab === 'channels' && !loading && sender">
+          <template x-for="ch in filteredChannels" :key="ch.id">
+            <button @click="openChannel(ch)" class="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition-colors text-left border-b border-gray-100"
+              :class="activeChat === ch.id ? 'bg-green-50 hover:bg-green-50' : ''">
+              <div class="w-10 h-10 rounded-full flex items-center justify-center text-sm font-semibold shrink-0 overflow-hidden"
+                :class="ch.preview_url ? '' : 'bg-purple-100 text-purple-700'">
+                <img x-show="ch.preview_url" :src="ch.preview_url" class="w-full h-full object-cover" />
+                <span x-show="!ch.preview_url" x-text="ch.name ? ch.name.charAt(0).toUpperCase() : 'C'"></span>
+              </div>
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-1.5">
+                  <p class="text-sm font-medium text-gray-900 truncate" x-text="ch.name"></p>
+                  <svg x-show="ch.verification === 'verified'" class="w-3.5 h-3.5 text-green-500 shrink-0" fill="currentColor" viewBox="0 0 24 24"><path d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
+                </div>
+                <p class="text-xs text-gray-500"><span x-text="ch.subscriber_count"></span> subscribers</p>
+              </div>
+              <div class="shrink-0">
+                <span x-show="ch.mute === 'on'" class="text-xs text-gray-400" title="Muted">🔇</span>
+              </div>
+            </button>
+          </template>
+          <div x-show="filteredChannels.length === 0 && !loading && sender" class="px-4 py-12 text-center text-sm text-gray-400">No channels found</div>
+        </div>
       </div>
     </div>
 
@@ -133,16 +158,22 @@
       <div x-show="activeChat" class="flex items-center justify-between bg-white border-b border-gray-200 px-4 py-2.5 shrink-0">
         <div class="flex items-center gap-3 min-w-0">
           <div class="w-9 h-9 rounded-full flex items-center justify-center text-sm font-semibold shrink-0"
-            :class="activeChatIsGroup ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'">
+            :class="activeChatIsChannel ? 'bg-purple-100 text-purple-700' : (activeChatIsGroup ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600')">
             <span x-text="activeChatName ? activeChatName.charAt(0).toUpperCase() : '?'"></span>
           </div>
           <div class="min-w-0">
-            <p class="text-sm font-semibold text-gray-900 truncate" x-text="activeChatName || activeChat"></p>
+            <div class="flex items-center gap-1.5">
+              <p class="text-sm font-semibold text-gray-900 truncate" x-text="activeChatName || activeChat"></p>
+              <span x-show="activeChatIsChannel" class="text-[10px] font-medium text-purple-600 bg-purple-100 px-1.5 py-0.5 rounded">Channel</span>
+            </div>
             <p class="text-xs text-gray-500 truncate" x-text="activeChat"></p>
           </div>
         </div>
         <div class="flex items-center gap-1">
-          <button @click="loadMessages()" class="p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100 transition-colors" title="Refresh">
+          <button x-show="activeChatIsChannel" @click="unfollowChannel()" class="px-2 py-1 text-xs text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Unfollow">
+            Unfollow
+          </button>
+          <button @click="activeChatIsChannel ? loadChannelMessages() : loadMessages()" class="p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100 transition-colors" title="Refresh">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
           </button>
         </div>
@@ -152,15 +183,15 @@
       <div x-show="activeChat" x-ref="msgScroll" class="flex-1 overflow-y-auto px-4 py-3 space-y-1" @scroll="onMsgScroll($event)">
         <!-- Load older -->
         <div x-show="hasOlder && !msgsLoading" class="text-center py-2">
-          <button @click="loadOlderMessages()" class="text-xs text-green-600 hover:text-green-700 font-medium">Load older messages</button>
+          <button @click="activeChatIsChannel ? loadOlderChannelMessages() : loadOlderMessages()" class="text-xs text-green-600 hover:text-green-700 font-medium">Load older messages</button>
         </div>
         <div x-show="msgsLoading" class="text-center py-4">
           <svg class="w-5 h-5 text-gray-300 animate-spin mx-auto" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
         </div>
-        <template x-for="(msg, idx) in messages" :key="msg.id">
+        <template x-for="(msg, idx) in messages" :key="msg.id || msg.message_id || idx">
           <div class="flex" :class="msg.from_me ? 'justify-end' : 'justify-start'">
             <div class="max-w-[70%] rounded-xl px-3 py-2 text-sm shadow-sm relative group"
-              :class="msg.from_me ? 'bg-green-100 text-green-900 rounded-br-sm' : 'bg-white text-gray-900 rounded-bl-sm border border-gray-100'">
+              :class="msg.from_me ? 'bg-green-100 text-green-900 rounded-br-sm' : (activeChatIsChannel ? 'bg-purple-50 text-gray-900 rounded-bl-sm border border-purple-100' : 'bg-white text-gray-900 rounded-bl-sm border border-gray-100')">
               <!-- Sender name for group messages -->
               <p x-show="activeChatIsGroup && !msg.from_me && msg.sender_jid" class="text-[10px] font-semibold text-blue-600 mb-0.5" x-text="msg.sender_jid.split('@')[0]"></p>
               <!-- Body -->
@@ -173,9 +204,22 @@
               <div class="flex items-center gap-1.5 mt-1">
                 <span class="text-[10px] opacity-60" x-text="formatMsgTime(msg.timestamp)"></span>
                 <span x-show="msg.media_type" class="text-[10px] opacity-50" x-text="msg.media_type"></span>
+                <span x-show="msg.views_count > 0" class="text-[10px] opacity-50">
+                  <svg class="w-3 h-3 inline -mt-px" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                  <span x-text="msg.views_count"></span>
+                </span>
               </div>
-              <!-- Hover actions -->
-              <div class="absolute -top-2 opacity-0 group-hover:opacity-100 transition-opacity" :class="msg.from_me ? 'left-0' : 'right-0'">
+              <!-- Reaction counts for channel messages -->
+              <div x-show="msg.reactions && Object.keys(msg.reactions).length > 0" class="flex flex-wrap gap-1 mt-1">
+                <template x-for="[emoji, count] in Object.entries(msg.reactions || {})" :key="emoji">
+                  <span class="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-gray-100 rounded-full text-[10px]">
+                    <span x-text="emoji"></span>
+                    <span class="text-gray-500" x-text="count"></span>
+                  </span>
+                </template>
+              </div>
+              <!-- Hover actions (not for channels) -->
+              <div x-show="!activeChatIsChannel" class="absolute -top-2 opacity-0 group-hover:opacity-100 transition-opacity" :class="msg.from_me ? 'left-0' : 'right-0'">
                 <div class="flex items-center gap-0.5 bg-white border border-gray-200 rounded-lg shadow-sm px-1 py-0.5">
                   <button @click="reactToMessage(msg, '👍')" class="w-6 h-6 flex items-center justify-center rounded hover:bg-gray-100 text-xs" title="Like">👍</button>
                   <button @click="replyTo = msg" class="w-6 h-6 flex items-center justify-center rounded hover:bg-gray-100 text-xs text-gray-500" title="Reply">
@@ -201,8 +245,13 @@
         </button>
       </div>
 
+      <!-- Channel read-only notice -->
+      <div x-show="activeChat && activeChatIsChannel" class="bg-purple-50 border-t border-purple-200 px-4 py-3 shrink-0 text-center">
+        <p class="text-xs text-purple-600">This is a read-only channel. Only admins can post messages.</p>
+      </div>
+
       <!-- Compose area -->
-      <div x-show="activeChat" class="bg-white border-t border-gray-200 px-4 py-3 shrink-0">
+      <div x-show="activeChat && !activeChatIsChannel" class="bg-white border-t border-gray-200 px-4 py-3 shrink-0">
         <form @submit.prevent="sendMessage()" class="flex items-end gap-2">
           <!-- File attach -->
           <label class="p-2 text-gray-400 hover:text-gray-600 cursor-pointer rounded-lg hover:bg-gray-100 transition-colors shrink-0">
@@ -299,9 +348,10 @@ function waApp() {
   return {
     sender: '', tab: 'chats', search: '',
     loading: false, listError: '',
-    chats: [], contacts: [], groups: [],
-    activeChat: '', activeChatName: '', activeChatIsGroup: false,
-    messages: [], msgsLoading: false, hasOlder: false, oldestId: '',
+    chats: [], contacts: [], groups: [], channels: [],
+    activeChat: '', activeChatName: '', activeChatIsGroup: false, activeChatIsChannel: false,
+    messages: [], msgsLoading: false, hasOlder: false, oldestTs: '',
+    channelMessages: [], channelOldestServerID: 0,
     composeText: '', composeFile: null, sending: false,
     replyTo: null,
     showNewChat: false, newChatPhone: '',
@@ -340,6 +390,9 @@ function waApp() {
         } else if (this.tab === 'groups') {
           const r = await this.api('GET', `/messaging/${this.sender}/groups`);
           this.groups = r || [];
+        } else if (this.tab === 'channels') {
+          const r = await this.api('GET', `/messaging/${this.sender}/newsletters`);
+          this.channels = r || [];
         }
       } catch (e) { this.listError = e.message; }
       this.loading = false;
@@ -349,6 +402,7 @@ function waApp() {
       this.activeChat = jid;
       this.activeChatName = name || jid.split('@')[0];
       this.activeChatIsGroup = isGroup;
+      this.activeChatIsChannel = false;
       this.replyTo = null;
       this.composeText = '';
       this.composeFile = null;
@@ -356,27 +410,101 @@ function waApp() {
       this.startPolling();
     },
 
+    async openChannel(ch) {
+      this.activeChat = ch.id;
+      this.activeChatName = ch.name || ch.id.split('@')[0];
+      this.activeChatIsGroup = false;
+      this.activeChatIsChannel = true;
+      this.replyTo = null;
+      this.composeText = '';
+      this.composeFile = null;
+      this.stopPolling();
+      await this.loadChannelMessages();
+    },
+
+    async loadChannelMessages() {
+      this.msgsLoading = true;
+      try {
+        const r = await this.api('GET', `/messaging/${this.sender}/newsletter-messages?jid=${encodeURIComponent(this.activeChat)}`);
+        const raw = r.messages || [];
+        this.messages = raw.slice().reverse();
+        this.hasOlder = raw.length >= 50;
+        this.channelOldestServerID = raw.length ? raw[0].server_id : 0;
+        this.oldestTs = '';
+        this.$nextTick(() => this.scrollToBottom());
+      } catch (e) { console.error('loadChannelMessages:', e); }
+      this.msgsLoading = false;
+    },
+
+    async loadOlderChannelMessages() {
+      if (!this.channelOldestServerID) return;
+      this.msgsLoading = true;
+      try {
+        const r = await this.api('GET', `/messaging/${this.sender}/newsletter-messages?jid=${encodeURIComponent(this.activeChat)}&before=${this.channelOldestServerID}`);
+        const raw = r.messages || [];
+        const older = raw.slice().reverse();
+        this.messages = [...older, ...this.messages];
+        this.hasOlder = raw.length >= 50;
+        this.channelOldestServerID = raw.length ? raw[0].server_id : this.channelOldestServerID;
+      } catch (e) { console.error('loadOlderChannel:', e); }
+      this.msgsLoading = false;
+    },
+
+    async unfollowChannel() {
+      if (!confirm('Unfollow this channel?')) return;
+      try {
+        await this.api('POST', `/messaging/${this.sender}/newsletter-unfollow`, { jid: this.activeChat });
+        this.activeChat = '';
+        this.messages = [];
+        this.loadTab();
+      } catch (e) { alert('Unfollow failed: ' + e.message); }
+    },
+
     async loadMessages() {
       this.msgsLoading = true;
       try {
         const r = await this.api('GET', `/messaging/${this.sender}/messages?chat=${encodeURIComponent(this.activeChat)}`);
-        this.messages = (r.messages || []).reverse();
-        this.hasOlder = (r.messages || []).length >= 50;
-        this.oldestId = this.messages.length ? this.messages[0].id : '';
+        const raw = r.messages || [];
+        this.messages = raw.slice().reverse();
+        this.hasOlder = raw.length >= 50;
+        this.oldestTs = this.messages.length ? this.messages[0].timestamp : '';
         this.$nextTick(() => this.scrollToBottom());
       } catch (e) { console.error('loadMessages:', e); }
       this.msgsLoading = false;
     },
 
+    // Silent refresh: merge new messages without flicker or spinner
+    async pollMessages() {
+      if (!this.activeChat || !this.sender) return;
+      try {
+        const r = await this.api('GET', `/messaging/${this.sender}/messages?chat=${encodeURIComponent(this.activeChat)}`);
+        const raw = r.messages || [];
+        const fresh = raw.slice().reverse();
+        if (fresh.length === 0) return;
+        // Build a set of existing message IDs for fast lookup
+        const existingIds = new Set(this.messages.map(m => m.id || m.message_id));
+        const newMsgs = fresh.filter(m => !existingIds.has(m.id || m.message_id));
+        if (newMsgs.length > 0) {
+          // Check if user is scrolled near bottom before adding
+          const el = this.$refs.msgScroll;
+          const wasAtBottom = el ? (el.scrollHeight - el.scrollTop - el.clientHeight < 80) : true;
+          this.messages.push(...newMsgs);
+          if (wasAtBottom) this.$nextTick(() => this.scrollToBottom());
+        }
+        this.hasOlder = raw.length >= 50;
+      } catch (e) { /* silent */ }
+    },
+
     async loadOlderMessages() {
-      if (!this.oldestId) return;
+      if (!this.oldestTs) return;
       this.msgsLoading = true;
       try {
-        const r = await this.api('GET', `/messaging/${this.sender}/messages?chat=${encodeURIComponent(this.activeChat)}&before=${this.oldestId}`);
-        const older = (r.messages || []).reverse();
+        const r = await this.api('GET', `/messaging/${this.sender}/messages?chat=${encodeURIComponent(this.activeChat)}&before=${encodeURIComponent(this.oldestTs)}`);
+        const raw = r.messages || [];
+        const older = raw.slice().reverse();
         this.messages = [...older, ...this.messages];
-        this.hasOlder = (r.messages || []).length >= 50;
-        this.oldestId = older.length ? older[0].id : this.oldestId;
+        this.hasOlder = raw.length >= 50;
+        this.oldestTs = older.length ? older[0].timestamp : this.oldestTs;
       } catch (e) { console.error('loadOlder:', e); }
       this.msgsLoading = false;
     },
@@ -384,7 +512,7 @@ function waApp() {
     startPolling() {
       this.stopPolling();
       this._pollTimer = setInterval(() => {
-        if (this.activeChat && this.sender && !this.msgsLoading) this.loadMessages();
+        if (this.activeChat && this.sender && !this.msgsLoading) this.pollMessages();
       }, 5000);
     },
     stopPolling() {
@@ -397,8 +525,8 @@ function waApp() {
       this.sending = true;
       try {
         const fd = new FormData();
-        // Use JID directly as phone (the handler expects phone but we can also send JID)
-        fd.append('phone', this.activeChat.replace(/@.*/, ''));
+        // Send the full JID so LID and group JIDs are handled correctly
+        fd.append('chat', this.activeChat);
         if (this.composeText.trim()) fd.append('text', this.composeText);
         if (this.composeFile) fd.append('file', this.composeFile);
         const res = await fetch(`/messaging/${this.sender}/send`, { method: 'POST', body: fd, credentials: 'same-origin' });
@@ -474,6 +602,11 @@ function waApp() {
       const q = this.search.toLowerCase();
       if (!q) return this.groups;
       return this.groups.filter(g => (g.name || '').toLowerCase().includes(q));
+    },
+    get filteredChannels() {
+      const q = this.search.toLowerCase();
+      if (!q) return this.channels;
+      return this.channels.filter(ch => (ch.name || '').toLowerCase().includes(q));
     },
 
     formatTime(ts) {

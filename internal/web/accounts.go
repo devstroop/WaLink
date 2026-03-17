@@ -8,6 +8,7 @@ import (
 	"html/template"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -607,16 +608,21 @@ func (h *Handler) MessageSend(w http.ResponseWriter, r *http.Request) {
 	// Parse multipart for file upload support
 	_ = r.ParseMultipartForm(32 << 20) // 32 MB
 
+	chat := r.FormValue("chat")
 	phone := r.FormValue("phone")
 	text := r.FormValue("text")
 
-	if phone == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "phone is required"})
+	// Determine the target JID
+	var jid string
+	if chat != "" && strings.Contains(chat, "@") {
+		// Full JID provided — use as-is
+		jid = chat
+	} else if phone != "" {
+		jid = phone + "@s.whatsapp.net"
+	} else {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "phone or chat is required"})
 		return
 	}
-
-	// Convert phone to JID
-	jid := phone + "@s.whatsapp.net"
 
 	// Check for file attachment
 	file, header, err := r.FormFile("file")
@@ -714,6 +720,99 @@ func (h *Handler) MessagingGroups(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, groups)
+}
+
+// MessagingNewsletters returns a JSON list of subscribed newsletters/channels.
+func (h *Handler) MessagingNewsletters(w http.ResponseWriter, r *http.Request) {
+	acct, ok := h.requireConnectedAccount(w, r)
+	if !ok {
+		return
+	}
+	newsletters, err := acct.ListNewsletters(r.Context())
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, newsletters)
+}
+
+// MessagingNewsletterMessages returns messages from a specific newsletter/channel.
+func (h *Handler) MessagingNewsletterMessages(w http.ResponseWriter, r *http.Request) {
+	acct, ok := h.requireConnectedAccount(w, r)
+	if !ok {
+		return
+	}
+	jid := r.URL.Query().Get("jid")
+	if jid == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "jid required"})
+		return
+	}
+	count := 50
+	if c := r.URL.Query().Get("count"); c != "" {
+		if n, err := strconv.Atoi(c); err == nil && n > 0 {
+			count = n
+		}
+	}
+	before := 0
+	if b := r.URL.Query().Get("before"); b != "" {
+		if n, err := strconv.Atoi(b); err == nil && n > 0 {
+			before = n
+		}
+	}
+	resp, err := acct.GetNewsletterMessages(r.Context(), jid, count, before)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, resp)
+}
+
+// MessagingNewsletterFollow follows (subscribes to) a newsletter/channel.
+func (h *Handler) MessagingNewsletterFollow(w http.ResponseWriter, r *http.Request) {
+	acct, ok := h.requireConnectedAccount(w, r)
+	if !ok {
+		return
+	}
+	var req struct {
+		JID string `json:"jid"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON"})
+		return
+	}
+	if req.JID == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "jid required"})
+		return
+	}
+	if err := acct.FollowNewsletter(r.Context(), req.JID); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+// MessagingNewsletterUnfollow unfollows (unsubscribes from) a newsletter/channel.
+func (h *Handler) MessagingNewsletterUnfollow(w http.ResponseWriter, r *http.Request) {
+	acct, ok := h.requireConnectedAccount(w, r)
+	if !ok {
+		return
+	}
+	var req struct {
+		JID string `json:"jid"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON"})
+		return
+	}
+	if req.JID == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "jid required"})
+		return
+	}
+	if err := acct.UnfollowNewsletter(r.Context(), req.JID); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
 // MessagingReact sends a reaction to a message.

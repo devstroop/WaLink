@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -734,4 +735,145 @@ func (a *API) RevokeMessage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, resp)
+}
+
+// ── Newsletters (Channels) ──────────────────────────
+
+// ListNewsletters — GET /api/v1/accounts/{account_id}/newsletters
+func (a *API) ListNewsletters(w http.ResponseWriter, r *http.Request) {
+	acct := a.requireConnectedAccount(w, r)
+	if acct == nil {
+		return
+	}
+
+	newsletters, err := acct.ListNewsletters(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusOK, model.NewsletterListResponse{
+		Newsletters: newsletters,
+		Total:       len(newsletters),
+	})
+}
+
+// GetNewsletter — GET /api/v1/accounts/{account_id}/newsletters/{jid}
+func (a *API) GetNewsletter(w http.ResponseWriter, r *http.Request) {
+	acct := a.requireConnectedAccount(w, r)
+	if acct == nil {
+		return
+	}
+
+	info, err := acct.GetNewsletterInfo(r.Context(), r.PathValue("jid"))
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusOK, info)
+}
+
+// FollowNewsletter — POST /api/v1/accounts/{account_id}/newsletters/follow
+func (a *API) FollowNewsletter(w http.ResponseWriter, r *http.Request) {
+	acct := a.requireConnectedAccount(w, r)
+	if acct == nil {
+		return
+	}
+
+	var req model.FollowNewsletterRequest
+	if err := readJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid json: "+err.Error())
+		return
+	}
+	if req.JID == "" {
+		writeError(w, http.StatusBadRequest, "jid required")
+		return
+	}
+
+	if err := acct.FollowNewsletter(r.Context(), req.JID); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{"success": true, "jid": req.JID})
+}
+
+// UnfollowNewsletter — POST /api/v1/accounts/{account_id}/newsletters/unfollow
+func (a *API) UnfollowNewsletter(w http.ResponseWriter, r *http.Request) {
+	acct := a.requireConnectedAccount(w, r)
+	if acct == nil {
+		return
+	}
+
+	var req model.UnfollowNewsletterRequest
+	if err := readJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid json: "+err.Error())
+		return
+	}
+	if req.JID == "" {
+		writeError(w, http.StatusBadRequest, "jid required")
+		return
+	}
+
+	if err := acct.UnfollowNewsletter(r.Context(), req.JID); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{"success": true, "jid": req.JID})
+}
+
+// GetNewsletterMessages — GET /api/v1/accounts/{account_id}/newsletters/{jid}/messages?count=...&before=...
+func (a *API) GetNewsletterMessages(w http.ResponseWriter, r *http.Request) {
+	acct := a.requireConnectedAccount(w, r)
+	if acct == nil {
+		return
+	}
+
+	count := 50
+	if c := r.URL.Query().Get("count"); c != "" {
+		if n, err := strconv.Atoi(c); err == nil && n > 0 {
+			count = n
+		}
+	}
+	if count > 500 {
+		count = 500
+	}
+
+	before := 0
+	if b := r.URL.Query().Get("before"); b != "" {
+		if n, err := strconv.Atoi(b); err == nil && n > 0 {
+			before = n
+		}
+	}
+
+	resp, err := acct.GetNewsletterMessages(r.Context(), r.PathValue("jid"), count, before)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusOK, resp)
+}
+
+// MuteNewsletter — POST /api/v1/accounts/{account_id}/newsletters/{jid}/mute
+func (a *API) MuteNewsletter(w http.ResponseWriter, r *http.Request) {
+	acct := a.requireConnectedAccount(w, r)
+	if acct == nil {
+		return
+	}
+
+	var req model.MuteNewsletterRequest
+	if err := readJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid json: "+err.Error())
+		return
+	}
+
+	if err := acct.ToggleMuteNewsletter(r.Context(), r.PathValue("jid"), req.Mute); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{"success": true, "muted": req.Mute})
 }

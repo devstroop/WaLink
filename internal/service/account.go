@@ -851,6 +851,188 @@ func (a *Account) GetGroupInviteLink(ctx context.Context, groupJID string, reset
 	return client.GetGroupInviteLink(ctx, jid, reset)
 }
 
+// ── Newsletters (Channels) ──────────────────────────
+
+// ListNewsletters returns all subscribed WhatsApp channels.
+func (a *Account) ListNewsletters(ctx context.Context) ([]model.NewsletterInfo, error) {
+	a.mu.RLock()
+	client := a.client
+	a.mu.RUnlock()
+
+	if client == nil || !client.IsConnected() {
+		return nil, fmt.Errorf("not connected")
+	}
+
+	newsletters, err := client.GetSubscribedNewsletters(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("get subscribed newsletters: %w", err)
+	}
+
+	result := make([]model.NewsletterInfo, len(newsletters))
+	for i, nl := range newsletters {
+		result[i] = newsletterMetadataToModel(nl)
+	}
+	return result, nil
+}
+
+// GetNewsletterInfo returns info about a specific newsletter.
+func (a *Account) GetNewsletterInfo(ctx context.Context, jid string) (model.NewsletterInfo, error) {
+	a.mu.RLock()
+	client := a.client
+	a.mu.RUnlock()
+
+	if client == nil || !client.IsConnected() {
+		return model.NewsletterInfo{}, fmt.Errorf("not connected")
+	}
+
+	j, err := types.ParseJID(jid)
+	if err != nil {
+		return model.NewsletterInfo{}, fmt.Errorf("invalid jid %q: %w", jid, err)
+	}
+
+	nl, err := client.GetNewsletterInfo(ctx, j)
+	if err != nil {
+		return model.NewsletterInfo{}, fmt.Errorf("get newsletter info: %w", err)
+	}
+
+	return newsletterMetadataToModel(nl), nil
+}
+
+// FollowNewsletter subscribes to a WhatsApp channel.
+func (a *Account) FollowNewsletter(ctx context.Context, jid string) error {
+	a.mu.RLock()
+	client := a.client
+	a.mu.RUnlock()
+
+	if client == nil || !client.IsConnected() {
+		return fmt.Errorf("not connected")
+	}
+
+	j, err := types.ParseJID(jid)
+	if err != nil {
+		return fmt.Errorf("invalid jid %q: %w", jid, err)
+	}
+
+	return client.FollowNewsletter(ctx, j)
+}
+
+// UnfollowNewsletter unsubscribes from a WhatsApp channel.
+func (a *Account) UnfollowNewsletter(ctx context.Context, jid string) error {
+	a.mu.RLock()
+	client := a.client
+	a.mu.RUnlock()
+
+	if client == nil || !client.IsConnected() {
+		return fmt.Errorf("not connected")
+	}
+
+	j, err := types.ParseJID(jid)
+	if err != nil {
+		return fmt.Errorf("invalid jid %q: %w", jid, err)
+	}
+
+	return client.UnfollowNewsletter(ctx, j)
+}
+
+// GetNewsletterMessages returns messages from a WhatsApp channel.
+func (a *Account) GetNewsletterMessages(ctx context.Context, jid string, count int, before int) (model.NewsletterMessageListResponse, error) {
+	a.mu.RLock()
+	client := a.client
+	a.mu.RUnlock()
+
+	if client == nil || !client.IsConnected() {
+		return model.NewsletterMessageListResponse{}, fmt.Errorf("not connected")
+	}
+
+	j, err := types.ParseJID(jid)
+	if err != nil {
+		return model.NewsletterMessageListResponse{}, fmt.Errorf("invalid jid %q: %w", jid, err)
+	}
+
+	params := &whatsmeow.GetNewsletterMessagesParams{Count: count}
+	if before > 0 {
+		params.Before = types.MessageServerID(before)
+	}
+
+	msgs, err := client.GetNewsletterMessages(ctx, j, params)
+	if err != nil {
+		return model.NewsletterMessageListResponse{}, fmt.Errorf("get newsletter messages: %w", err)
+	}
+
+	result := make([]model.NewsletterMessageInfo, len(msgs))
+	for i, m := range msgs {
+		body := ""
+		if m.Message != nil {
+			if m.Message.GetExtendedTextMessage() != nil {
+				body = m.Message.GetExtendedTextMessage().GetText()
+			} else if m.Message.GetConversation() != "" {
+				body = m.Message.GetConversation()
+			} else if m.Message.GetImageMessage() != nil {
+				body = m.Message.GetImageMessage().GetCaption()
+			} else if m.Message.GetVideoMessage() != nil {
+				body = m.Message.GetVideoMessage().GetCaption()
+			}
+		}
+		result[i] = model.NewsletterMessageInfo{
+			ServerID:   int(m.MessageServerID),
+			MessageID:  string(m.MessageID),
+			Type:       m.Type,
+			Body:       body,
+			Timestamp:  m.Timestamp.Format(time.RFC3339),
+			ViewsCount: m.ViewsCount,
+			Reactions:  m.ReactionCounts,
+		}
+	}
+
+	return model.NewsletterMessageListResponse{
+		Messages: result,
+		Count:    len(result),
+	}, nil
+}
+
+// ToggleMuteNewsletter mutes or unmutes a WhatsApp channel.
+func (a *Account) ToggleMuteNewsletter(ctx context.Context, jid string, mute bool) error {
+	a.mu.RLock()
+	client := a.client
+	a.mu.RUnlock()
+
+	if client == nil || !client.IsConnected() {
+		return fmt.Errorf("not connected")
+	}
+
+	j, err := types.ParseJID(jid)
+	if err != nil {
+		return fmt.Errorf("invalid jid %q: %w", jid, err)
+	}
+
+	return client.NewsletterToggleMute(ctx, j, mute)
+}
+
+// newsletterMetadataToModel converts whatsmeow NewsletterMetadata to our model.
+func newsletterMetadataToModel(nl *types.NewsletterMetadata) model.NewsletterInfo {
+	info := model.NewsletterInfo{
+		ID:              nl.ID.String(),
+		Name:            nl.ThreadMeta.Name.Text,
+		Description:     nl.ThreadMeta.Description.Text,
+		SubscriberCount: nl.ThreadMeta.SubscriberCount,
+		Verification:    string(nl.ThreadMeta.VerificationState),
+		InviteCode:      nl.ThreadMeta.InviteCode,
+	}
+	if nl.ThreadMeta.Picture != nil && nl.ThreadMeta.Picture.URL != "" {
+		url := nl.ThreadMeta.Picture.URL
+		info.PictureURL = &url
+	}
+	if nl.ThreadMeta.Preview.URL != "" {
+		url := nl.ThreadMeta.Preview.URL
+		info.PreviewURL = &url
+	}
+	if nl.ViewerMeta != nil {
+		info.Mute = string(nl.ViewerMeta.Mute)
+		info.Role = string(nl.ViewerMeta.Role)
+	}
+	return info
+}
+
 // ── Presence ────────────────────────────────────────
 
 // SendPresence sets global online/offline presence.
@@ -1045,16 +1227,27 @@ func (a *Account) ListContacts(ctx context.Context) ([]model.ContactInfo, error)
 	}
 
 	result := make([]model.ContactInfo, 0, len(contacts))
+	seen := make(map[string]bool)
 	for jid, info := range contacts {
+		// Resolve LID JIDs to phone JIDs.
+		resolved := jid.String()
+		if jid.Server == types.HiddenUserServer {
+			resolved = a.resolveLID(resolved)
+		}
+		if seen[resolved] {
+			continue
+		}
+		seen[resolved] = true
 		ci := model.ContactInfo{
-			ID:           jid.String(),
+			ID:           resolved,
 			PushName:     info.PushName,
 			FullName:     info.FullName,
 			FirstName:    info.FirstName,
 			BusinessName: info.BusinessName,
 		}
-		if jid.Server == types.DefaultUserServer {
-			phone := jid.User
+		parsedResolved, parseErr := types.ParseJID(resolved)
+		if parseErr == nil && parsedResolved.Server == types.DefaultUserServer {
+			phone := parsedResolved.User
 			ci.Phone = &phone
 		}
 		result = append(result, ci)
@@ -1122,13 +1315,37 @@ func (a *Account) ListMessages(chatJID string, limit int, before string) (model.
 	if a.db == nil {
 		return model.MessageListResponse{}, fmt.Errorf("no database")
 	}
+
+	// Also query any LID variant of this chat, since older messages may
+	// have been stored with a LID JID before we added resolution.
+	altJID := a.reverseLID(chatJID)
+
 	records, err := a.db.ListMessages(a.ID, chatJID, limit, before)
 	if err != nil {
 		return model.MessageListResponse{}, fmt.Errorf("list messages: %w", err)
 	}
-	msgs := make([]model.MessageInfo, len(records))
-	for i, r := range records {
-		msgs[i] = model.MessageInfo{
+	// Merge messages from the LID variant if it differs.
+	if altJID != chatJID {
+		altRecords, err := a.db.ListMessages(a.ID, altJID, limit, before)
+		if err == nil && len(altRecords) > 0 {
+			records = append(records, altRecords...)
+			// Re-sort by timestamp descending and limit.
+			sort.Slice(records, func(i, j int) bool {
+				return records[i].Timestamp > records[j].Timestamp
+			})
+			if len(records) > limit {
+				records = records[:limit]
+			}
+		}
+	}
+
+	msgs := make([]model.MessageInfo, 0, len(records))
+	for _, r := range records {
+		// Skip protocol/system messages and empty "other" type messages
+		if r.Type == "protocol" || (r.Type == "other" && r.Body == "") {
+			continue
+		}
+		msgs = append(msgs, model.MessageInfo{
 			ID:        r.ID,
 			ChatJID:   r.ChatJID,
 			SenderJID: r.SenderJID,
@@ -1137,7 +1354,7 @@ func (a *Account) ListMessages(chatJID string, limit int, before string) (model.
 			Body:      r.Body,
 			MediaType: r.MediaType,
 			Timestamp: r.Timestamp,
-		}
+		})
 	}
 	return model.MessageListResponse{
 		Messages: msgs,
@@ -1198,6 +1415,13 @@ func (a *Account) ListChats(ctx context.Context) ([]model.ChatInfo, error) {
 	seen := make(map[string]bool)
 	var chats []model.ChatInfo
 
+	// skipJID returns true for JIDs that should not appear in the chat list
+	// (status broadcasts, newsletter channels, lid, etc.).
+	skipJID := func(id string) bool {
+		return id == "status@broadcast" || strings.HasSuffix(id, "@broadcast") ||
+			strings.HasSuffix(id, "@newsletter")
+	}
+
 	// Helper to enrich a chat entry with local settings (pinned/muted/archived)
 	// and last message / unread count.
 	enrich := func(chat *model.ChatInfo, jid types.JID) {
@@ -1224,6 +1448,9 @@ func (a *Account) ListChats(ctx context.Context) ([]model.ChatInfo, error) {
 	} else {
 		for _, g := range groups {
 			id := g.JID.String()
+			if skipJID(id) {
+				continue
+			}
 			seen[id] = true
 			chat := model.ChatInfo{
 				ID:      id,
@@ -1235,15 +1462,26 @@ func (a *Account) ListChats(ctx context.Context) ([]model.ChatInfo, error) {
 		}
 	}
 
-	// 2. Contacts from local store (populated via history sync)
+	// 2. Contacts from local store — only include those that have at least one message.
 	contacts, err := client.Store.Contacts.GetAllContacts(ctx)
 	if err != nil {
 		log.Warn().Err(err).Msg("failed to fetch contacts from store")
 	} else {
 		for jid, info := range contacts {
+			// Resolve LID JIDs to phone JIDs so they merge with existing chats.
 			id := jid.String()
-			if seen[id] {
+			if jid.Server == types.HiddenUserServer {
+				id = a.resolveLID(id)
+			}
+			if seen[id] || skipJID(id) {
 				continue
+			}
+			// Only show contacts that have exchanged messages.
+			if _, hasMsg := lastMsgs[id]; !hasMsg {
+				// Also check with original (unresolved) JID string.
+				if _, hasMsg2 := lastMsgs[jid.String()]; !hasMsg2 {
+					continue
+				}
 			}
 			name := info.PushName
 			if info.FullName != "" {
@@ -1261,8 +1499,38 @@ func (a *Account) ListChats(ctx context.Context) ([]model.ChatInfo, error) {
 				IsGroup: jid.Server == types.GroupServer,
 			}
 			enrich(&chat, jid)
+			seen[id] = true
 			chats = append(chats, chat)
 		}
+	}
+
+	// 3. Chats from message DB that aren't in contacts or groups
+	// (e.g. messages exchanged with numbers not in contacts, or history-synced chats)
+	for chatJID, lm := range lastMsgs {
+		// Resolve any LID JIDs that weren't resolved at storage time.
+		resolvedJID := a.resolveLID(chatJID)
+		if seen[resolvedJID] || skipJID(resolvedJID) {
+			continue
+		}
+		seen[resolvedJID] = true
+		name := resolvedJID
+		isGroup := strings.HasSuffix(resolvedJID, "@g.us")
+		if !isGroup {
+			// Extract phone number from JID for display
+			name = strings.SplitN(resolvedJID, "@", 2)[0]
+		}
+		chat := model.ChatInfo{
+			ID:      resolvedJID,
+			Name:    name,
+			IsGroup: isGroup,
+		}
+		chat.LastMessage = &lm.Body
+		chat.Timestamp = &lm.Timestamp
+		if chat.IsGroup && !lm.FromMe {
+			chat.LastSender = &lm.SenderJID
+		}
+		chat.UnreadCount = unreadCounts[chatJID]
+		chats = append(chats, chat)
 	}
 
 	// Sort: pinned first, then by timestamp descending (most recent first).
@@ -1321,7 +1589,7 @@ func phoneMatches(authed, registered string) bool {
 func (a *Account) handleEvent(evt interface{}) {
 	switch v := evt.(type) {
 	case *events.Message:
-		log.Debug().Str("account", a.ID).Str("from", v.Info.Sender.String()).Msg("message received")
+		log.Debug().Str("account", a.ID).Str("from", v.Info.Sender.String()).Str("chat", v.Info.Chat.String()).Bool("from_me", v.Info.IsFromMe).Str("type", classifyMessage(v.Message)).Msg("message event received")
 		a.storeMessage(v)
 		a.dispatchWebhook("message", map[string]any{
 			"id":         v.Info.ID,
@@ -1360,6 +1628,7 @@ func (a *Account) handleEvent(evt interface{}) {
 		log.Debug().Str("account", a.ID).Str("jid", v.JID.String()).Str("name", v.NewPushName).Msg("push name update")
 	case *events.HistorySync:
 		log.Info().Str("account", a.ID).Msg("history sync received")
+		a.storeHistorySync(v)
 	case *events.Connected:
 		log.Info().Str("account", a.ID).Msg("connected event")
 		a.mu.RLock()
@@ -1401,6 +1670,8 @@ func (a *Account) handleEvent(evt interface{}) {
 		if !rejected {
 			go a.autoReconnect()
 		}
+	default:
+		log.Debug().Str("account", a.ID).Str("event_type", fmt.Sprintf("%T", evt)).Msg("unhandled event")
 	}
 }
 
@@ -1479,16 +1750,68 @@ func (a *Account) autoReconnect() {
 	log.Error().Str("account", a.ID).Msg("auto-reconnect: all retries exhausted")
 }
 
+// resolveLID converts a LID JID (e.g. 12345@lid) to a phone JID (e.g. 919876543210@s.whatsapp.net)
+// using the whatsmeow LID mapping table. Returns the original string if resolution fails.
+func (a *Account) resolveLID(jidStr string) string {
+	if !strings.HasSuffix(jidStr, "@lid") {
+		return jidStr
+	}
+	a.mu.RLock()
+	client := a.client
+	a.mu.RUnlock()
+	if client == nil || client.Store == nil {
+		return jidStr
+	}
+	jid, err := types.ParseJID(jidStr)
+	if err != nil {
+		return jidStr
+	}
+	pn, err := client.Store.LIDs.GetPNForLID(context.Background(), jid)
+	if err != nil || pn.IsEmpty() {
+		return jidStr
+	}
+	return pn.String()
+}
+
+// reverseLID converts a phone JID to its LID variant, for querying old DB records.
+// Returns the same JID if no mapping exists.
+func (a *Account) reverseLID(jidStr string) string {
+	if !strings.HasSuffix(jidStr, "@s.whatsapp.net") {
+		return jidStr
+	}
+	a.mu.RLock()
+	client := a.client
+	a.mu.RUnlock()
+	if client == nil || client.Store == nil {
+		return jidStr
+	}
+	jid, err := types.ParseJID(jidStr)
+	if err != nil {
+		return jidStr
+	}
+	lid, err := client.Store.LIDs.GetLIDForPN(context.Background(), jid)
+	if err != nil || lid.IsEmpty() {
+		return jidStr
+	}
+	return lid.String()
+}
+
 // storeMessage persists a received message to the DB.
 func (a *Account) storeMessage(v *events.Message) {
 	if a.db == nil {
 		return
 	}
+	if !isStorableMessage(v.Message) {
+		return
+	}
+	// Resolve LID JIDs to phone JIDs so conversations unify properly.
+	chatJID := a.resolveLID(v.Info.Chat.String())
+	senderJID := a.resolveLID(v.Info.Sender.String())
 	rec := &database.MessageRecord{
 		ID:        v.Info.ID,
 		AccountID: a.ID,
-		ChatJID:   v.Info.Chat.String(),
-		SenderJID: v.Info.Sender.String(),
+		ChatJID:   chatJID,
+		SenderJID: senderJID,
 		FromMe:    v.Info.IsFromMe,
 		Type:      classifyMessage(v.Message),
 		Body:      extractBody(v.Message),
@@ -1497,6 +1820,69 @@ func (a *Account) storeMessage(v *events.Message) {
 	}
 	if err := a.db.InsertMessage(rec); err != nil {
 		log.Warn().Str("account", a.ID).Err(err).Msg("failed to store message")
+	}
+}
+
+// storeHistorySync processes a history sync event and stores the messages.
+func (a *Account) storeHistorySync(evt *events.HistorySync) {
+	if a.db == nil || evt.Data == nil {
+		return
+	}
+	var stored int
+	for _, conv := range evt.Data.GetConversations() {
+		chatJID := conv.GetID()
+		if chatJID == "" {
+			continue
+		}
+		for _, hsMsg := range conv.GetMessages() {
+			wmi := hsMsg.GetMessage()
+			if wmi == nil || wmi.GetKey() == nil {
+				continue
+			}
+			msg := wmi.GetMessage()
+			if msg == nil {
+				continue
+			}
+			key := wmi.GetKey()
+			msgID := key.GetID()
+			if msgID == "" {
+				msgID = uuid.NewString()
+			}
+
+			senderJID := chatJID
+			fromMe := key.GetFromMe()
+			if fromMe {
+				senderJID = "me"
+			} else if p := wmi.GetParticipant(); p != "" {
+				senderJID = p
+			} else if p := key.GetParticipant(); p != "" {
+				senderJID = p
+			}
+
+			if !isStorableMessage(msg) {
+				continue
+			}
+
+			ts := time.Unix(int64(wmi.GetMessageTimestamp()), 0).UTC().Format(time.RFC3339)
+
+			rec := &database.MessageRecord{
+				ID:        msgID,
+				AccountID: a.ID,
+				ChatJID:   a.resolveLID(chatJID),
+				SenderJID: a.resolveLID(senderJID),
+				FromMe:    fromMe,
+				Type:      classifyMessage(msg),
+				Body:      extractBody(msg),
+				MediaType: "",
+				Timestamp: ts,
+			}
+			if err := a.db.InsertMessage(rec); err == nil {
+				stored++
+			}
+		}
+	}
+	if stored > 0 {
+		log.Info().Str("account", a.ID).Int("stored", stored).Msg("history sync: messages stored")
 	}
 }
 
@@ -1524,9 +1910,23 @@ func classifyMessage(msg *waE2E.Message) string {
 		return "contact"
 	case msg.LocationMessage != nil:
 		return "location"
+	case msg.ProtocolMessage != nil:
+		return "protocol"
+	case msg.SenderKeyDistributionMessage != nil:
+		return "protocol"
 	default:
 		return "other"
 	}
+}
+
+// isStorableMessage returns true if the message is worth storing in the DB.
+// Protocol messages, key distribution, and unknown/empty messages are skipped.
+func isStorableMessage(msg *waE2E.Message) bool {
+	if msg == nil {
+		return false
+	}
+	t := classifyMessage(msg)
+	return t != "protocol" && t != "unknown"
 }
 
 // extractBody returns the textual content of a message.
