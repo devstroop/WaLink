@@ -60,8 +60,13 @@ func (a *API) GetAccount(w http.ResponseWriter, r *http.Request) {
 
 // DeleteAccount — DELETE /api/v1/accounts/{account_id}
 func (a *API) DeleteAccount(w http.ResponseWriter, r *http.Request) {
+	acct := a.requireAccount(w, r)
+	if acct == nil {
+		return
+	}
+
 	deleteData := r.URL.Query().Get("delete_data") == "true"
-	resp, err := a.mgr.DeleteAccount(r.PathValue("account_id"), deleteData)
+	resp, err := a.mgr.DeleteAccount(acct.ID, deleteData)
 	if err != nil {
 		if err.Error() == "account not found" {
 			writeError(w, http.StatusNotFound, err.Error())

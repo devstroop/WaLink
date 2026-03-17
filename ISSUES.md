@@ -15,7 +15,7 @@ The REST API exposes **30 endpoints**; the MCP server now exposes **22 tools**.
 |----------|----------------|
 | `list_accounts` | `GET /api/v1/accounts` |
 | `get_session` | `GET /accounts/{id}/session` |
-| `send_message` | `POST /accounts/{id}/messages/send` (text only) |
+| `send_message` | `POST /accounts/{id}/messages` (text only) |
 | `check_contacts` | `POST /accounts/{id}/contacts/check` |
 | `get_contact` | `GET /accounts/{id}/contacts/{jid}` |
 | `list_groups` | `GET /accounts/{id}/groups` |
@@ -26,12 +26,12 @@ The REST API exposes **30 endpoints**; the MCP server now exposes **22 tools**.
 
 | Priority | API Endpoint | MCP Tool | Status |
 |----------|-------------|----------|--------|
-| High | `POST /messages/send` (multipart) | `send_media` | ✅ Done (base64 input) |
+| High | `POST /messages` (multipart) | `send_media` | ✅ Done (base64 input) |
 | High | `GET /messages` | `get_messages` | ✅ Done |
 | High | `GET /chats` | `list_chats` | ✅ Done |
 | High | `GET /contacts` | `list_contacts` | ✅ Done |
-| Medium | `POST /messages/react` | `react_message` | ✅ Done |
-| Medium | `POST /messages/read` | `mark_read` | ✅ Done |
+| Medium | `POST /messages/reactions` | `react_message` | ✅ Done |
+| Medium | `POST /messages/mark-read` | `mark_read` | ✅ Done |
 | Medium | `DELETE /messages/{id}` | `revoke_message` | ✅ Done |
 | Medium | `POST /presence` | `send_presence` | ✅ Done |
 | Medium | `PATCH /profile` | `update_profile` | ✅ Done (about text) |
@@ -55,6 +55,31 @@ The REST API exposes **30 endpoints**; the MCP server now exposes **22 tools**.
 | Low | `DELETE /session` | `logout` — disconnect session |
 | Low | `GET/PUT/DELETE /proxy` | `manage_proxy` — proxy configuration |
 | Low | `GET/PUT/DELETE /webhook` | `manage_webhook` — webhook configuration |
+
+---
+
+## ~~Routing & Path Pattern Inconsistencies~~ ✅ Resolved
+
+### ~~0. Message Routes Use RPC Verbs Instead of Resource Semantics~~ ✅
+**Status:** Fixed — `POST /messages/send` → `POST /messages`, `/messages/react` → `/messages/reactions`, `/messages/read` → `/messages/mark-read`
+
+### ~~0b. `/contacts/check` — RPC Action on Collection~~ (kept as-is)
+**Severity:** Low — pragmatic for a discovery operation.
+
+### ~~0c. `/groups/{jid}/participants` — Single POST for 4 Actions~~ (kept as-is)
+**Severity:** Low — simpler than splitting into 3 endpoints.
+
+### ~~0d. Singleton Sub-Resources Use Mixed Update Methods~~ (kept as-is)
+**Severity:** Low — PUT for full replace (proxy, webhook), PATCH for partial (profile) is semantically correct.
+
+### ~~0e. `DeleteAccount` Bypasses Ownership Check~~ ✅
+**Status:** Fixed — now uses `requireAccount()` for ownership enforcement.
+
+### ~~0f. `RegisterRoutes` Comment Is Misleading~~ ✅
+**Status:** Fixed — comment updated.
+
+### ~~0g. Permission String Mismatch: `webhooks:*` vs `/webhook` path~~ ✅
+**Status:** Fixed — permission strings changed to `webhook:read` / `webhook:write`.
 
 ---
 
