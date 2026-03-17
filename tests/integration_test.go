@@ -682,9 +682,9 @@ func TestSendMessageWithoutConnection(t *testing.T) {
 	resp = authReq(t, srv, "POST", "/api/v1/accounts/"+cr.ID+"/messages?phone=1234567890&text=hello",
 		`{}`)
 	defer resp.Body.Close()
-	// Should fail because Connect cannot create data dir (500)
-	if resp.StatusCode != 500 {
-		t.Errorf("expected 500 for unconnected send, got %d", resp.StatusCode)
+	// Should fail because account is not linked (409)
+	if resp.StatusCode != 409 {
+		t.Errorf("expected 409 for unlinked send, got %d", resp.StatusCode)
 	}
 }
 
@@ -700,8 +700,8 @@ func TestListChatsWithoutConnection(t *testing.T) {
 
 	resp = authGet(t, srv, "/api/v1/accounts/"+cr.ID+"/chats")
 	defer resp.Body.Close()
-	if resp.StatusCode != 500 {
-		t.Errorf("expected 500 for unconnected chats, got %d", resp.StatusCode)
+	if resp.StatusCode != 409 {
+		t.Errorf("expected 409 for unlinked chats, got %d", resp.StatusCode)
 	}
 }
 
@@ -717,13 +717,13 @@ func TestListContactsWithoutConnection(t *testing.T) {
 
 	resp = authGet(t, srv, "/api/v1/accounts/"+cr.ID+"/contacts")
 	defer resp.Body.Close()
-	if resp.StatusCode != 500 {
-		t.Errorf("expected 500 for unconnected contacts, got %d", resp.StatusCode)
+	if resp.StatusCode != 409 {
+		t.Errorf("expected 409 for unlinked contacts, got %d", resp.StatusCode)
 	}
 }
 
-// TestPresenceWithoutConnection verifies that presence endpoints return 500
-// when the account cannot connect. (State validation happens after connection
+// TestPresenceWithoutConnection verifies that presence endpoints return 409
+// when the account is not linked. (State validation happens after connection
 // check in the handler, so invalid-state → 400 can only be tested with a live
 // session.)
 func TestPresenceWithoutConnection(t *testing.T) {
@@ -739,8 +739,8 @@ func TestPresenceWithoutConnection(t *testing.T) {
 	resp = authReq(t, srv, "POST", "/api/v1/accounts/"+cr.ID+"/presence",
 		`{"state":"invalid"}`)
 	defer resp.Body.Close()
-	if resp.StatusCode != 500 {
-		t.Errorf("expected 500 for unconnected presence, got %d", resp.StatusCode)
+	if resp.StatusCode != 409 {
+		t.Errorf("expected 409 for unlinked presence, got %d", resp.StatusCode)
 	}
 }
 
@@ -794,12 +794,12 @@ func TestSendEndpointUnconnectedWithJID(t *testing.T) {
 
 	blockDataDir(t, mgr, cr.ID)
 
-	// jid provided, but account can't connect → 500
+	// jid provided, but account is not linked → 409
 	resp = authReq(t, srv, "POST",
 		"/api/v1/accounts/"+cr.ID+"/messages?jid=123456@s.whatsapp.net&text=Hello", "")
 	defer resp.Body.Close()
-	if resp.StatusCode != 500 {
-		t.Errorf("expected 500 for unconnected send, got %d", resp.StatusCode)
+	if resp.StatusCode != 409 {
+		t.Errorf("expected 409 for unlinked send, got %d", resp.StatusCode)
 	}
 }
 
@@ -830,13 +830,13 @@ func TestSendEndpointTextInBody(t *testing.T) {
 
 	blockDataDir(t, mgr, cr.ID)
 
-	// text in JSON body, jid in query → 500 (can't connect, but proves routing works)
+	// text in JSON body, jid in query → 409 (not linked, but proves routing works)
 	resp = authReq(t, srv, "POST",
 		"/api/v1/accounts/"+cr.ID+"/messages?jid=123456@s.whatsapp.net",
 		`{"text":"from body"}`)
 	defer resp.Body.Close()
-	if resp.StatusCode != 500 {
-		t.Errorf("expected 500 (unconnected) for body text, got %d", resp.StatusCode)
+	if resp.StatusCode != 409 {
+		t.Errorf("expected 409 (unlinked) for body text, got %d", resp.StatusCode)
 	}
 }
 
