@@ -1524,15 +1524,17 @@ func (a *Account) ListChats(ctx context.Context) ([]model.ChatInfo, error) {
 					continue
 				}
 			}
-			name := info.PushName
-			if info.FullName != "" {
+			// Priority: saved contact name > business name > profile name > phone
+			var name string
+			switch {
+			case info.FullName != "":
 				name = info.FullName
-			}
-			if info.BusinessName != "" {
+			case info.BusinessName != "":
 				name = info.BusinessName
-			}
-			if name == "" {
-				name = jid.User
+			case info.PushName != "":
+				name = info.PushName
+			default:
+				name = "+" + jid.User
 			}
 			chat := model.ChatInfo{
 				ID:      id,
@@ -1558,7 +1560,7 @@ func (a *Account) ListChats(ctx context.Context) ([]model.ChatInfo, error) {
 		isGroup := strings.HasSuffix(resolvedJID, "@g.us")
 		if !isGroup {
 			// Extract phone number from JID for display
-			name = strings.SplitN(resolvedJID, "@", 2)[0]
+			name = "+" + strings.SplitN(resolvedJID, "@", 2)[0]
 		}
 		chat := model.ChatInfo{
 			ID:      resolvedJID,

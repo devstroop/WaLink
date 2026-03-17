@@ -71,7 +71,7 @@
               </div>
               <div class="flex-1 min-w-0">
                 <div class="flex items-center justify-between">
-                  <p class="text-sm font-medium text-gray-900 truncate" x-text="c.name || c.id"></p>
+                  <p class="text-sm font-medium text-gray-900 truncate" x-text="c.name || formatJID(c.id)"></p>
                   <span x-show="c.timestamp" class="text-[10px] text-gray-400 shrink-0 ml-2" x-text="formatTime(c.timestamp)"></span>
                 </div>
                 <div class="flex items-center justify-between mt-0.5">
@@ -166,7 +166,7 @@
               <p class="text-sm font-semibold text-gray-900 truncate" x-text="activeChatName || activeChat"></p>
               <span x-show="activeChatIsChannel" class="text-[10px] font-medium text-purple-600 bg-purple-100 px-1.5 py-0.5 rounded">Channel</span>
             </div>
-            <p class="text-xs text-gray-500 truncate" x-text="activeChat"></p>
+            <p class="text-xs text-gray-500 truncate" x-text="formatJID(activeChat)"></p>
           </div>
         </div>
         <div class="flex items-center gap-1">
@@ -400,7 +400,7 @@ function waApp() {
 
     async openChat(jid, name, isGroup) {
       this.activeChat = jid;
-      this.activeChatName = name || jid.split('@')[0];
+      this.activeChatName = name || this.formatJID(jid);
       this.activeChatIsGroup = isGroup;
       this.activeChatIsChannel = false;
       this.replyTo = null;
@@ -588,7 +588,13 @@ function waApp() {
     },
 
     // Helpers
-    contactName(c) { return c.push_name || c.full_name || c.business_name || c.id?.split('@')[0] || ''; },
+    formatJID(jid) {
+      if (!jid) return '';
+      const user = jid.split('@')[0];
+      if (/^\d+$/.test(user)) return '+' + user;
+      return user;
+    },
+    contactName(c) { return c.full_name || c.business_name || c.push_name || this.formatJID(c.id) || ''; },
 
     get filteredChats() {
       const q = this.search.toLowerCase();
