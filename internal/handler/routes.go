@@ -20,7 +20,7 @@ func NewAPI(mgr *service.AccountManager, db *database.DB) *API {
 }
 
 // RegisterRoutes wires every endpoint into the mux.
-// All paths are under /api/v1/accounts.
+// Core paths are under /api/v1/accounts; see also RegisterRBACRoutes.
 func (a *API) RegisterRoutes(mux *http.ServeMux) {
 	perm := middleware.RequirePermission
 	base := "/api/v1/accounts"
@@ -46,15 +46,15 @@ func (a *API) RegisterRoutes(mux *http.ServeMux) {
 
 	// ── Messaging ───────────────────────────────────
 	mux.HandleFunc("GET "+acct+"/messages", perm("messages:read", a.GetMessages))
-	mux.HandleFunc("POST "+acct+"/messages/send", perm("messages:write", a.SendMessageSend))
-	mux.HandleFunc("POST "+acct+"/messages/react", perm("messages:write", a.ReactMessage))
-	mux.HandleFunc("POST "+acct+"/messages/read", perm("messages:write", a.MarkRead))
+	mux.HandleFunc("POST "+acct+"/messages", perm("messages:write", a.SendMessage))
+	mux.HandleFunc("POST "+acct+"/messages/reactions", perm("messages:write", a.ReactMessage))
+	mux.HandleFunc("POST "+acct+"/messages/mark-read", perm("messages:write", a.MarkRead))
 	mux.HandleFunc("DELETE "+acct+"/messages/{message_id}", perm("messages:write", a.RevokeMessage))
 
 	// ── Webhook ─────────────────────────────────────
-	mux.HandleFunc("GET "+acct+"/webhook", perm("webhooks:read", a.GetWebhook))
-	mux.HandleFunc("PUT "+acct+"/webhook", perm("webhooks:write", a.SetWebhook))
-	mux.HandleFunc("DELETE "+acct+"/webhook", perm("webhooks:write", a.DeleteWebhook))
+	mux.HandleFunc("GET "+acct+"/webhook", perm("webhook:read", a.GetWebhook))
+	mux.HandleFunc("PUT "+acct+"/webhook", perm("webhook:write", a.SetWebhook))
+	mux.HandleFunc("DELETE "+acct+"/webhook", perm("webhook:write", a.DeleteWebhook))
 
 	// ── Chats ───────────────────────────────────────
 	mux.HandleFunc("GET "+acct+"/chats", perm("chats:read", a.ListChats))

@@ -710,10 +710,7 @@
           "403": { "description": "Forbidden" },
           "404": { "description": "Account not found" }
         }
-      }
-    },
-    "/api/v1/accounts/{account_id}/messages/send": {
-      "parameters": [{ "$ref": "#/components/parameters/AccountId" }],
+      },
       "post": {
         "tags": ["Messaging"],
         "summary": "Send a message",
@@ -768,7 +765,7 @@
         }
       }
     },
-    "/api/v1/accounts/{account_id}/messages/react": {
+    "/api/v1/accounts/{account_id}/messages/reactions": {
       "parameters": [{ "$ref": "#/components/parameters/AccountId" }],
       "post": {
         "tags": ["Messaging"],
@@ -782,7 +779,7 @@
         }
       }
     },
-    "/api/v1/accounts/{account_id}/messages/read": {
+    "/api/v1/accounts/{account_id}/messages/mark-read": {
       "parameters": [{ "$ref": "#/components/parameters/AccountId" }],
       "post": {
         "tags": ["Messaging"],

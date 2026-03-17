@@ -126,7 +126,7 @@ func (a *API) DeleteSession(w http.ResponseWriter, r *http.Request) {
 
 // ── Messaging ───────────────────────────────────────
 
-// SendMessageSend — POST /api/v1/accounts/{account_id}/messages/send
+// SendMessage — POST /api/v1/accounts/{account_id}/messages
 //
 // A single-call endpoint that accepts phone or JID and text via query parameters.
 // Files are sent as multipart/form-data body. Text can appear in query (?text=...)
@@ -134,12 +134,12 @@ func (a *API) DeleteSession(w http.ResponseWriter, r *http.Request) {
 //
 // Examples:
 //
-//	POST /{id}/messages/send?phone=919999999999&text=Hello
-//	POST /{id}/messages/send?jid=919999999999@s.whatsapp.net&text=Hello
-//	POST /{id}/messages/send?phone=919999999999          (text in body or multipart)
-//	POST /{id}/messages/send?phone=919999999999          (file in multipart, text as caption)
-//	POST /{id}/messages/send  {"chat":"...@s.whatsapp.net","text":"Hello"} (JSON body)
-func (a *API) SendMessageSend(w http.ResponseWriter, r *http.Request) {
+//	POST /{id}/messages?phone=919999999999&text=Hello
+//	POST /{id}/messages?jid=919999999999@s.whatsapp.net&text=Hello
+//	POST /{id}/messages?phone=919999999999          (text in body or multipart)
+//	POST /{id}/messages?phone=919999999999          (file in multipart, text as caption)
+//	POST /{id}/messages  {"chat":"...@s.whatsapp.net","text":"Hello"} (JSON body)
+func (a *API) SendMessage(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 
 	// ── Read recipient from query params ──
@@ -281,7 +281,7 @@ func (a *API) SendMessageSend(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, model.SendMessageResponse{Status: "sent", MessageID: msgID})
 }
 
-// ReactMessage — POST /api/v1/accounts/{account_id}/messages/react
+// ReactMessage — POST /api/v1/accounts/{account_id}/messages/reactions
 func (a *API) ReactMessage(w http.ResponseWriter, r *http.Request) {
 	acct := a.requireConnectedAccount(w, r)
 	if acct == nil {
@@ -315,7 +315,7 @@ func (a *API) ReactMessage(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// MarkRead — POST /api/v1/accounts/{account_id}/messages/read
+// MarkRead — POST /api/v1/accounts/{account_id}/messages/mark-read
 func (a *API) MarkRead(w http.ResponseWriter, r *http.Request) {
 	acct := a.requireConnectedAccount(w, r)
 	if acct == nil {

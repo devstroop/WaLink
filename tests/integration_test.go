@@ -679,7 +679,7 @@ func TestSendMessageWithoutConnection(t *testing.T) {
 
 	blockDataDir(t, mgr, cr.ID)
 
-	resp = authReq(t, srv, "POST", "/api/v1/accounts/"+cr.ID+"/messages/send?phone=1234567890&text=hello",
+	resp = authReq(t, srv, "POST", "/api/v1/accounts/"+cr.ID+"/messages?phone=1234567890&text=hello",
 		`{}`)
 	defer resp.Body.Close()
 	// Should fail because Connect cannot create data dir (500)
@@ -744,7 +744,7 @@ func TestPresenceWithoutConnection(t *testing.T) {
 	}
 }
 
-// ─── messages/send endpoint ─────────────────────────
+// ─── POST /messages endpoint ─────────────────────────
 
 func TestSendEndpointMissingPhoneAndJID(t *testing.T) {
 	srv, _ := testServer(t)
@@ -755,7 +755,7 @@ func TestSendEndpointMissingPhoneAndJID(t *testing.T) {
 	decodeJSON(t, resp, &cr)
 
 	// Neither phone nor jid → 400
-	resp = authReq(t, srv, "POST", "/api/v1/accounts/"+cr.ID+"/messages/send?text=Hello", "")
+	resp = authReq(t, srv, "POST", "/api/v1/accounts/"+cr.ID+"/messages?text=Hello", "")
 	defer resp.Body.Close()
 	if resp.StatusCode != 400 {
 		t.Errorf("expected 400 missing phone/jid, got %d", resp.StatusCode)
@@ -777,7 +777,7 @@ func TestSendEndpointBothPhoneAndJID(t *testing.T) {
 
 	// Both phone and jid → 400
 	resp = authReq(t, srv, "POST",
-		"/api/v1/accounts/"+cr.ID+"/messages/send?phone=1234567890&jid=x@s.whatsapp.net&text=Hello", "")
+		"/api/v1/accounts/"+cr.ID+"/messages?phone=1234567890&jid=x@s.whatsapp.net&text=Hello", "")
 	defer resp.Body.Close()
 	if resp.StatusCode != 400 {
 		t.Errorf("expected 400 for both phone+jid, got %d", resp.StatusCode)
@@ -796,7 +796,7 @@ func TestSendEndpointUnconnectedWithJID(t *testing.T) {
 
 	// jid provided, but account can't connect → 500
 	resp = authReq(t, srv, "POST",
-		"/api/v1/accounts/"+cr.ID+"/messages/send?jid=123456@s.whatsapp.net&text=Hello", "")
+		"/api/v1/accounts/"+cr.ID+"/messages?jid=123456@s.whatsapp.net&text=Hello", "")
 	defer resp.Body.Close()
 	if resp.StatusCode != 500 {
 		t.Errorf("expected 500 for unconnected send, got %d", resp.StatusCode)
@@ -813,7 +813,7 @@ func TestSendEndpointMissingText(t *testing.T) {
 
 	// jid given but no text and no file → 400
 	resp = authReq(t, srv, "POST",
-		"/api/v1/accounts/"+cr.ID+"/messages/send?jid=123456@s.whatsapp.net", "")
+		"/api/v1/accounts/"+cr.ID+"/messages?jid=123456@s.whatsapp.net", "")
 	defer resp.Body.Close()
 	if resp.StatusCode != 400 {
 		t.Errorf("expected 400 for missing text, got %d", resp.StatusCode)
@@ -832,7 +832,7 @@ func TestSendEndpointTextInBody(t *testing.T) {
 
 	// text in JSON body, jid in query → 500 (can't connect, but proves routing works)
 	resp = authReq(t, srv, "POST",
-		"/api/v1/accounts/"+cr.ID+"/messages/send?jid=123456@s.whatsapp.net",
+		"/api/v1/accounts/"+cr.ID+"/messages?jid=123456@s.whatsapp.net",
 		`{"text":"from body"}`)
 	defer resp.Body.Close()
 	if resp.StatusCode != 500 {

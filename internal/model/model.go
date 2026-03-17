@@ -100,7 +100,7 @@ type PhoneLinkResponse struct {
 // Messaging
 // ──────────────────────────────────────────────────────
 
-// SendMessageRequest is the JSON body for POST /accounts/{id}/messages/send.
+// SendMessageRequest is the JSON body for POST /accounts/{id}/messages.
 type SendMessageRequest struct {
 	Chat    string  `json:"chat"`              // recipient JID (alternative to phone)
 	Phone   string  `json:"phone,omitempty"`   // phone number (alternative to chat/jid)
@@ -115,7 +115,7 @@ type SendMessageResponse struct {
 	MessageID string `json:"message_id"`
 }
 
-// ReactionRequest is the JSON body for POST /accounts/{id}/messages/react.
+// ReactionRequest is the JSON body for POST /accounts/{id}/messages/reactions.
 type ReactionRequest struct {
 	Chat      string `json:"chat,omitempty"`
 	Phone     string `json:"phone,omitempty"`  // alternative to chat — auto-resolves to JID
@@ -123,7 +123,7 @@ type ReactionRequest struct {
 	Emoji     string `json:"emoji"`
 }
 
-// MarkReadRequest is the JSON body for POST /accounts/{id}/messages/read.
+// MarkReadRequest is the JSON body for POST /accounts/{id}/messages/mark-read.
 type MarkReadRequest struct {
 	Chat       string   `json:"chat,omitempty"`
 	Phone      string   `json:"phone,omitempty"` // alternative to chat — auto-resolves to JID

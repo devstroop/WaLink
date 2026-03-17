@@ -32,7 +32,7 @@ curl -X POST http://localhost:3000/api/v1/accounts \
 curl http://localhost:3000/api/v1/accounts/{id}/session/qr \
   -H "$AUTH" -o qr.png          # scan with WhatsApp
 
-curl -X POST "http://localhost:3000/api/v1/accounts/{id}/messages/send?phone=919876543210&text=Hello!" \
+curl -X POST "http://localhost:3000/api/v1/accounts/{id}/messages?phone=919876543210&text=Hello!" \
   -H "$AUTH"
 ```
 
@@ -67,17 +67,16 @@ Base path: `/api/v1/accounts` — `{id}` is the account UUID.
 
 | Method | Path | Description |
 |--------|------|-------------|
-| POST | `/{id}/messages/send?phone=NUM&text=...` | Send message by phone number |
-| POST | `/{id}/messages/send?jid=JID&text=...` | Send message by JID |
-| POST | `/{id}/messages` | Send message (legacy JSON body) |
+| POST | `/{id}/messages?phone=NUM&text=...` | Send message by phone number |
+| POST | `/{id}/messages?jid=JID&text=...` | Send message by JID |
 | GET | `/{id}/messages?chat=JID` | Message history (paginated) |
-| POST | `/{id}/messages/react` | React to a message |
-| POST | `/{id}/messages/read` | Mark messages as read |
+| POST | `/{id}/messages/reactions` | React to a message |
+| POST | `/{id}/messages/mark-read` | Mark messages as read |
 | DELETE | `/{id}/messages/{msg_id}?chat=JID` | Revoke / delete for everyone |
 
 > **Phone number support** — `messages`, `react`, `read`, and `revoke` all accept `phone` as an alternative to `chat`/`jid`. WaLink resolves the phone to a JID via WhatsApp automatically.
 
-#### `POST /{id}/messages/send`
+#### `POST /{id}/messages`
 
 Single-call send — no need to resolve the JID yourself.
 
@@ -186,23 +185,23 @@ curl -X POST http://localhost:3000/api/v1/accounts/{id}/session/pair \
 
 # ── Send messages ────────────────────────────────────
 # By phone number (recommended — resolves JID automatically)
-curl -X POST "http://localhost:3000/api/v1/accounts/{id}/messages/send?phone=919876543210&text=Hello!" \
+curl -X POST "http://localhost:3000/api/v1/accounts/{id}/messages?phone=919876543210&text=Hello!" \
   -H "$AUTH"
 
 # By JID
-curl -X POST "http://localhost:3000/api/v1/accounts/{id}/messages/send?jid=919876543210@s.whatsapp.net&text=Hello!" \
+curl -X POST "http://localhost:3000/api/v1/accounts/{id}/messages?jid=919876543210@s.whatsapp.net&text=Hello!" \
   -H "$AUTH"
 
 # With file attachment
-curl -X POST "http://localhost:3000/api/v1/accounts/{id}/messages/send?phone=919876543210" \
+curl -X POST "http://localhost:3000/api/v1/accounts/{id}/messages?phone=919876543210" \
   -H "$AUTH" -F "text=Check this out" -F "file=@photo.jpg"
 
 # ── Read & React ─────────────────────────────────────
-curl -X POST http://localhost:3000/api/v1/accounts/{id}/messages/react \
+curl -X POST http://localhost:3000/api/v1/accounts/{id}/messages/reactions \
   -H "$AUTH" -H "Content-Type: application/json" \
   -d '{"phone": "919876543210", "message_id": "ABCD1234", "emoji": "👍"}'
 
-curl -X POST http://localhost:3000/api/v1/accounts/{id}/messages/read \
+curl -X POST http://localhost:3000/api/v1/accounts/{id}/messages/mark-read \
   -H "$AUTH" -H "Content-Type: application/json" \
   -d '{"phone": "919876543210", "message_ids": ["ABCD1234"]}'
 
