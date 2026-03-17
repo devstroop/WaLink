@@ -399,6 +399,46 @@ func (h *Handler) APIKeysDelete(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
 }
 
+// ─── MCP Settings ────────────────────────────────────────────
+
+// MCPSettings renders the MCP configuration page.
+func (h *Handler) MCPSettings(w http.ResponseWriter, r *http.Request) {
+	enabled := h.db.GetSettingBool("mcp.enabled", true)
+	path := h.db.GetSetting("mcp.path", "/mcp")
+
+	// Count API keys for display
+	allKeys, _ := h.db.ListAllAPIKeys()
+
+	pd := h.page(w, r, "MCP Server", "mcp", map[string]any{
+		"Enabled":     enabled,
+		"Path":        path,
+		"APIKeyCount": len(allKeys),
+	})
+	h.render.Page(w, http.StatusOK, "mcp", pd)
+}
+
+// MCPSettingsUpdate handles POST /admin/mcp.
+func (h *Handler) MCPSettingsUpdate(w http.ResponseWriter, r *http.Request) {
+	enabled := r.FormValue("enabled") == "on" || r.FormValue("enabled") == "true"
+
+	val := "false"
+	if enabled {
+		val = "true"
+	}
+	if err := h.db.SetSetting("mcp.enabled", val); err != nil {
+		setFlash(w, "error", "Failed to update MCP settings.")
+		http.Redirect(w, r, "/admin/mcp", http.StatusSeeOther)
+		return
+	}
+
+	if enabled {
+		setFlash(w, "success", "MCP server enabled.")
+	} else {
+		setFlash(w, "success", "MCP server disabled.")
+	}
+	http.Redirect(w, r, "/admin/mcp", http.StatusSeeOther)
+}
+
 // Messaging renders the messaging page with sender account selection.
 func (h *Handler) Messaging(w http.ResponseWriter, r *http.Request) {
 	list := h.mgr.ListAccounts()

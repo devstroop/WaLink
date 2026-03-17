@@ -46,3 +46,7 @@ retry_delay_ms = 1000
 [swagger]
 enabled = true
 path = "/api-docs"
+
+[mcp]
+enabled = true       # Enable/disable MCP server (can also toggle at runtime via admin UI)
+path = "/mcp"        # MCP endpoint path

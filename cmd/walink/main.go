@@ -106,11 +106,34 @@ func main() {
 	mux.Handle("/api/v1/", limited)
 
 	// MCP (Model Context Protocol) endpoint — auth + account scoping
+	// Seed MCP defaults from config into DB settings (only if not already set)
+	if db.GetSetting("mcp.enabled", "") == "" {
+		val := "true"
+		if !cfg.MCP.Enabled {
+			val = "false"
+		}
+		_ = db.SetSetting("mcp.enabled", val)
+	}
+	if db.GetSetting("mcp.path", "") == "" {
+		_ = db.SetSetting("mcp.path", cfg.MCP.Path)
+	}
+
+	mcpPath := db.GetSetting("mcp.path", "/mcp")
 	mcpSrv := mcpserver.New(mgr, db, version)
 	mcpTransport := mcphttp.NewStreamableHTTPServer(mcpSrv)
-	mcpHandler := middleware.Auth(cfg.Auth.SecretKey, db, middleware.MCPScope(db, mcpTransport))
-	mux.Handle("/mcp", mcpHandler)
-	log.Info().Msg("MCP endpoint enabled at /mcp")
+	mcpInner := middleware.Auth(cfg.Auth.SecretKey, db, middleware.MCPScope(db, mcpTransport))
+	// Gate: check DB setting at runtime so admin can toggle without restart
+	mcpHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !db.GetSettingBool("mcp.enabled", true) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusServiceUnavailable)
+			w.Write([]byte(`{"error":"MCP server is disabled by administrator"}`))
+			return
+		}
+		mcpInner.ServeHTTP(w, r)
+	})
+	mux.Handle(mcpPath, mcpHandler)
+	log.Info().Str("path", mcpPath).Msg("MCP endpoint registered")
 
 	// Swagger UI (no auth)
 	if cfg.Swagger.Enabled {

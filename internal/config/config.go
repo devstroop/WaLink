@@ -23,6 +23,7 @@ type Config struct {
 	Webhooks WebhookConfig  `toml:"webhooks"`
 	Swagger  SwaggerConfig  `toml:"swagger"`
 	Web      WebConfig       `toml:"web"`
+	MCP      MCPConfig       `toml:"mcp"`
 }
 
 type ServerConfig struct {
@@ -83,6 +84,11 @@ type SwaggerConfig struct {
 
 type WebConfig struct {
 	Enabled bool `toml:"enabled"`
+}
+
+type MCPConfig struct {
+	Enabled bool   `toml:"enabled"`
+	Path    string `toml:"path"`
 }
 
 // Load reads config from config/app.toml (next to binary or working dir),
@@ -214,6 +220,12 @@ func applyEnvOverrides(cfg *Config) {
 	if v := os.Getenv("WALINK_WEB_ENABLED"); v != "" {
 		cfg.Web.Enabled = v == "true" || v == "1"
 	}
+	if v := os.Getenv("WALINK_MCP_ENABLED"); v != "" {
+		cfg.MCP.Enabled = v == "true" || v == "1"
+	}
+	if v := os.Getenv("WALINK_MCP_PATH"); v != "" {
+		cfg.MCP.Path = v
+	}
 }
 
 func defaults() *Config {
@@ -240,6 +252,7 @@ func defaults() *Config {
 		},
 		Swagger: SwaggerConfig{Enabled: true, Path: "/api-docs"},
 		Web:     WebConfig{Enabled: true},
+		MCP:     MCPConfig{Enabled: true, Path: "/mcp"},
 	}
 }
 

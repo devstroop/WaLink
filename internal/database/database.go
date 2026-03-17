@@ -289,6 +289,17 @@ func (d *DB) migrate() error {
 		return err
 	}
 
+	// ── Settings key-value table ────────────────────
+	_, err = d.db.Exec(`
+		CREATE TABLE IF NOT EXISTS setting (
+			key   TEXT PRIMARY KEY,
+			value TEXT NOT NULL DEFAULT ''
+		);
+	`)
+	if err != nil {
+		return err
+	}
+
 	// ── Seed built-in roles ─────────────────────────
 	if err := d.seedRoles(); err != nil {
 		return err
@@ -1185,4 +1196,60 @@ func (d *DB) MarkResetTokenUsed(id string) error {
 
 	_, err := d.db.Exec(`UPDATE password_reset_token SET used = 1 WHERE id = ?`, id)
 	return err
+}
+
+// ─── Settings CRUD ──────────────────────────────────────────
+
+// GetSetting returns the value for a setting key, or defaultVal if not set.
+func (d *DB) GetSetting(key, defaultVal string) string {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	var val string
+	err := d.db.QueryRow(`SELECT value FROM setting WHERE key = ?`, key).Scan(&val)
+	if err != nil {
+		return defaultVal
+	}
+	return val
+}
+
+// SetSetting upserts a setting key-value pair.
+func (d *DB) SetSetting(key, value string) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	_, err := d.db.Exec(`INSERT INTO setting (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = ?`, key, value, value)
+	return err
+}
+
+// GetAllSettings returns all settings as a map.
+func (d *DB) GetAllSettings() (map[string]string, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	rows, err := d.db.Query(`SELECT key, value FROM setting`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	m := make(map[string]string)
+	for rows.Next() {
+		var k, v string
+		if err := rows.Scan(&k, &v); err != nil {
+			return nil, err
+		}
+		m[k] = v
+	}
+	return m, nil
+}
+
+// GetSettingBool returns a setting as a bool (true if value is "true" or "1").
+func (d *DB) GetSettingBool(key string, defaultVal bool) bool {
+	def := "false"
+	if defaultVal {
+		def = "true"
+	}
+	v := d.GetSetting(key, def)
+	return v == "true" || v == "1"
 }

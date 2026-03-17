@@ -112,6 +112,8 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	inner.HandleFunc("GET /admin/api-keys", h.APIKeysList)
 	inner.HandleFunc("POST /admin/api-keys", h.APIKeysCreate)
 	inner.HandleFunc("POST /admin/api-keys/{id}/delete", h.APIKeysDelete)
+	inner.HandleFunc("GET /admin/mcp", h.MCPSettings)
+	inner.HandleFunc("POST /admin/mcp", h.MCPSettingsUpdate)
 
 	// Settings
 	inner.HandleFunc("GET /settings", h.Settings)
