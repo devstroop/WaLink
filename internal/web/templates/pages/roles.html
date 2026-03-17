@@ -1,0 +1,45 @@
+{{define "content"}}
+<div class="space-y-6">
+  <div class="flex items-center justify-between">
+    <div>
+      <h3 class="text-lg font-semibold text-gray-900">Roles</h3>
+      <p class="text-sm text-gray-500">View roles and their permissions.</p>
+    </div>
+  </div>
+
+  <div class="bg-white rounded-xl border border-gray-200 overflow-hidden">
+    {{if .Data.Roles}}
+    <table class="w-full text-sm">
+      <thead class="bg-gray-50 border-b border-gray-200">
+        <tr>
+          <th class="text-left px-4 py-3 font-medium text-gray-600">Name</th>
+          <th class="text-left px-4 py-3 font-medium text-gray-600">Description</th>
+          <th class="text-left px-4 py-3 font-medium text-gray-600">Type</th>
+          <th class="text-left px-4 py-3 font-medium text-gray-600">Created</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-gray-100">
+        {{range .Data.Roles}}
+        <tr class="hover:bg-gray-50 transition-colors">
+          <td class="px-4 py-3 font-medium text-gray-900">{{.Name}}</td>
+          <td class="px-4 py-3 text-gray-500">{{if .Description}}{{.Description}}{{else}}<span class="text-gray-300">—</span>{{end}}</td>
+          <td class="px-4 py-3">
+            {{if .IsBuiltin}}
+            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800">Built-in</span>
+            {{else}}
+            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">Custom</span>
+            {{end}}
+          </td>
+          <td class="px-4 py-3 text-gray-500">{{timeAgo .CreatedAt}}</td>
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+    {{else}}
+    <div class="p-8 text-center">
+      <p class="text-sm text-gray-500">No roles found.</p>
+    </div>
+    {{end}}
+  </div>
+</div>
+{{end}}

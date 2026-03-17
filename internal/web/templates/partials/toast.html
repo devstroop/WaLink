@@ -1,0 +1,17 @@
+{{define "partial/toast"}}
+{{if .Flash}}
+<div x-data="{ show: true }" x-show="show" x-init="setTimeout(() => show = false, 5000)"
+     x-transition:leave="transition ease-in duration-200"
+     x-transition:leave-start="opacity-100 translate-y-0"
+     x-transition:leave-end="opacity-0 -translate-y-2"
+     class="mb-4 px-4 py-3 rounded-lg text-sm flex items-center justify-between
+            {{if eq .Flash.Type "success"}}bg-brand-50 text-brand-800 border border-brand-200{{end}}
+            {{if eq .Flash.Type "error"}}bg-red-50 text-red-800 border border-red-200{{end}}
+            {{if eq .Flash.Type "info"}}bg-blue-50 text-blue-800 border border-blue-200{{end}}">
+  <span>{{.Flash.Message}}</span>
+  <button @click="show = false" class="ml-3 opacity-60 hover:opacity-100">
+    <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg>
+  </button>
+</div>
+{{end}}
+{{end}}

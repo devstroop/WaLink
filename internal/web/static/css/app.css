@@ -1,0 +1,35 @@
+/* WaLink — custom styles (Tailwind CDN handles the rest) */
+
+/* Alpine.js cloak — hide elements until Alpine initializes */
+[x-cloak] { display: none !important; }
+
+/* Dialog backdrop */
+dialog::backdrop {
+  background: rgba(0, 0, 0, 0.3);
+  backdrop-filter: blur(2px);
+}
+
+/* Smooth page transitions with htmx */
+.htmx-settling {
+  opacity: 1;
+  transition: opacity 150ms ease-in;
+}
+
+.htmx-swapping {
+  opacity: 0;
+  transition: opacity 100ms ease-out;
+}
+
+/* htmx loading indicator */
+.htmx-indicator {
+  display: none;
+}
+.htmx-request .htmx-indicator {
+  display: inline-block;
+}
+
+/* Subtle scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #9ca3af; }

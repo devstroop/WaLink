@@ -1,0 +1,53 @@
+{{define "content"}}
+<div class="space-y-6">
+  <div class="flex items-center justify-between">
+    <div>
+      <h3 class="text-lg font-semibold text-gray-900">API Keys</h3>
+      <p class="text-sm text-gray-500">Manage API keys for programmatic access.</p>
+    </div>
+  </div>
+
+  <div class="bg-white rounded-xl border border-gray-200 overflow-hidden">
+    {{if .Data.Keys}}
+    <table class="w-full text-sm">
+      <thead class="bg-gray-50 border-b border-gray-200">
+        <tr>
+          <th class="text-left px-4 py-3 font-medium text-gray-600">Name</th>
+          <th class="text-left px-4 py-3 font-medium text-gray-600">Prefix</th>
+          <th class="text-left px-4 py-3 font-medium text-gray-600">Account</th>
+          <th class="text-left px-4 py-3 font-medium text-gray-600">Status</th>
+          <th class="text-left px-4 py-3 font-medium text-gray-600">Last Used</th>
+          <th class="text-left px-4 py-3 font-medium text-gray-600">Expires</th>
+          <th class="text-left px-4 py-3 font-medium text-gray-600">Created</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-gray-100">
+        {{range .Data.Keys}}
+        <tr class="hover:bg-gray-50 transition-colors">
+          <td class="px-4 py-3 font-medium text-gray-900">{{.Name}}</td>
+          <td class="px-4 py-3">
+            <code class="text-xs bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded">{{.Prefix}}…</code>
+          </td>
+          <td class="px-4 py-3 text-gray-500">{{with .AccountID}}{{truncate . 8}}{{else}}<span class="text-gray-300">all</span>{{end}}</td>
+          <td class="px-4 py-3">
+            {{if .Enabled}}
+            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">Active</span>
+            {{else}}
+            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">Disabled</span>
+            {{end}}
+          </td>
+          <td class="px-4 py-3 text-gray-500">{{with .LastUsed}}{{timeAgo .}}{{else}}<span class="text-gray-300">never</span>{{end}}</td>
+          <td class="px-4 py-3 text-gray-500">{{with .ExpiresAt}}{{timeAgo .}}{{else}}<span class="text-gray-300">never</span>{{end}}</td>
+          <td class="px-4 py-3 text-gray-500">{{timeAgo .CreatedAt}}</td>
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+    {{else}}
+    <div class="p-8 text-center">
+      <p class="text-sm text-gray-500">No API keys found.</p>
+    </div>
+    {{end}}
+  </div>
+</div>
+{{end}}

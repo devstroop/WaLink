@@ -1,0 +1,41 @@
+{{define "content"}}
+<div class="space-y-6">
+  <!-- Stats -->
+  <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+    {{template "component/stat-card" (dict "label" "Total Accounts" "value" .Data.TotalAccounts "icon" "accounts" "color" "brand")}}
+    {{template "component/stat-card" (dict "label" "Connected" "value" .Data.Connected "icon" "connected" "color" "green")}}
+    {{template "component/stat-card" (dict "label" "Disconnected" "value" .Data.Disconnected "icon" "disconnected" "color" "yellow")}}
+    {{template "component/stat-card" (dict "label" "Users" "value" .Data.TotalUsers "icon" "users" "color" "blue")}}
+  </div>
+
+  <!-- Recent accounts -->
+  <div class="bg-white rounded-xl border border-gray-200">
+    <div class="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+      <h3 class="font-semibold text-gray-900">Recent Accounts</h3>
+      <a href="/accounts" class="text-sm text-brand-600 hover:text-brand-700 font-medium">View all →</a>
+    </div>
+    <div class="divide-y divide-gray-100">
+      {{range .Data.Accounts}}
+      <div class="px-5 py-3 flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <div class="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center text-sm font-medium text-gray-600">
+            {{upper (initial .AccountName)}}
+          </div>
+          <div>
+            <p class="text-sm font-medium text-gray-900">{{.AccountName}}</p>
+            <p class="text-xs text-gray-500">{{.PhoneNumber}}</p>
+          </div>
+        </div>
+        {{if .Connected}}
+          {{template "component/badge" (dict "text" "Connected" "color" "green")}}
+        {{else}}
+          {{template "component/badge" (dict "text" "Disconnected" "color" "gray")}}
+        {{end}}
+      </div>
+      {{else}}
+      {{template "component/empty-state" (dict "title" "No accounts yet" "description" "Create your first WhatsApp account to get started." "action" "/accounts" "actionLabel" "Create Account")}}
+      {{end}}
+    </div>
+  </div>
+</div>
+{{end}}

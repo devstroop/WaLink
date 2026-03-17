@@ -1,0 +1,40 @@
+{{define "content"}}
+<div class="bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
+  <form method="POST" action="/login" hx-boost="false">
+    <h2 class="text-xl font-semibold text-gray-900 mb-6">Sign in to your account</h2>
+
+    <div class="space-y-4">
+      <div>
+        <label for="username" class="block text-sm font-medium text-gray-700 mb-1">Username</label>
+        <input type="text" id="username" name="username" required autofocus
+               class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition-colors"
+               placeholder="Enter your username">
+      </div>
+      <div>
+        <label for="password" class="block text-sm font-medium text-gray-700 mb-1">Password</label>
+        <input type="password" id="password" name="password" required
+               class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition-colors"
+               placeholder="Enter your password">
+      </div>
+    </div>
+
+    <button type="submit"
+            class="w-full mt-6 px-4 py-2.5 bg-brand-600 text-white text-sm font-medium rounded-lg hover:bg-brand-700 focus:ring-2 focus:ring-brand-500 focus:ring-offset-2 transition-colors">
+      Sign in
+    </button>
+
+    <div class="mt-4 flex items-center justify-between text-sm">
+      <a href="/forgot-password" class="text-brand-600 hover:text-brand-700 font-medium">Forgot password?</a>
+      {{if .Data.RegistrationEnabled}}
+      <a href="/register" class="text-brand-600 hover:text-brand-700 font-medium">Create an account</a>
+      {{end}}
+    </div>
+
+    <!-- {{if .Data.SecretKeyHint}}
+    <div class="mt-4 p-3 bg-gray-50 rounded-lg border border-gray-200">
+      <p class="text-xs text-gray-500">You can also sign in with your API secret key as the password, using <strong>system</strong> as the username.</p>
+    </div>
+    {{end}} -->
+  </form>
+</div>
+{{end}}

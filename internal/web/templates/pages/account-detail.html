@@ -1,0 +1,78 @@
+{{define "content"}}
+<div class="space-y-6">
+  <!-- Header -->
+  <div class="flex items-center justify-between">
+    <div class="flex items-center gap-3">
+      <a href="/accounts" class="p-2 rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-600">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewBox="0 0 24 24"><path d="m12 19-7-7 7-7m7 7H5"/></svg>
+      </a>
+      <div>
+        <h3 class="text-lg font-semibold text-gray-900">{{.Data.Account.AccountName}}</h3>
+        <p class="text-sm text-gray-500">{{.Data.Account.PhoneNumber}} · {{.Data.Account.ID}}</p>
+      </div>
+    </div>
+    <div id="session-badge" hx-get="/accounts/{{.Data.Account.ID}}/session-status" hx-trigger="load, every 10s" hx-swap="innerHTML">
+      {{template "component/badge" (dict "text" "Checking…" "color" "gray")}}
+    </div>
+  </div>
+
+  <!-- Tabs -->
+  <div x-data="{ tab: 'session' }" class="space-y-4">
+    <div class="border-b border-gray-200">
+      <nav class="flex gap-6 -mb-px">
+        <button @click="tab = 'session'" :class="tab === 'session' ? 'border-brand-500 text-brand-600' : 'border-transparent text-gray-500 hover:text-gray-700'"
+                class="pb-3 px-1 text-sm font-medium border-b-2 transition-colors">Session</button>
+        <button @click="tab = 'messaging'" :class="tab === 'messaging' ? 'border-brand-500 text-brand-600' : 'border-transparent text-gray-500 hover:text-gray-700'"
+                class="pb-3 px-1 text-sm font-medium border-b-2 transition-colors">Messaging</button>
+        <button @click="tab = 'webhook'" :class="tab === 'webhook' ? 'border-brand-500 text-brand-600' : 'border-transparent text-gray-500 hover:text-gray-700'"
+                class="pb-3 px-1 text-sm font-medium border-b-2 transition-colors">Webhook</button>
+        <button @click="tab = 'proxy'" :class="tab === 'proxy' ? 'border-brand-500 text-brand-600' : 'border-transparent text-gray-500 hover:text-gray-700'"
+                class="pb-3 px-1 text-sm font-medium border-b-2 transition-colors">Proxy</button>
+      </nav>
+    </div>
+
+    <!-- Session tab -->
+    <div x-show="tab === 'session'" class="bg-white rounded-xl border border-gray-200 p-6">
+      <h4 class="font-semibold text-gray-900 mb-4">WhatsApp Session</h4>
+      <div class="flex flex-col sm:flex-row gap-4">
+        <div id="qr-area" class="flex-1">
+          <p class="text-sm text-gray-500 mb-4">Scan the QR code with WhatsApp to link this account, or use phone pairing.</p>
+          <div class="flex gap-3">
+            <button hx-get="/accounts/{{.Data.Account.ID}}/qr" hx-target="#qr-area" hx-swap="innerHTML"
+                    class="px-4 py-2 text-sm font-medium text-white bg-brand-600 rounded-lg hover:bg-brand-700 transition-colors">
+              Show QR Code
+            </button>
+            <button hx-post="/accounts/{{.Data.Account.ID}}/pair" hx-target="#qr-area" hx-swap="innerHTML"
+                    class="px-4 py-2 text-sm font-medium text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
+              Pair via Phone
+            </button>
+            <button hx-post="/accounts/{{.Data.Account.ID}}/disconnect" hx-target="#session-badge" hx-swap="innerHTML"
+                    hx-confirm="Disconnect this session?"
+                    class="px-4 py-2 text-sm font-medium text-red-600 border border-red-200 rounded-lg hover:bg-red-50 transition-colors">
+              Disconnect
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Messaging tab -->
+    <div x-show="tab === 'messaging'" class="bg-white rounded-xl border border-gray-200 p-6">
+      <h4 class="font-semibold text-gray-900 mb-4">Send Message</h4>
+      <p class="text-sm text-gray-500">Messaging interface will be available here.</p>
+    </div>
+
+    <!-- Webhook tab -->
+    <div x-show="tab === 'webhook'" class="bg-white rounded-xl border border-gray-200 p-6">
+      <h4 class="font-semibold text-gray-900 mb-4">Webhook Configuration</h4>
+      <p class="text-sm text-gray-500">Webhook settings will be available here.</p>
+    </div>
+
+    <!-- Proxy tab -->
+    <div x-show="tab === 'proxy'" class="bg-white rounded-xl border border-gray-200 p-6">
+      <h4 class="font-semibold text-gray-900 mb-4">Proxy Configuration</h4>
+      <p class="text-sm text-gray-500">Proxy settings will be available here.</p>
+    </div>
+  </div>
+</div>
+{{end}}

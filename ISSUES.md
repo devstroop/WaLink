@@ -218,3 +218,63 @@ Currently auth uses a single static `secret_key`. Need proper user management wi
 - [x] `main.go`: pass DB to auth middleware
 - [x] Account scoping by `user_id`
 - [x] MCP: auth middleware covers MCP endpoint; `GetIdentityFromContext()` available for future tool-level checks
+
+---
+
+## Web UI Audit — March 17, 2026
+
+Playwright-verified audit of the embedded HTMX web dashboard.
+
+**API routes: 57 | Web routes: 26 | Coverage: 46%**
+
+### Bugs
+
+| # | Severity | Issue | Status |
+|---|----------|-------|--------|
+| W1 | HIGH | **404 is raw plaintext** — unknown routes return Go's default `404 page not found` instead of styled error.html | Open |
+| W2 | MED | **No favicon** — every page triggers `GET /favicon.ico → 404` console error | Open |
+| W3 | LOW | **Secret key hint commented out** — login.html hint block is wrapped in `<!-- -->` by user edit | Open |
+
+### Admin Pages — 100% Stubs
+
+| Page | Route | Status |
+|------|-------|--------|
+| Users | `/admin/users` | STUB — "coming soon" |
+| Roles | `/admin/roles` | STUB — "coming soon" |
+| API Keys | `/admin/api-keys` | STUB — "coming soon" |
+| Settings | `/settings` | STUB — "coming soon" |
+
+### Account Detail Tabs — Incomplete
+
+| Tab | Status | Notes |
+|-----|--------|-------|
+| Session | ✅ Working | QR, pair, disconnect all functional |
+| Messaging | ❌ Empty | No send form, no message history |
+| Webhook | ❌ Empty | No config form (API has GET/PUT/DELETE) |
+| Proxy | ❌ Empty | No config form (API has GET/PUT/DELETE) |
+
+### API Features With No Web UI
+
+| Category | Endpoints | Priority |
+|----------|-----------|----------|
+| **User CRUD** | 5 (list/create/get/update/delete) | HIGH — admin page is stub |
+| **Role CRUD** | 5 (list/create/get/update/delete) | HIGH — admin page is stub |
+| **API Key Mgmt** | 3 (list/create/delete) | HIGH — admin page is stub |
+| **Messaging** | 5 (send/list/react/mark-read/revoke) | MED — tab exists but empty |
+| **Webhook Config** | 3 (get/set/delete) | MED — tab exists but empty |
+| **Proxy Config** | 3 (get/set/delete) | MED — tab exists but empty |
+| **Account Edit** | PATCH name/phone | MED — detail is read-only |
+| **Contacts** | 3 (list/check/get) | LOW |
+| **Groups** | 7 (list/create/get/update/leave/invite/participants) | LOW |
+| **Chats** | 1 (list) | LOW |
+| **Presence** | 1 (send) | LOW |
+| **Profile** | 2 (get/update) | LOW |
+
+### UX Gaps
+
+| # | Issue |
+|---|-------|
+| U1 | Navbar user dropdown doesn't open (Alpine.js may not be wired) |
+| U2 | No pagination on accounts list |
+| U3 | Page heading duplicates browser tab title ("Dashboard — WaLink" in both) |
+| U4 | Non-admin sidebar filtering not verified (need test with regular user) |

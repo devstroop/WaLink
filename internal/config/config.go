@@ -22,6 +22,7 @@ type Config struct {
 	Accounts AccountsConfig `toml:"accounts"`
 	Webhooks WebhookConfig  `toml:"webhooks"`
 	Swagger  SwaggerConfig  `toml:"swagger"`
+	Web      WebConfig       `toml:"web"`
 }
 
 type ServerConfig struct {
@@ -78,6 +79,10 @@ type WebhookConfig struct {
 type SwaggerConfig struct {
 	Enabled bool   `toml:"enabled"`
 	Path    string `toml:"path"`
+}
+
+type WebConfig struct {
+	Enabled bool `toml:"enabled"`
 }
 
 // Load reads config from config/app.toml (next to binary or working dir),
@@ -206,6 +211,9 @@ func applyEnvOverrides(cfg *Config) {
 	if v := os.Getenv("WALINK_SWAGGER_PATH"); v != "" {
 		cfg.Swagger.Path = v
 	}
+	if v := os.Getenv("WALINK_WEB_ENABLED"); v != "" {
+		cfg.Web.Enabled = v == "true" || v == "1"
+	}
 }
 
 func defaults() *Config {
@@ -231,6 +239,7 @@ func defaults() *Config {
 			RetryDelay: 1000,
 		},
 		Swagger: SwaggerConfig{Enabled: true, Path: "/api-docs"},
+		Web:     WebConfig{Enabled: true},
 	}
 }
 

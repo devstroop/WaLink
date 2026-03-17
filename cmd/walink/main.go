@@ -16,6 +16,7 @@ import (
 	"github.com/devstroop/walink/internal/middleware"
 	"github.com/devstroop/walink/internal/service"
 	smtpclient "github.com/devstroop/walink/internal/smtp"
+	"github.com/devstroop/walink/internal/web"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"go.mau.fi/whatsmeow/proto/waCompanionReg"
@@ -117,6 +118,13 @@ func main() {
 		mux.Handle(swaggerPath+"/", handler.SwaggerUI(swaggerPath))
 		mux.Handle(swaggerPath, handler.SwaggerUI(swaggerPath))
 		log.Info().Str("path", swaggerPath).Msg("swagger UI enabled")
+	}
+
+	// Web UI (embedded HTMX dashboard)
+	if cfg.Web.Enabled {
+		webUI := web.New(mgr, db, cfg.Auth.SecretKey, version, cfg.Auth.RegistrationEnabled, mailer)
+		webUI.RegisterRoutes(mux)
+		log.Info().Msg("web UI enabled at /")
 	}
 
 	// Wrap everything with CORS
