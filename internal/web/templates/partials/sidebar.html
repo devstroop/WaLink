@@ -28,6 +28,13 @@
       <span x-show="sidebarOpen">Accounts</span>
     </a>
 
+    <a href="/messaging"
+       class="flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors
+              {{if eq .Page "messaging"}}bg-gray-800 text-white{{else}}hover:bg-gray-800/50 hover:text-white{{end}}">
+      <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewBox="0 0 24 24"><path d="m22 2-7 20-4-9-9-4z"/><path d="M22 2 11 13"/></svg>
+      <span x-show="sidebarOpen">Messaging</span>
+    </a>
+
     {{if .Identity}}{{if .Identity.HasPermission "*"}}
     <p class="px-3 pt-4 text-xs uppercase tracking-wider text-gray-500 mb-2" x-show="sidebarOpen">Admin</p>
 

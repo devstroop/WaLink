@@ -954,6 +954,16 @@ func (d *DB) UpdateUserEmail(id, email string) error {
 	return err
 }
 
+// UpdateUserUsername updates a user's username.
+func (d *DB) UpdateUserUsername(id, username string) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	_, err := d.db.Exec(`UPDATE user SET username = ?, updated_at = datetime('now') WHERE id = ?`,
+		username, id)
+	return err
+}
+
 // DeleteUser removes a user.
 func (d *DB) DeleteUser(id string) error {
 	d.mu.Lock()

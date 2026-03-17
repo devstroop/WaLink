@@ -19,6 +19,7 @@ var pageLayout = map[string]string{
 	"users":          "base",
 	"roles":          "base",
 	"api-keys":       "base",
+	"messaging":      "base",
 	"settings":       "base",
 	"login":           "auth",
 	"register":        "auth",

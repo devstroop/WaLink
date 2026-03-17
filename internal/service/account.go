@@ -46,6 +46,7 @@ type Account struct {
 
 	Proxy        *ProxyConfig // nil = direct, set via PUT /accounts/{id}/proxy
 
+	rejected     bool // true after phone-number mismatch; blocks autoReconnect
 	db           *database.DB
 	client       *whatsmeow.Client
 	container    *sqlstore.Container
@@ -68,6 +69,9 @@ func NewAccount(id, phone, name, dataDir, userID string, createdAt time.Time, db
 func (a *Account) Connect(ctx context.Context) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
+
+	// Reset rejection flag so the user can try pairing again.
+	a.rejected = false
 
 	if a.client != nil && a.client.IsConnected() {
 		return nil
@@ -1283,6 +1287,37 @@ func (a *Account) ListChats(ctx context.Context) ([]model.ChatInfo, error) {
 
 // ---- internal ----
 
+// normalizePhone strips everything except digits from a phone string.
+func normalizePhone(s string) string {
+	var buf strings.Builder
+	buf.Grow(len(s))
+	for _, r := range s {
+		if r >= '0' && r <= '9' {
+			buf.WriteRune(r)
+		}
+	}
+	return buf.String()
+}
+
+// phoneMatches returns true if the authed phone matches the registered phone.
+// It handles the case where the registered phone may lack a country code
+// (i.e. the authed phone ends with the registered phone).
+func phoneMatches(authed, registered string) bool {
+	a := normalizePhone(authed)
+	r := normalizePhone(registered)
+	if a == "" || r == "" {
+		return true // can't validate if either is empty
+	}
+	if a == r {
+		return true
+	}
+	// Allow match if registered phone is a suffix (missing country code)
+	if len(r) >= 7 && strings.HasSuffix(a, r) {
+		return true
+	}
+	return false
+}
+
 func (a *Account) handleEvent(evt interface{}) {
 	switch v := evt.(type) {
 	case *events.Message:
@@ -1307,18 +1342,44 @@ func (a *Account) handleEvent(evt interface{}) {
 			"message_ids": v.MessageIDs,
 			"timestamp":   v.Timestamp.UTC().Format(time.RFC3339),
 		})
+	case *events.PairSuccess:
+		// PairSuccess fires right after QR scan, before Connected.
+		// Reject early if the paired phone doesn't match.
+		if a.PhoneNumber != "" && v.ID.User != "" {
+			if !phoneMatches(v.ID.User, a.PhoneNumber) {
+				log.Warn().
+					Str("account", a.ID).
+					Str("expected", a.PhoneNumber).
+					Str("got", v.ID.User).
+					Msg("phone number mismatch on pair — rejecting")
+				a.rejectMismatch()
+				return
+			}
+		}
 	case *events.PushName:
 		log.Debug().Str("account", a.ID).Str("jid", v.JID.String()).Str("name", v.NewPushName).Msg("push name update")
 	case *events.HistorySync:
 		log.Info().Str("account", a.ID).Msg("history sync received")
 	case *events.Connected:
 		log.Info().Str("account", a.ID).Msg("connected event")
-		// Send presence so WhatsApp server registers our push name and device identity.
-		// Without this, the phone may prompt for a device name with a delay.
 		a.mu.RLock()
 		client := a.client
 		a.mu.RUnlock()
 		if client != nil {
+			// Validate that the authenticated WhatsApp number matches the
+			// phone number registered on this account. If they differ the
+			// user linked the wrong device — disconnect immediately.
+			if client.Store.ID != nil && a.PhoneNumber != "" {
+				if !phoneMatches(client.Store.ID.User, a.PhoneNumber) {
+					log.Warn().
+						Str("account", a.ID).
+						Str("expected", a.PhoneNumber).
+						Str("got", client.Store.ID.User).
+						Msg("phone number mismatch — disconnecting")
+					a.rejectMismatch()
+					return
+				}
+			}
 			if client.Store.PushName == "" {
 				client.Store.PushName = "WaLink"
 			}
@@ -1334,8 +1395,39 @@ func (a *Account) handleEvent(evt interface{}) {
 		a.mu.Unlock()
 	case *events.Disconnected:
 		log.Warn().Str("account", a.ID).Msg("disconnected event")
-		go a.autoReconnect()
+		a.mu.RLock()
+		rejected := a.rejected
+		a.mu.RUnlock()
+		if !rejected {
+			go a.autoReconnect()
+		}
 	}
+}
+
+// rejectMismatch logs out, disconnects, wipes the session store, and sets
+// the rejected flag so autoReconnect will not retry.
+func (a *Account) rejectMismatch() {
+	go func() {
+		a.mu.Lock()
+		a.rejected = true
+		if a.client != nil {
+			_ = a.client.Logout(context.Background())
+			a.client.Disconnect()
+			a.client = nil
+		}
+		// Wipe all device sessions so this mismatched device cannot
+		// auto-reconnect on the next server restart.
+		if a.container != nil {
+			ctx := context.Background()
+			if devs, err := a.container.GetAllDevices(ctx); err == nil {
+				for _, d := range devs {
+					_ = a.container.DeleteDevice(ctx, d)
+				}
+			}
+		}
+		a.mu.Unlock()
+		log.Info().Str("account", a.ID).Msg("phone mismatch: session wiped, account rejected")
+	}()
 }
 
 // storeOutgoing persists a sent message to the DB so it appears in message history.

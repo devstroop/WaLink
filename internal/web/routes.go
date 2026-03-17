@@ -67,18 +67,47 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	inner.HandleFunc("GET /accounts", h.AccountsList)
 	inner.HandleFunc("POST /accounts", h.AccountsCreate)
 	inner.HandleFunc("GET /accounts/{id}", h.AccountDetail)
+	inner.HandleFunc("POST /accounts/{id}/update", h.AccountUpdate)
+	inner.HandleFunc("POST /accounts/{id}/delete", h.AccountDeletePost)
 	inner.HandleFunc("DELETE /accounts/{id}", h.AccountDelete)
+
+	// Account webhook + proxy (JSON)
+	inner.HandleFunc("PUT /accounts/{id}/webhook", h.AccountWebhookSet)
+	inner.HandleFunc("DELETE /accounts/{id}/webhook", h.AccountWebhookDelete)
+	inner.HandleFunc("PUT /accounts/{id}/proxy", h.AccountProxySet)
+	inner.HandleFunc("DELETE /accounts/{id}/proxy", h.AccountProxyDelete)
 
 	// Account partials (htmx)
 	inner.HandleFunc("GET /accounts/{id}/session-status", h.AccountSessionStatus)
+	inner.HandleFunc("GET /accounts/{id}/session-tab", h.AccountSessionTab)
 	inner.HandleFunc("GET /accounts/{id}/qr", h.AccountQR)
 	inner.HandleFunc("POST /accounts/{id}/pair", h.AccountPair)
 	inner.HandleFunc("POST /accounts/{id}/disconnect", h.AccountDisconnect)
 
+	// Messaging
+	inner.HandleFunc("GET /messaging", h.Messaging)
+	inner.HandleFunc("POST /messaging/{id}/send", h.MessageSend)
+	inner.HandleFunc("GET /messaging/{id}/chats", h.MessagingChats)
+	inner.HandleFunc("GET /messaging/{id}/messages", h.MessagingMessages)
+	inner.HandleFunc("GET /messaging/{id}/contacts", h.MessagingContacts)
+	inner.HandleFunc("GET /messaging/{id}/groups", h.MessagingGroups)
+	inner.HandleFunc("POST /messaging/{id}/react", h.MessagingReact)
+	inner.HandleFunc("POST /messaging/{id}/mark-read", h.MessagingMarkRead)
+	inner.HandleFunc("POST /messaging/{id}/revoke", h.MessagingRevoke)
+
 	// Admin
 	inner.HandleFunc("GET /admin/users", h.UsersList)
+	inner.HandleFunc("POST /admin/users", h.UsersCreate)
+	inner.HandleFunc("POST /admin/users/{id}/update", h.UsersUpdate)
+	inner.HandleFunc("POST /admin/users/{id}/delete", h.UsersDelete)
+	inner.HandleFunc("POST /admin/users/{id}/reset-password", h.UsersResetPassword)
 	inner.HandleFunc("GET /admin/roles", h.RolesList)
+	inner.HandleFunc("POST /admin/roles", h.RolesCreate)
+	inner.HandleFunc("POST /admin/roles/{id}/update", h.RolesUpdate)
+	inner.HandleFunc("POST /admin/roles/{id}/delete", h.RolesDelete)
 	inner.HandleFunc("GET /admin/api-keys", h.APIKeysList)
+	inner.HandleFunc("POST /admin/api-keys", h.APIKeysCreate)
+	inner.HandleFunc("POST /admin/api-keys/{id}/delete", h.APIKeysDelete)
 
 	// Settings
 	inner.HandleFunc("GET /settings", h.Settings)
