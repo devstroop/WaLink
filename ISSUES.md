@@ -85,9 +85,10 @@ The REST API exposes **30 endpoints**; the MCP server now exposes **22 tools**.
 
 ## Code Quality Issues
 
-### 1. Repeated Connection-Check Pattern (26+ instances)
+### ~~1. Repeated Connection-Check Pattern (26+ instances)~~ ✅
 **Severity:** High  
-**Location:** `internal/service/account.go`
+**Location:** `internal/service/account.go`  
+**Status:** Fixed — extracted `requireConnectedClient()` helper, replaced all 30 instances.
 
 The pattern below is copy-pasted in **26 methods**:
 ```go
@@ -103,9 +104,10 @@ if client == nil || !client.IsConnected() {
 
 ---
 
-### 2. Webhook Config Fields Are Dead Code
+### ~~2. Webhook Config Fields Are Dead Code~~ ✅
 **Severity:** High  
-**Location:** `internal/config/config.go` → `WebhookConfig`
+**Location:** `internal/config/config.go` → `WebhookConfig`  
+**Status:** Fixed — `WebhookCfg` is now set on each Account; `TimeoutMs`, `RetryCount`, and `RetryDelay` drive `doDispatchWebhook()` behavior.
 
 ```go
 type WebhookConfig struct {
@@ -122,9 +124,10 @@ These fields are misleading — either implement them or remove them.
 
 ---
 
-### 3. Webhook Dispatch: No Retries, No Timeout
+### ~~3. Webhook Dispatch: No Retries, No Timeout~~ ✅
 **Severity:** Medium  
-**Location:** `internal/service/account.go` → `doDispatchWebhook()`
+**Location:** `internal/service/account.go` → `doDispatchWebhook()`  
+**Status:** Fixed — HTTP client uses configurable timeout, retry count, and retry delay from `WebhookConfig` with sensible defaults (10s timeout, 3 retries, 1s base delay).
 
 - HTTP client has **no timeout** — a slow/hung endpoint blocks the goroutine forever.
 - **No retry logic** — if the POST fails, the event is silently lost.
@@ -134,9 +137,10 @@ These fields are misleading — either implement them or remove them.
 
 ---
 
-### 4. Media Uploads Limited to DocumentMessage
+### ~~4. Media Uploads Limited to DocumentMessage~~ ✅
 **Severity:** Medium  
-**Location:** `internal/service/account.go` → `SendMedia()`
+**Location:** `internal/service/account.go` → `SendMedia()`  
+**Status:** Fixed — `SendMedia()` now detects MIME type and uses `ImageMessage`, `VideoMessage`, `AudioMessage`, `StickerMessage` (for webp), or `DocumentMessage` as appropriate.
 
 All uploaded files are sent as `DocumentMessage` regardless of MIME type.  
 WhatsApp supports specialized message types that render with previews:
@@ -154,9 +158,10 @@ Images sent as documents don't get inline previews; videos don't auto-play; audi
 
 ---
 
-### 5. No Rate Limiting on Message Send
+### ~~5. No Rate Limiting on Message Send~~ ✅
 **Severity:** Low  
-**Location:** API-wide
+**Location:** API-wide  
+**Status:** Fixed — per-account token bucket rate limiter (30 msg/min) applied to `SendMessage`, `SendMedia`, and `SendReply`. Returns 429-equivalent error when exceeded.
 
 The global `RateLimit` middleware limits concurrent requests, but there's no per-account or per-endpoint throttle for message sending. A client could send thousands of messages in quick succession, risking a WhatsApp ban.
 

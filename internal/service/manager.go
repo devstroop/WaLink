@@ -79,6 +79,7 @@ func (m *AccountManager) CreateAccount(req model.CreateAccountRequest) (*model.C
 	}
 
 	acct := NewAccount(id, phone, name, dataDir, req.UserID, now, m.db)
+	acct.WebhookCfg = m.cfg.Webhooks
 
 	m.mu.Lock()
 	m.accounts[id] = acct
@@ -264,6 +265,7 @@ func (m *AccountManager) DiscoverAccounts(ctx context.Context) error {
 
 		created, _ := time.Parse(time.RFC3339, rec.CreatedAt)
 		acct := NewAccount(rec.ID, rec.PhoneNumber, rec.AccountName, rec.DataDir, rec.UserID, created, m.db)
+		acct.WebhookCfg = m.cfg.Webhooks
 
 		// Load proxy config if present
 		proxyCfg, err := m.db.GetProxyConfig(rec.ID)

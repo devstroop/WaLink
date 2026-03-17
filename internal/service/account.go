@@ -20,6 +20,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/rs/zerolog/log"
 
+	"github.com/devstroop/walink/internal/config"
 	"github.com/devstroop/walink/internal/database"
 	"github.com/devstroop/walink/internal/model"
 
@@ -45,11 +46,54 @@ type Account struct {
 	CreatedAt   time.Time
 
 	Proxy        *ProxyConfig // nil = direct, set via PUT /accounts/{id}/proxy
+	WebhookCfg   config.WebhookConfig // global webhook defaults (timeout, retries)
 
 	rejected     bool // true after phone-number mismatch; blocks autoReconnect
 	db           *database.DB
 	client       *whatsmeow.Client
 	container    *sqlstore.Container
+
+	// sendLimiter is a per-account token bucket for message sending.
+	sendLimiter *tokenBucket
+}
+
+// tokenBucket implements a simple token bucket rate limiter.
+type tokenBucket struct {
+	mu       sync.Mutex
+	tokens   float64
+	max      float64
+	rate     float64 // tokens per second
+	lastTime time.Time
+}
+
+func newTokenBucket(perMinute float64) *tokenBucket {
+	rate := perMinute / 60.0
+	return &tokenBucket{
+		tokens:   perMinute, // start full
+		max:      perMinute,
+		rate:     rate,
+		lastTime: time.Now(),
+	}
+}
+
+// allow returns true if a token is available, consuming one.
+func (tb *tokenBucket) allow() bool {
+	tb.mu.Lock()
+	defer tb.mu.Unlock()
+
+	now := time.Now()
+	elapsed := now.Sub(tb.lastTime).Seconds()
+	tb.tokens += elapsed * tb.rate
+	if tb.tokens > tb.max {
+		tb.tokens = tb.max
+	}
+	tb.lastTime = now
+
+	if tb.tokens < 1 {
+		return false
+	}
+	tb.tokens--
+	return true
 }
 
 // NewAccount constructs an Account (not yet connected).
@@ -62,6 +106,7 @@ func NewAccount(id, phone, name, dataDir, userID string, createdAt time.Time, db
 		UserID:       userID,
 		CreatedAt:    createdAt,
 		db:           db,
+		sendLimiter:  newTokenBucket(30), // 30 messages per minute
 	}
 }
 
@@ -164,6 +209,16 @@ func (a *Account) EnsureConnected(ctx context.Context) error {
 	}
 
 	return a.Connect(ctx)
+}
+
+// requireConnectedClient returns the WhatsApp client, or an error if not connected.
+// Replaces the repeated lock-check-unlock pattern across all methods.
+func (a *Account) requireConnectedClient() (*whatsmeow.Client, error) {
+	client, err := a.requireConnectedClient()
+	if err != nil {
+		return nil, err
+	}
+	return client, nil
 }
 
 // IsLoggedIn returns true if the client has a valid session.
@@ -308,12 +363,9 @@ func (a *Account) Logout() error {
 // returns the canonical JID string (e.g. "919999999999@s.whatsapp.net").
 // The phone can be in any format — it will be normalised to digits first.
 func (a *Account) ResolvePhone(ctx context.Context, phone string) (string, error) {
-	a.mu.RLock()
-	client := a.client
-	a.mu.RUnlock()
-
-	if client == nil || !client.IsConnected() {
-		return "", fmt.Errorf("not connected")
+	client, err := a.requireConnectedClient()
+	if err != nil {
+		return "", err
 	}
 
 	normalized := NormalizePhone(phone)
@@ -335,12 +387,13 @@ func (a *Account) ResolvePhone(ctx context.Context, phone string) (string, error
 
 // SendMessage sends a text message to the given JID.
 func (a *Account) SendMessage(ctx context.Context, jid string, text string) (string, error) {
-	a.mu.RLock()
-	client := a.client
-	a.mu.RUnlock()
+	if !a.sendLimiter.allow() {
+		return "", fmt.Errorf("rate limit exceeded: too many messages sent, try again shortly")
+	}
 
-	if client == nil || !client.IsConnected() {
-		return "", fmt.Errorf("not connected")
+	client, err := a.requireConnectedClient()
+	if err != nil {
+		return "", err
 	}
 
 	target, err := types.ParseJID(jid)
@@ -361,14 +414,16 @@ func (a *Account) SendMessage(ctx context.Context, jid string, text string) (str
 	return resp.ID, nil
 }
 
-// SendMedia sends a document (file) with optional caption. Returns message ID.
+// SendMedia sends a file with optional caption, using the appropriate WhatsApp
+// message type based on MIME type (image, video, audio, sticker, or document).
 func (a *Account) SendMedia(ctx context.Context, jid string, data []byte, filename, mimetype string, caption *string) (string, error) {
-	a.mu.RLock()
-	client := a.client
-	a.mu.RUnlock()
+	if !a.sendLimiter.allow() {
+		return "", fmt.Errorf("rate limit exceeded: too many messages sent, try again shortly")
+	}
 
-	if client == nil || !client.IsConnected() {
-		return "", fmt.Errorf("not connected")
+	client, err := a.requireConnectedClient()
+	if err != nil {
+		return "", err
 	}
 
 	target, err := types.ParseJID(jid)
@@ -376,23 +431,81 @@ func (a *Account) SendMedia(ctx context.Context, jid string, data []byte, filena
 		return "", fmt.Errorf("invalid jid %q: %w", jid, err)
 	}
 
-	uploaded, err := client.Upload(ctx, data, whatsmeow.MediaDocument)
+	mediaType, msgType := classifyMediaMIME(mimetype)
+
+	uploaded, err := client.Upload(ctx, data, mediaType)
 	if err != nil {
 		return "", fmt.Errorf("upload: %w", err)
 	}
 
-	msg := &waE2E.Message{
-		DocumentMessage: &waE2E.DocumentMessage{
-			URL:           &uploaded.URL,
-			Mimetype:      &mimetype,
-			FileName:      &filename,
-			DirectPath:    &uploaded.DirectPath,
-			MediaKey:      uploaded.MediaKey,
-			FileEncSHA256: uploaded.FileEncSHA256,
-			FileSHA256:    uploaded.FileSHA256,
-			FileLength:    proto.Uint64(uint64(len(data))),
-			Caption:       caption,
-		},
+	fileLen := proto.Uint64(uint64(len(data)))
+	var msg *waE2E.Message
+
+	switch msgType {
+	case "image":
+		msg = &waE2E.Message{
+			ImageMessage: &waE2E.ImageMessage{
+				URL:           &uploaded.URL,
+				Mimetype:      &mimetype,
+				Caption:       caption,
+				DirectPath:    &uploaded.DirectPath,
+				MediaKey:      uploaded.MediaKey,
+				FileEncSHA256: uploaded.FileEncSHA256,
+				FileSHA256:    uploaded.FileSHA256,
+				FileLength:    fileLen,
+			},
+		}
+	case "video":
+		msg = &waE2E.Message{
+			VideoMessage: &waE2E.VideoMessage{
+				URL:           &uploaded.URL,
+				Mimetype:      &mimetype,
+				Caption:       caption,
+				DirectPath:    &uploaded.DirectPath,
+				MediaKey:      uploaded.MediaKey,
+				FileEncSHA256: uploaded.FileEncSHA256,
+				FileSHA256:    uploaded.FileSHA256,
+				FileLength:    fileLen,
+			},
+		}
+	case "audio":
+		msg = &waE2E.Message{
+			AudioMessage: &waE2E.AudioMessage{
+				URL:           &uploaded.URL,
+				Mimetype:      &mimetype,
+				DirectPath:    &uploaded.DirectPath,
+				MediaKey:      uploaded.MediaKey,
+				FileEncSHA256: uploaded.FileEncSHA256,
+				FileSHA256:    uploaded.FileSHA256,
+				FileLength:    fileLen,
+			},
+		}
+	case "sticker":
+		msg = &waE2E.Message{
+			StickerMessage: &waE2E.StickerMessage{
+				URL:           &uploaded.URL,
+				Mimetype:      &mimetype,
+				DirectPath:    &uploaded.DirectPath,
+				MediaKey:      uploaded.MediaKey,
+				FileEncSHA256: uploaded.FileEncSHA256,
+				FileSHA256:    uploaded.FileSHA256,
+				FileLength:    fileLen,
+			},
+		}
+	default: // document
+		msg = &waE2E.Message{
+			DocumentMessage: &waE2E.DocumentMessage{
+				URL:           &uploaded.URL,
+				Mimetype:      &mimetype,
+				FileName:      &filename,
+				DirectPath:    &uploaded.DirectPath,
+				MediaKey:      uploaded.MediaKey,
+				FileEncSHA256: uploaded.FileEncSHA256,
+				FileSHA256:    uploaded.FileSHA256,
+				FileLength:    fileLen,
+				Caption:       caption,
+			},
+		}
 	}
 
 	resp, err := client.SendMessage(ctx, target, msg)
@@ -404,7 +517,7 @@ func (a *Account) SendMedia(ctx context.Context, jid string, data []byte, filena
 	if caption != nil {
 		cap = *caption
 	}
-	a.storeOutgoing(resp.ID, jid, "document", cap, mimetype)
+	a.storeOutgoing(resp.ID, jid, msgType, cap, mimetype)
 	return resp.ID, nil
 }
 
@@ -508,12 +621,9 @@ func (a *Account) Reset() error {
 
 // SendChatPresence sends a typing or paused indicator in a chat.
 func (a *Account) SendChatPresence(ctx context.Context, jid string, state string) error {
-	a.mu.RLock()
-	client := a.client
-	a.mu.RUnlock()
-
-	if client == nil || !client.IsConnected() {
-		return fmt.Errorf("not connected")
+	client, err := a.requireConnectedClient()
+	if err != nil {
+		return err
 	}
 
 	target, err := types.ParseJID(jid)
@@ -540,12 +650,9 @@ func (a *Account) SendChatPresence(ctx context.Context, jid string, state string
 
 // MarkRead marks messages as read in a chat.
 func (a *Account) MarkRead(ctx context.Context, chatJID string, messageIDs []string) error {
-	a.mu.RLock()
-	client := a.client
-	a.mu.RUnlock()
-
-	if client == nil || !client.IsConnected() {
-		return fmt.Errorf("not connected")
+	client, err := a.requireConnectedClient()
+	if err != nil {
+		return err
 	}
 
 	target, err := types.ParseJID(chatJID)
@@ -562,12 +669,9 @@ func (a *Account) MarkRead(ctx context.Context, chatJID string, messageIDs []str
 
 // SendReaction sends an emoji reaction on a message.
 func (a *Account) SendReaction(ctx context.Context, chatJID, messageID, emoji string) error {
-	a.mu.RLock()
-	client := a.client
-	a.mu.RUnlock()
-
-	if client == nil || !client.IsConnected() {
-		return fmt.Errorf("not connected")
+	client, err := a.requireConnectedClient()
+	if err != nil {
+		return err
 	}
 
 	target, err := types.ParseJID(chatJID)
@@ -587,12 +691,13 @@ func (a *Account) SendReaction(ctx context.Context, chatJID, messageID, emoji st
 
 // SendReply sends a text message quoting another message.
 func (a *Account) SendReply(ctx context.Context, chatJID, messageID, text string) (string, error) {
-	a.mu.RLock()
-	client := a.client
-	a.mu.RUnlock()
+	if !a.sendLimiter.allow() {
+		return "", fmt.Errorf("rate limit exceeded: too many messages sent, try again shortly")
+	}
 
-	if client == nil || !client.IsConnected() {
-		return "", fmt.Errorf("not connected")
+	client, err := a.requireConnectedClient()
+	if err != nil {
+		return "", err
 	}
 
 	target, err := types.ParseJID(chatJID)
@@ -621,12 +726,9 @@ func (a *Account) SendReply(ctx context.Context, chatJID, messageID, text string
 
 // GetContactInfo returns contact details from the local store.
 func (a *Account) GetContactInfo(ctx context.Context, contactJID string) (model.ContactInfo, error) {
-	a.mu.RLock()
-	client := a.client
-	a.mu.RUnlock()
-
-	if client == nil || !client.IsConnected() {
-		return model.ContactInfo{}, fmt.Errorf("not connected")
+	client, err := a.requireConnectedClient()
+	if err != nil {
+		return model.ContactInfo{}, err
 	}
 
 	jid, err := types.ParseJID(contactJID)
@@ -662,12 +764,9 @@ func (a *Account) GetContactInfo(ctx context.Context, contactJID string) (model.
 
 // GetGroupInfo fetches group details from WhatsApp servers.
 func (a *Account) GetGroupInfo(ctx context.Context, groupJID string) (model.GroupInfo, error) {
-	a.mu.RLock()
-	client := a.client
-	a.mu.RUnlock()
-
-	if client == nil || !client.IsConnected() {
-		return model.GroupInfo{}, fmt.Errorf("not connected")
+	client, err := a.requireConnectedClient()
+	if err != nil {
+		return model.GroupInfo{}, err
 	}
 
 	jid, err := types.ParseJID(groupJID)
@@ -685,12 +784,9 @@ func (a *Account) GetGroupInfo(ctx context.Context, groupJID string) (model.Grou
 
 // ListGroups returns all joined groups.
 func (a *Account) ListGroups(ctx context.Context) ([]model.GroupInfo, error) {
-	a.mu.RLock()
-	client := a.client
-	a.mu.RUnlock()
-
-	if client == nil || !client.IsConnected() {
-		return nil, fmt.Errorf("not connected")
+	client, err := a.requireConnectedClient()
+	if err != nil {
+		return nil, err
 	}
 
 	groups, err := client.GetJoinedGroups(ctx)
@@ -707,12 +803,9 @@ func (a *Account) ListGroups(ctx context.Context) ([]model.GroupInfo, error) {
 
 // CreateGroup creates a new WhatsApp group.
 func (a *Account) CreateGroup(ctx context.Context, name string, participants []string) (model.GroupInfo, error) {
-	a.mu.RLock()
-	client := a.client
-	a.mu.RUnlock()
-
-	if client == nil || !client.IsConnected() {
-		return model.GroupInfo{}, fmt.Errorf("not connected")
+	client, err := a.requireConnectedClient()
+	if err != nil {
+		return model.GroupInfo{}, err
 	}
 
 	jids := make([]types.JID, len(participants))
@@ -737,12 +830,9 @@ func (a *Account) CreateGroup(ctx context.Context, name string, participants []s
 
 // LeaveGroup leaves a WhatsApp group.
 func (a *Account) LeaveGroup(ctx context.Context, groupJID string) error {
-	a.mu.RLock()
-	client := a.client
-	a.mu.RUnlock()
-
-	if client == nil || !client.IsConnected() {
-		return fmt.Errorf("not connected")
+	client, err := a.requireConnectedClient()
+	if err != nil {
+		return err
 	}
 
 	jid, err := types.ParseJID(groupJID)
@@ -755,12 +845,9 @@ func (a *Account) LeaveGroup(ctx context.Context, groupJID string) error {
 
 // UpdateGroup updates group settings (name, description, locked, announce).
 func (a *Account) UpdateGroup(ctx context.Context, groupJID string, req model.UpdateGroupRequest) error {
-	a.mu.RLock()
-	client := a.client
-	a.mu.RUnlock()
-
-	if client == nil || !client.IsConnected() {
-		return fmt.Errorf("not connected")
+	client, err := a.requireConnectedClient()
+	if err != nil {
+		return err
 	}
 
 	jid, err := types.ParseJID(groupJID)
@@ -793,12 +880,9 @@ func (a *Account) UpdateGroup(ctx context.Context, groupJID string, req model.Up
 
 // UpdateGroupParticipants adds/removes/promotes/demotes group members.
 func (a *Account) UpdateGroupParticipants(ctx context.Context, groupJID string, participants []string, action string) error {
-	a.mu.RLock()
-	client := a.client
-	a.mu.RUnlock()
-
-	if client == nil || !client.IsConnected() {
-		return fmt.Errorf("not connected")
+	client, err := a.requireConnectedClient()
+	if err != nil {
+		return err
 	}
 
 	jid, err := types.ParseJID(groupJID)
@@ -835,12 +919,9 @@ func (a *Account) UpdateGroupParticipants(ctx context.Context, groupJID string, 
 
 // GetGroupInviteLink returns the group's invite link.
 func (a *Account) GetGroupInviteLink(ctx context.Context, groupJID string, reset bool) (string, error) {
-	a.mu.RLock()
-	client := a.client
-	a.mu.RUnlock()
-
-	if client == nil || !client.IsConnected() {
-		return "", fmt.Errorf("not connected")
+	client, err := a.requireConnectedClient()
+	if err != nil {
+		return "", err
 	}
 
 	jid, err := types.ParseJID(groupJID)
@@ -855,12 +936,9 @@ func (a *Account) GetGroupInviteLink(ctx context.Context, groupJID string, reset
 
 // ListNewsletters returns all subscribed WhatsApp channels.
 func (a *Account) ListNewsletters(ctx context.Context) ([]model.NewsletterInfo, error) {
-	a.mu.RLock()
-	client := a.client
-	a.mu.RUnlock()
-
-	if client == nil || !client.IsConnected() {
-		return nil, fmt.Errorf("not connected")
+	client, err := a.requireConnectedClient()
+	if err != nil {
+		return nil, err
 	}
 
 	newsletters, err := client.GetSubscribedNewsletters(ctx)
@@ -877,12 +955,9 @@ func (a *Account) ListNewsletters(ctx context.Context) ([]model.NewsletterInfo, 
 
 // GetNewsletterInfo returns info about a specific newsletter.
 func (a *Account) GetNewsletterInfo(ctx context.Context, jid string) (model.NewsletterInfo, error) {
-	a.mu.RLock()
-	client := a.client
-	a.mu.RUnlock()
-
-	if client == nil || !client.IsConnected() {
-		return model.NewsletterInfo{}, fmt.Errorf("not connected")
+	client, err := a.requireConnectedClient()
+	if err != nil {
+		return model.NewsletterInfo{}, err
 	}
 
 	j, err := types.ParseJID(jid)
@@ -900,12 +975,9 @@ func (a *Account) GetNewsletterInfo(ctx context.Context, jid string) (model.News
 
 // FollowNewsletter subscribes to a WhatsApp channel.
 func (a *Account) FollowNewsletter(ctx context.Context, jid string) error {
-	a.mu.RLock()
-	client := a.client
-	a.mu.RUnlock()
-
-	if client == nil || !client.IsConnected() {
-		return fmt.Errorf("not connected")
+	client, err := a.requireConnectedClient()
+	if err != nil {
+		return err
 	}
 
 	j, err := types.ParseJID(jid)
@@ -918,12 +990,9 @@ func (a *Account) FollowNewsletter(ctx context.Context, jid string) error {
 
 // UnfollowNewsletter unsubscribes from a WhatsApp channel.
 func (a *Account) UnfollowNewsletter(ctx context.Context, jid string) error {
-	a.mu.RLock()
-	client := a.client
-	a.mu.RUnlock()
-
-	if client == nil || !client.IsConnected() {
-		return fmt.Errorf("not connected")
+	client, err := a.requireConnectedClient()
+	if err != nil {
+		return err
 	}
 
 	j, err := types.ParseJID(jid)
@@ -936,12 +1005,9 @@ func (a *Account) UnfollowNewsletter(ctx context.Context, jid string) error {
 
 // GetNewsletterMessages returns messages from a WhatsApp channel.
 func (a *Account) GetNewsletterMessages(ctx context.Context, jid string, count int, before int) (model.NewsletterMessageListResponse, error) {
-	a.mu.RLock()
-	client := a.client
-	a.mu.RUnlock()
-
-	if client == nil || !client.IsConnected() {
-		return model.NewsletterMessageListResponse{}, fmt.Errorf("not connected")
+	client, err := a.requireConnectedClient()
+	if err != nil {
+		return model.NewsletterMessageListResponse{}, err
 	}
 
 	j, err := types.ParseJID(jid)
@@ -992,12 +1058,9 @@ func (a *Account) GetNewsletterMessages(ctx context.Context, jid string, count i
 
 // ToggleMuteNewsletter mutes or unmutes a WhatsApp channel.
 func (a *Account) ToggleMuteNewsletter(ctx context.Context, jid string, mute bool) error {
-	a.mu.RLock()
-	client := a.client
-	a.mu.RUnlock()
-
-	if client == nil || !client.IsConnected() {
-		return fmt.Errorf("not connected")
+	client, err := a.requireConnectedClient()
+	if err != nil {
+		return err
 	}
 
 	j, err := types.ParseJID(jid)
@@ -1037,12 +1100,9 @@ func newsletterMetadataToModel(nl *types.NewsletterMetadata) model.NewsletterInf
 
 // SendPresence sets global online/offline presence.
 func (a *Account) SendPresence(ctx context.Context, state string) error {
-	a.mu.RLock()
-	client := a.client
-	a.mu.RUnlock()
-
-	if client == nil || !client.IsConnected() {
-		return fmt.Errorf("not connected")
+	client, err := a.requireConnectedClient()
+	if err != nil {
+		return err
 	}
 
 	var p types.Presence
@@ -1061,12 +1121,9 @@ func (a *Account) SendPresence(ctx context.Context, state string) error {
 
 // GetProfile returns the account's own profile info.
 func (a *Account) GetProfile(ctx context.Context) (model.ProfileResponse, error) {
-	a.mu.RLock()
-	client := a.client
-	a.mu.RUnlock()
-
-	if client == nil || !client.IsConnected() {
-		return model.ProfileResponse{}, fmt.Errorf("not connected")
+	client, err := a.requireConnectedClient()
+	if err != nil {
+		return model.ProfileResponse{}, err
 	}
 
 	resp := model.ProfileResponse{ID: a.ID}
@@ -1166,12 +1223,9 @@ func (a *Account) GetProfile(ctx context.Context) (model.ProfileResponse, error)
 
 // SetStatusMessage sets the "About" text.
 func (a *Account) SetStatusMessage(ctx context.Context, about string) error {
-	a.mu.RLock()
-	client := a.client
-	a.mu.RUnlock()
-
-	if client == nil || !client.IsConnected() {
-		return fmt.Errorf("not connected")
+	client, err := a.requireConnectedClient()
+	if err != nil {
+		return err
 	}
 
 	return client.SetStatusMessage(ctx, about)
@@ -1213,12 +1267,9 @@ func groupInfoToModel(gi *types.GroupInfo) model.GroupInfo {
 
 // ListContacts returns all contacts from the local store.
 func (a *Account) ListContacts(ctx context.Context) ([]model.ContactInfo, error) {
-	a.mu.RLock()
-	client := a.client
-	a.mu.RUnlock()
-
-	if client == nil {
-		return nil, fmt.Errorf("not connected")
+	client, err := a.requireConnectedClient()
+	if err != nil {
+		return nil, err
 	}
 
 	contacts, err := client.Store.Contacts.GetAllContacts(ctx)
@@ -1257,12 +1308,9 @@ func (a *Account) ListContacts(ctx context.Context) ([]model.ContactInfo, error)
 
 // CheckContacts checks which phone numbers are registered on WhatsApp.
 func (a *Account) CheckContacts(ctx context.Context, phones []string) ([]model.CheckContactResult, error) {
-	a.mu.RLock()
-	client := a.client
-	a.mu.RUnlock()
-
-	if client == nil || !client.IsConnected() {
-		return nil, fmt.Errorf("not connected")
+	client, err := a.requireConnectedClient()
+	if err != nil {
+		return nil, err
 	}
 
 	resp, err := client.IsOnWhatsApp(ctx, phones)
@@ -1285,12 +1333,9 @@ func (a *Account) CheckContacts(ctx context.Context, phones []string) ([]model.C
 
 // RevokeMessage revokes (deletes for everyone) a previously sent message.
 func (a *Account) RevokeMessage(ctx context.Context, chatJID, messageID string) (model.RevokeMessageResponse, error) {
-	a.mu.RLock()
-	client := a.client
-	a.mu.RUnlock()
-
-	if client == nil || !client.IsConnected() {
-		return model.RevokeMessageResponse{}, fmt.Errorf("not connected")
+	client, err := a.requireConnectedClient()
+	if err != nil {
+		return model.RevokeMessageResponse{}, err
 	}
 
 	target, err := types.ParseJID(chatJID)
@@ -1364,12 +1409,9 @@ func (a *Account) ListMessages(chatJID string, limit int, before string) (model.
 
 // DownloadMedia downloads media from a received message.
 func (a *Account) DownloadMedia(ctx context.Context, msg *waE2E.Message) ([]byte, error) {
-	a.mu.RLock()
-	client := a.client
-	a.mu.RUnlock()
-
-	if client == nil || !client.IsConnected() {
-		return nil, fmt.Errorf("not connected")
+	client, err := a.requireConnectedClient()
+	if err != nil {
+		return nil, err
 	}
 
 	//nolint:staticcheck // DownloadAny is the only generic entry point for mixed media messages.
@@ -1383,12 +1425,9 @@ func (a *Account) DownloadMedia(ctx context.Context, msg *waE2E.Message) ([]byte
 // ListChats returns known contacts and groups from the local store,
 // enriched with last message, unread count, and sorted by most recent activity.
 func (a *Account) ListChats(ctx context.Context) ([]model.ChatInfo, error) {
-	a.mu.RLock()
-	client := a.client
-	a.mu.RUnlock()
-
-	if client == nil {
-		return nil, fmt.Errorf("not connected")
+	client, err := a.requireConnectedClient()
+	if err != nil {
+		return nil, err
 	}
 
 	// Pre-fetch last message and unread counts from our message DB.
@@ -1886,6 +1925,24 @@ func (a *Account) storeHistorySync(evt *events.HistorySync) {
 	}
 }
 
+// classifyMediaMIME returns the whatsmeow MediaType and a short message type
+// label based on the MIME type of the file being sent.
+func classifyMediaMIME(mimetype string) (whatsmeow.MediaType, string) {
+	mt := strings.ToLower(mimetype)
+	switch {
+	case mt == "image/webp":
+		return whatsmeow.MediaImage, "sticker"
+	case strings.HasPrefix(mt, "image/"):
+		return whatsmeow.MediaImage, "image"
+	case strings.HasPrefix(mt, "video/"):
+		return whatsmeow.MediaVideo, "video"
+	case strings.HasPrefix(mt, "audio/"):
+		return whatsmeow.MediaAudio, "audio"
+	default:
+		return whatsmeow.MediaDocument, "document"
+	}
+}
+
 // classifyMessage returns a short type label for the message.
 func classifyMessage(msg *waE2E.Message) string {
 	if msg == nil {
@@ -2001,8 +2058,22 @@ func (a *Account) doDispatchWebhook(eventType string, payload map[string]any) {
 		signature = hex.EncodeToString(mac.Sum(nil))
 	}
 
-	httpClient := &http.Client{Timeout: 10 * time.Second}
-	maxAttempts := 4 // 1 initial + 3 retries
+	timeout := time.Duration(a.WebhookCfg.TimeoutMs) * time.Millisecond
+	if timeout <= 0 {
+		timeout = 10 * time.Second
+	}
+	httpClient := &http.Client{Timeout: timeout}
+
+	retryCount := a.WebhookCfg.RetryCount
+	if retryCount <= 0 {
+		retryCount = 3
+	}
+	maxAttempts := 1 + retryCount
+
+	retryDelay := time.Duration(a.WebhookCfg.RetryDelay) * time.Millisecond
+	if retryDelay <= 0 {
+		retryDelay = 1 * time.Second
+	}
 
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
 		req, err := http.NewRequest("POST", cfg.URL, bytes.NewReader(body))
@@ -2019,7 +2090,7 @@ func (a *Account) doDispatchWebhook(eventType string, payload map[string]any) {
 		if err != nil {
 			log.Warn().Str("account", a.ID).Err(err).Int("attempt", attempt).Msg("webhook: POST failed")
 			if attempt < maxAttempts {
-				time.Sleep(time.Duration(attempt) * time.Second)
+				time.Sleep(retryDelay * time.Duration(attempt))
 				continue
 			}
 			return
@@ -2036,7 +2107,7 @@ func (a *Account) doDispatchWebhook(eventType string, payload map[string]any) {
 		// 5xx: retry
 		log.Warn().Str("account", a.ID).Int("status", resp.StatusCode).Int("attempt", attempt).Msg("webhook: server error, retrying")
 		if attempt < maxAttempts {
-			time.Sleep(time.Duration(attempt) * time.Second)
+			time.Sleep(retryDelay * time.Duration(attempt))
 		}
 	}
 }
