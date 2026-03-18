@@ -189,7 +189,7 @@ func TestCORSPreflight(t *testing.T) {
 	if err != nil {
 		t.Fatalf("OPTIONS: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != 204 {
 		t.Errorf("expected 204, got %d", resp.StatusCode)
@@ -208,7 +208,7 @@ func TestSwaggerUI(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GET: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != 200 {
 		t.Fatalf("expected 200 for /api-docs/, got %d", resp.StatusCode)
 	}
@@ -224,7 +224,7 @@ func TestOpenAPISpec(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GET: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != 200 {
 		t.Fatalf("expected 200 for openapi.json, got %d", resp.StatusCode)
 	}
@@ -333,7 +333,7 @@ func TestCreateAccountDuplicate(t *testing.T) {
 
 	resp := authReq(t, srv, "POST", "/api/v1/accounts",
 		`{"phone_number":"1234567890","account_name":"second"}`)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != 409 {
 		t.Errorf("expected 409 for duplicate phone, got %d", resp.StatusCode)
 	}
@@ -344,7 +344,7 @@ func TestCreateAccountInvalidPhone(t *testing.T) {
 
 	resp := authReq(t, srv, "POST", "/api/v1/accounts",
 		`{"phone_number":"123","account_name":"bad"}`)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != 409 {
 		t.Errorf("expected 409 for too-short phone, got %d", resp.StatusCode)
 	}
@@ -354,7 +354,7 @@ func TestGetAccountNotFound(t *testing.T) {
 	srv, _ := testServer(t)
 
 	resp := authGet(t, srv, "/api/v1/accounts/nonexistent-id")
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != 404 {
 		t.Errorf("expected 404, got %d", resp.StatusCode)
 	}
@@ -364,7 +364,7 @@ func TestCreateAccountInvalidJSON(t *testing.T) {
 	srv, _ := testServer(t)
 
 	resp := authReq(t, srv, "POST", "/api/v1/accounts", "not json")
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != 400 {
 		t.Errorf("expected 400 for bad JSON, got %d", resp.StatusCode)
 	}
@@ -394,7 +394,7 @@ func TestSessionNotFound(t *testing.T) {
 	srv, _ := testServer(t)
 
 	resp := authGet(t, srv, "/api/v1/accounts/nonexistent/session")
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != 404 {
 		t.Errorf("expected 404, got %d", resp.StatusCode)
 	}
@@ -412,7 +412,7 @@ func TestGetMessagesNoChatParam(t *testing.T) {
 
 	// Missing chat param → 400
 	resp = authGet(t, srv, "/api/v1/accounts/"+cr.ID+"/messages")
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != 400 {
 		t.Errorf("expected 400 for missing chat param, got %d", resp.StatusCode)
 	}
@@ -500,7 +500,7 @@ func TestGetMessagesNotFound(t *testing.T) {
 	srv, _ := testServer(t)
 
 	resp := authGet(t, srv, "/api/v1/accounts/nonexistent/messages?chat=x")
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != 404 {
 		t.Errorf("expected 404, got %d", resp.StatusCode)
 	}
@@ -597,7 +597,7 @@ func TestWebhookMissingURL(t *testing.T) {
 
 	resp = authReq(t, srv, "PUT", "/api/v1/accounts/"+cr.ID+"/webhook",
 		`{"events":["message"]}`)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != 400 {
 		t.Errorf("expected 400 for missing url, got %d", resp.StatusCode)
 	}
@@ -693,7 +693,7 @@ func TestSendMessageWithoutConnection(t *testing.T) {
 
 	resp = authReq(t, srv, "POST", "/api/v1/accounts/"+cr.ID+"/messages?phone=1234567890&text=hello",
 		`{}`)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	// Should fail because account is not linked (409)
 	if resp.StatusCode != 409 {
 		t.Errorf("expected 409 for unlinked send, got %d", resp.StatusCode)
@@ -711,7 +711,7 @@ func TestListChatsWithoutConnection(t *testing.T) {
 	blockDataDir(t, mgr, cr.ID)
 
 	resp = authGet(t, srv, "/api/v1/accounts/"+cr.ID+"/chats")
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != 409 {
 		t.Errorf("expected 409 for unlinked chats, got %d", resp.StatusCode)
 	}
@@ -728,7 +728,7 @@ func TestListContactsWithoutConnection(t *testing.T) {
 	blockDataDir(t, mgr, cr.ID)
 
 	resp = authGet(t, srv, "/api/v1/accounts/"+cr.ID+"/contacts")
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != 409 {
 		t.Errorf("expected 409 for unlinked contacts, got %d", resp.StatusCode)
 	}
@@ -750,7 +750,7 @@ func TestPresenceWithoutConnection(t *testing.T) {
 
 	resp = authReq(t, srv, "POST", "/api/v1/accounts/"+cr.ID+"/presence",
 		`{"state":"invalid"}`)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != 409 {
 		t.Errorf("expected 409 for unlinked presence, got %d", resp.StatusCode)
 	}
@@ -768,7 +768,7 @@ func TestSendEndpointMissingPhoneAndJID(t *testing.T) {
 
 	// Neither phone nor jid → 400
 	resp = authReq(t, srv, "POST", "/api/v1/accounts/"+cr.ID+"/messages?text=Hello", "")
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != 400 {
 		t.Errorf("expected 400 missing phone/jid, got %d", resp.StatusCode)
 	}
@@ -790,7 +790,7 @@ func TestSendEndpointBothPhoneAndJID(t *testing.T) {
 	// Both phone and jid → 400
 	resp = authReq(t, srv, "POST",
 		"/api/v1/accounts/"+cr.ID+"/messages?phone=1234567890&jid=x@s.whatsapp.net&text=Hello", "")
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != 400 {
 		t.Errorf("expected 400 for both phone+jid, got %d", resp.StatusCode)
 	}
@@ -809,7 +809,7 @@ func TestSendEndpointUnconnectedWithJID(t *testing.T) {
 	// jid provided, but account is not linked → 409
 	resp = authReq(t, srv, "POST",
 		"/api/v1/accounts/"+cr.ID+"/messages?jid=123456@s.whatsapp.net&text=Hello", "")
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != 409 {
 		t.Errorf("expected 409 for unlinked send, got %d", resp.StatusCode)
 	}
@@ -826,7 +826,7 @@ func TestSendEndpointMissingText(t *testing.T) {
 	// jid given but no text and no file → 400
 	resp = authReq(t, srv, "POST",
 		"/api/v1/accounts/"+cr.ID+"/messages?jid=123456@s.whatsapp.net", "")
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != 400 {
 		t.Errorf("expected 400 for missing text, got %d", resp.StatusCode)
 	}
@@ -846,7 +846,7 @@ func TestSendEndpointTextInBody(t *testing.T) {
 	resp = authReq(t, srv, "POST",
 		"/api/v1/accounts/"+cr.ID+"/messages?jid=123456@s.whatsapp.net",
 		`{"text":"from body"}`)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != 409 {
 		t.Errorf("expected 409 (unlinked) for body text, got %d", resp.StatusCode)
 	}
@@ -928,7 +928,7 @@ func TestRateLimitEnforced(t *testing.T) {
 	if err != nil {
 		t.Fatalf("rate limit request: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != 429 {
 		t.Errorf("expected 429, got %d", resp.StatusCode)
 	}
@@ -963,7 +963,7 @@ func TestContentTypeJSON(t *testing.T) {
 	srv, _ := testServer(t)
 
 	resp := authGet(t, srv, "/api/v1/accounts")
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	ct := resp.Header.Get("Content-Type")
 	if !strings.Contains(ct, "application/json") {
 		t.Errorf("expected application/json, got %s", ct)
@@ -1039,7 +1039,7 @@ func TestUpdatePhoneNumberConflict(t *testing.T) {
 	// Try to change p2's phone to p1's
 	resp = authReq(t, srv, "PATCH", "/api/v1/accounts/"+cr.ID,
 		`{"phone_number":"5550003333"}`)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != 409 {
 		t.Errorf("expected 409 for phone conflict, got %d", resp.StatusCode)
 	}

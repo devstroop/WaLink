@@ -32,7 +32,7 @@ func doReq(t *testing.T, srv *httptest.Server, method, path, token, body string)
 // expectStatus asserts the response status code and closes the body.
 func expectStatus(t *testing.T, resp *http.Response, want int) {
 	t.Helper()
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != want {
 		t.Errorf("expected status %d, got %d", want, resp.StatusCode)
 	}
@@ -41,7 +41,7 @@ func expectStatus(t *testing.T, resp *http.Response, want int) {
 // decodeInto reads and decodes the response body into v.
 func decodeInto(t *testing.T, resp *http.Response, v any) {
 	t.Helper()
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if err := json.NewDecoder(resp.Body).Decode(v); err != nil {
 		t.Fatalf("decode json: %v", err)
 	}
