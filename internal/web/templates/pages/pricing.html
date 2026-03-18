@@ -30,8 +30,8 @@
 </section>
 
 <!-- Pricing Cards -->
-<section class="max-w-5xl mx-auto px-6 pb-20">
-  <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+<section class="max-w-6xl mx-auto px-6 pb-20">
+  <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
     {{range .Data.Plans}}
     <div class="relative bg-white rounded-2xl border {{if eq .ID "pro"}}border-brand-500 ring-2 ring-brand-500{{else}}border-gray-200{{end}} p-6 flex flex-col anim-on-scroll">
       {{if eq .ID "pro"}}
@@ -47,6 +47,9 @@
         {{if eq .PriceCents 0}}
         <span class="text-4xl font-extrabold text-gray-900">$0</span>
         <span class="text-gray-500 text-sm">/forever</span>
+        {{else if eq .ID "enterprise"}}
+        <span class="text-4xl font-extrabold text-gray-900">Custom</span>
+        <span class="text-gray-500 text-sm">pricing</span>
         {{else}}
         <span class="text-4xl font-extrabold text-gray-900">${{divCents .PriceCents}}</span>
         <span class="text-gray-500 text-sm">/{{.Interval}}</span>
@@ -102,10 +105,16 @@
           <span class="text-gray-400">Webhooks</span>
           {{end}}
         </li>
-        {{if eq .ID "business"}}
+        <!-- {{if eq .ID "business"}}
         <li class="flex items-start gap-2.5 text-sm">
           <svg class="w-5 h-5 text-brand-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5"/></svg>
-          <span class="text-gray-700"><strong>Priority</strong> support</span>
+          <span class="text-gray-700"><strong>Pay per account</strong></span>
+        </li>
+        {{end}} -->
+        {{if eq .ID "enterprise"}}
+        <li class="flex items-start gap-2.5 text-sm">
+          <svg class="w-5 h-5 text-brand-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5"/></svg>
+          <span class="text-gray-700"><strong>Dedicated</strong> support</span>
         </li>
         {{end}}
       </ul>
@@ -116,10 +125,14 @@
         </a>
         {{else if eq .ID "pro"}}
         <a href="/register" class="block w-full text-center px-4 py-2.5 rounded-lg bg-brand-600 text-white text-sm font-medium hover:bg-brand-700 transition-colors shadow-sm">
-          Start with Pro
+          Start with Professional
         </a>
-        {{else}}
+        {{else if eq .ID "business"}}
         <a href="/register" class="block w-full text-center px-4 py-2.5 rounded-lg border border-gray-300 text-gray-700 text-sm font-medium hover:bg-gray-50 transition-colors">
+          Start with Business
+        </a>
+        {{else if eq .ID "enterprise"}}
+        <a href="/register" class="block w-full text-center px-4 py-2.5 rounded-lg border border-gray-900 bg-gray-900 text-white text-sm font-medium hover:bg-gray-800 transition-colors">
           Contact sales
         </a>
         {{end}}

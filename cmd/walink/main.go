@@ -123,7 +123,7 @@ func main() {
 
 	mcpPath := db.GetSetting("mcp.path", "/mcp")
 	mcpSrv := mcpserver.New(mgr, db, version)
-	mcpTransport := mcphttp.NewStreamableHTTPServer(mcpSrv)
+	mcpTransport := mcphttp.NewStreamableHTTPServer(mcpSrv, mcphttp.WithStateful(true))
 	mcpInner := middleware.Auth(cfg.Auth.SecretKey, db, middleware.MCPScope(db, mcpTransport))
 	// Gate: check DB setting at runtime so admin can toggle without restart
 	mcpHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -133,6 +133,10 @@ func main() {
 			_, _ = w.Write([]byte(`{"error":"MCP server is disabled by administrator"}`))
 			return
 		}
+		// SSE streams (GET for notifications, POST for streaming responses) are
+		// long-lived. Clear the server's WriteTimeout so they aren't killed.
+		rc := http.NewResponseController(w)
+		_ = rc.SetWriteDeadline(time.Time{})
 		mcpInner.ServeHTTP(w, r)
 	})
 	mux.Handle(mcpPath, mcpHandler)

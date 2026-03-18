@@ -110,14 +110,20 @@ func (d *DB) seedPlans() error {
 			isDefault: true,
 		},
 		{
-			id: "pro", name: "Pro", desc: "Unlimited messages, 5 accounts, full API & MCP access",
+			id: "pro", name: "Professional", desc: "1 account, unlimited messages, full API & MCP access",
 			priceCents: 900, interval: "month",
+			limits:    model.PlanLimits{DailyMessages: 0, MaxAccounts: 1, APIAccess: true, MCPAccess: true, Webhooks: true},
+			isDefault: false,
+		},
+		{
+			id: "business", name: "Business", desc: "Pay per account, unlimited messages, full API & MCP access",
+			priceCents: 2900, interval: "month",
 			limits:    model.PlanLimits{DailyMessages: 0, MaxAccounts: 5, APIAccess: true, MCPAccess: true, Webhooks: true},
 			isDefault: false,
 		},
 		{
-			id: "business", name: "Business", desc: "Unlimited everything, priority support",
-			priceCents: 2900, interval: "month",
+			id: "enterprise", name: "Enterprise", desc: "Unlimited accounts, unlimited messages, dedicated support",
+			priceCents: 9900, interval: "month",
 			limits:    model.PlanLimits{DailyMessages: 0, MaxAccounts: 0, APIAccess: true, MCPAccess: true, Webhooks: true},
 			isDefault: false,
 		},
@@ -126,8 +132,15 @@ func (d *DB) seedPlans() error {
 	for _, p := range plans {
 		limitsJSON, _ := json.Marshal(p.limits)
 		_, err := d.db.Exec(`
-			INSERT OR IGNORE INTO plan (id, name, description, price_cents, interval, limits, is_default)
+			INSERT INTO plan (id, name, description, price_cents, interval, limits, is_default)
 			VALUES (?, ?, ?, ?, ?, ?, ?)
+			ON CONFLICT(id) DO UPDATE SET
+				name        = excluded.name,
+				description = excluded.description,
+				price_cents = excluded.price_cents,
+				interval    = excluded.interval,
+				limits      = excluded.limits,
+				is_default  = excluded.is_default
 		`, p.id, p.name, p.desc, p.priceCents, p.interval, string(limitsJSON), boolToInt(p.isDefault))
 		if err != nil {
 			return err
