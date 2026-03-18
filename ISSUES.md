@@ -1,285 +1,63 @@
 # ISSUES.md — WaLink Open Issues & Gaps
 
-> Auto-generated audit — March 2026
+> Updated — March 18, 2026
 
 ---
 
-## MCP ↔ REST API Coverage Gap
+## MCP ↔ REST API Coverage
 
-The REST API exposes **30 endpoints**; the MCP server now exposes **22 tools**.
-8 low-priority administrative capabilities remain MCP-only via REST.
+The REST API exposes **~64 endpoints**; the MCP server exposes **26 tools** covering all core WhatsApp operations.
 
-### Currently Exposed via MCP
+### Not Exposed via MCP (Admin/Config — Low Priority)
 
-| MCP Tool | API Equivalent |
-|----------|----------------|
-| `list_accounts` | `GET /api/v1/accounts` |
-| `get_session` | `GET /accounts/{id}/session` |
-| `send_message` | `POST /accounts/{id}/messages` (text only) |
-| `check_contacts` | `POST /accounts/{id}/contacts/check` |
-| `get_contact` | `GET /accounts/{id}/contacts/{jid}` |
-| `list_groups` | `GET /accounts/{id}/groups` |
-| `get_group` | `GET /accounts/{id}/groups/{jid}` |
-| `get_profile` | `GET /accounts/{id}/profile` |
-
-### ✅ Implemented (previously missing)
-
-| Priority | API Endpoint | MCP Tool | Status |
-|----------|-------------|----------|--------|
-| High | `POST /messages` (multipart) | `send_media` | ✅ Done (base64 input) |
-| High | `GET /messages` | `get_messages` | ✅ Done |
-| High | `GET /chats` | `list_chats` | ✅ Done |
-| High | `GET /contacts` | `list_contacts` | ✅ Done |
-| Medium | `POST /messages/reactions` | `react_message` | ✅ Done |
-| Medium | `POST /messages/mark-read` | `mark_read` | ✅ Done |
-| Medium | `DELETE /messages/{id}` | `revoke_message` | ✅ Done |
-| Medium | `POST /presence` | `send_presence` | ✅ Done |
-| Medium | `PATCH /profile` | `update_profile` | ✅ Done (about text) |
-| Medium | `POST /groups` | `create_group` | ✅ Done |
-| Medium | `PATCH /groups/{jid}` | `update_group` | ✅ Done |
-| Medium | `DELETE /groups/{jid}` | `leave_group` | ✅ Done |
-| Medium | `POST /groups/{jid}/participants` | `update_participants` | ✅ Done |
-| Medium | `GET /groups/{jid}/invite` | `get_group_invite` | ✅ Done |
-
-*Bonus:* `send_chat_presence` tool added (typing/paused indicator per chat) — not in original proposal.
-
-### Still Missing from MCP (Low priority — admin/config)
-
-| Priority | API Endpoint | Suggested MCP Tool |
-|----------|-------------|-------------------|
-| Low | `POST /accounts` | `create_account` — add new account |
-| Low | `PATCH /accounts/{id}` | `update_account` — rename account |
-| Low | `DELETE /accounts/{id}` | `delete_account` — remove account |
-| Low | `GET /session/qr` | `get_qr` — get QR code for linking |
-| Low | `POST /session/pair` | `pair_phone` — pair via phone number |
-| Low | `DELETE /session` | `logout` — disconnect session |
-| Low | `GET/PUT/DELETE /proxy` | `manage_proxy` — proxy configuration |
-| Low | `GET/PUT/DELETE /webhook` | `manage_webhook` — webhook configuration |
+| API Endpoint | Description |
+|-------------|-------------|
+| `POST /accounts` | Create account |
+| `PATCH /accounts/{id}` | Update account |
+| `DELETE /accounts/{id}` | Delete account |
+| `GET/PUT/DELETE /proxy` | Proxy configuration |
+| `GET/PUT/DELETE /webhook` | Webhook configuration |
+| Newsletter tools | Follow/unfollow/mute channels |
 
 ---
 
-## ~~Routing & Path Pattern Inconsistencies~~ ✅ Resolved
-
-### ~~0. Message Routes Use RPC Verbs Instead of Resource Semantics~~ ✅
-**Status:** Fixed — `POST /messages/send` → `POST /messages`, `/messages/react` → `/messages/reactions`, `/messages/read` → `/messages/mark-read`
-
-### ~~0b. `/contacts/check` — RPC Action on Collection~~ (kept as-is)
-**Severity:** Low — pragmatic for a discovery operation.
-
-### ~~0c. `/groups/{jid}/participants` — Single POST for 4 Actions~~ (kept as-is)
-**Severity:** Low — simpler than splitting into 3 endpoints.
-
-### ~~0d. Singleton Sub-Resources Use Mixed Update Methods~~ (kept as-is)
-**Severity:** Low — PUT for full replace (proxy, webhook), PATCH for partial (profile) is semantically correct.
-
-### ~~0e. `DeleteAccount` Bypasses Ownership Check~~ ✅
-**Status:** Fixed — now uses `requireAccount()` for ownership enforcement.
-
-### ~~0f. `RegisterRoutes` Comment Is Misleading~~ ✅
-**Status:** Fixed — comment updated.
-
-### ~~0g. Permission String Mismatch: `webhooks:*` vs `/webhook` path~~ ✅
-**Status:** Fixed — permission strings changed to `webhook:read` / `webhook:write`.
-
----
-
-## Code Quality Issues
-
-### ~~1. Repeated Connection-Check Pattern (26+ instances)~~ ✅
-**Severity:** High  
-**Location:** `internal/service/account.go`  
-**Status:** Fixed — extracted `requireConnectedClient()` helper, replaced all 30 instances.
-
-The pattern below is copy-pasted in **26 methods**:
-```go
-client := a.getClient()
-if client == nil || !client.IsConnected() {
-    return ..., fmt.Errorf("account %s is not connected", a.id)
-}
-```
-
-**Affected methods:** `ResolvePhone`, `SendMessage`, `SendMedia`, `SendChatPresence`, `MarkRead`, `SendReaction`, `SendReply`, `GetContactInfo`, `GetGroupInfo`, `ListGroups`, `CreateGroup`, `LeaveGroup`, `UpdateGroup`, `UpdateGroupParticipants`, `GetGroupInviteLink`, `SendPresence`, `GetProfile`, `SetStatusMessage`, `ListContacts`, `CheckContacts`, `RevokeMessage`, `DownloadMedia`, and more.
-
-**Fix:** Extract a `requireConnectedClient()` helper that returns `(*whatsmeow.Client, error)`.
-
----
-
-### ~~2. Webhook Config Fields Are Dead Code~~ ✅
-**Severity:** High  
-**Location:** `internal/config/config.go` → `WebhookConfig`  
-**Status:** Fixed — `WebhookCfg` is now set on each Account; `TimeoutMs`, `RetryCount`, and `RetryDelay` drive `doDispatchWebhook()` behavior.
-
-```go
-type WebhookConfig struct {
-    Enabled    bool   // ← never read (per-account DB config used instead)
-    TimeoutMs  int64  // ← never read anywhere
-    RetryCount int    // ← never read anywhere
-    RetryDelay int64  // ← never read anywhere
-}
-```
-
-The global `WebhookConfig` is defined but **never referenced** outside config loading.  
-Per-account webhook settings are stored in the database (`WebhookConfigRecord`).  
-These fields are misleading — either implement them or remove them.
-
----
-
-### ~~3. Webhook Dispatch: No Retries, No Timeout~~ ✅
-**Severity:** Medium  
-**Location:** `internal/service/account.go` → `doDispatchWebhook()`  
-**Status:** Fixed — HTTP client uses configurable timeout, retry count, and retry delay from `WebhookConfig` with sensible defaults (10s timeout, 3 retries, 1s base delay).
-
-- HTTP client has **no timeout** — a slow/hung endpoint blocks the goroutine forever.
-- **No retry logic** — if the POST fails, the event is silently lost.
-- The `RetryCount` / `RetryDelay` / `TimeoutMs` config fields exist but are unused.
-
-**Fix:** Use `http.Client{Timeout: ...}`, add exponential backoff retries up to `RetryCount`.
-
----
-
-### ~~4. Media Uploads Limited to DocumentMessage~~ ✅
-**Severity:** Medium  
-**Location:** `internal/service/account.go` → `SendMedia()`  
-**Status:** Fixed — `SendMedia()` now detects MIME type and uses `ImageMessage`, `VideoMessage`, `AudioMessage`, `StickerMessage` (for webp), or `DocumentMessage` as appropriate.
-
-All uploaded files are sent as `DocumentMessage` regardless of MIME type.  
-WhatsApp supports specialized message types that render with previews:
-
-| MIME prefix | Should use | Currently uses |
-|------------|-----------|---------------|
-| `image/*` | `ImageMessage` | `DocumentMessage` |
-| `video/*` | `VideoMessage` | `DocumentMessage` |
-| `audio/*` | `AudioMessage` | `DocumentMessage` |
-| `image/webp` | `StickerMessage` | `DocumentMessage` |
-
-Images sent as documents don't get inline previews; videos don't auto-play; audio doesn't show waveform UI.
-
-**Fix:** Detect MIME type and use the appropriate `whatsmeow.Media*` upload type and protobuf message.
-
----
-
-### ~~5. No Rate Limiting on Message Send~~ ✅
-**Severity:** Low  
-**Location:** API-wide  
-**Status:** Fixed — per-account token bucket rate limiter (30 msg/min) applied to `SendMessage`, `SendMedia`, and `SendReply`. Returns 429-equivalent error when exceeded.
-
-The global `RateLimit` middleware limits concurrent requests, but there's no per-account or per-endpoint throttle for message sending. A client could send thousands of messages in quick succession, risking a WhatsApp ban.
-
-**Fix:** Add per-account send rate limiting (e.g., token bucket, ~30 msg/min).
-
----
-
-## Feature Gaps
-
-### ~~6. No Message History via MCP~~ ✅ Resolved
-`get_messages` tool now exposes paginated chat history with cursor support.
-
-### ~~7. No Chat List via MCP~~ ✅ Resolved
-`list_chats` tool now exposes conversations with last message and unread counts.
-
-### ~~8. No Media Sending via MCP~~ ✅ Resolved
-`send_media` tool accepts base64-encoded file data with filename and MIME type.
-
-### ~~9. MCP Has No Reaction/Read Receipt Tools~~ ✅ Resolved
-`react_message` and `mark_read` tools now available.
-
----
-
-## Feature: RBAC Authentication
-
-### 10. RBAC User Management & Authorization
-**Severity:** High  
-**Status:** ✅ Done
-
-Currently auth uses a single static `secret_key`. Need proper user management with role-based access control.
-
-#### Requirements
-- Users authenticate with **username + password** → JWT bearer token
-- `secret_key` remains as system admin backdoor (same `Authorization: Bearer` header)
-- Two built-in roles: `admin` (full access), `user` (restricted)
-- Accounts get associated to a user (`account.user_id` FK)
-- Admin sees all accounts; user sees only their own
-- No users exist initially — system admin uses `secret_key` to bootstrap
-
-#### Implementation Summary
-
-**DB tables added:** `role`, `role_permission`, `user` + `account.user_id` nullable FK  
-**Seed data:** `admin` role (`*` permission), `user` role (restricted set)  
-**Auth flow:** Bearer token → secret_key match (system admin) → JWT decode (user auth) → 401  
-**Password storage:** bcrypt  
-**JWT:** HS256, signed with `secret_key`, 24h expiry  
-**Account scoping:** non-admin users see only their own accounts (filtered in ListAccounts + requireAccount)  
-**Permissions:** `resource:action` strings with `*` wildcard support (`messages:*`, `*`)  
-
-#### Subtasks
-- [x] DB: `role`, `role_permission`, `user` tables + seed migration + `account.user_id`
-- [x] DB: user/role CRUD methods
-- [x] Model: auth/user/role request/response types
-- [x] Middleware: dual-path auth (secret vs JWT), `RequirePermission()`, context identity
-- [x] Handler: `/api/v1/auth/login`
-- [x] Handler: user CRUD
-- [x] Handler: role CRUD
-- [x] Routes: wire new endpoints + permission wrapping
-- [x] `main.go`: pass DB to auth middleware
-- [x] Account scoping by `user_id`
-- [x] MCP: auth middleware covers MCP endpoint; `GetIdentityFromContext()` available for future tool-level checks
-
----
-
-## Web UI Audit — March 17, 2026
-
-Playwright-verified audit of the embedded HTMX web dashboard.
-
-**API routes: 57 | Web routes: 26 | Coverage: 46%**
+## Web UI Gaps
 
 ### Bugs
 
-| # | Severity | Issue | Status |
-|---|----------|-------|--------|
-| W1 | HIGH | **404 is raw plaintext** — unknown routes return Go's default `404 page not found` instead of styled error.html | Open |
-| W2 | MED | **No favicon** — every page triggers `GET /favicon.ico → 404` console error | Open |
-| W3 | LOW | **Secret key hint commented out** — login.html hint block is wrapped in `<!-- -->` by user edit | Open |
+| # | Severity | Issue |
+|---|----------|-------|
+| W1 | HIGH | **404 is raw plaintext** — unknown routes return Go's default `404 page not found` instead of styled error page |
+| W2 | MED | **No favicon** — every page triggers `GET /favicon.ico → 404` |
 
-### Admin Pages — 100% Stubs
+### Missing Web UI Features
 
-| Page | Route | Status |
-|------|-------|--------|
-| Users | `/admin/users` | STUB — "coming soon" |
-| Roles | `/admin/roles` | STUB — "coming soon" |
-| API Keys | `/admin/api-keys` | STUB — "coming soon" |
-| Settings | `/settings` | STUB — "coming soon" |
-
-### Account Detail Tabs — Incomplete
-
-| Tab | Status | Notes |
-|-----|--------|-------|
-| Session | ✅ Working | QR, pair, disconnect all functional |
-| Messaging | ❌ Empty | No send form, no message history |
-| Webhook | ❌ Empty | No config form (API has GET/PUT/DELETE) |
-| Proxy | ❌ Empty | No config form (API has GET/PUT/DELETE) |
-
-### API Features With No Web UI
-
-| Category | Endpoints | Priority |
-|----------|-----------|----------|
-| **User CRUD** | 5 (list/create/get/update/delete) | HIGH — admin page is stub |
-| **Role CRUD** | 5 (list/create/get/update/delete) | HIGH — admin page is stub |
-| **API Key Mgmt** | 3 (list/create/delete) | HIGH — admin page is stub |
-| **Messaging** | 5 (send/list/react/mark-read/revoke) | MED — tab exists but empty |
-| **Webhook Config** | 3 (get/set/delete) | MED — tab exists but empty |
-| **Proxy Config** | 3 (get/set/delete) | MED — tab exists but empty |
-| **Account Edit** | PATCH name/phone | MED — detail is read-only |
-| **Contacts** | 3 (list/check/get) | LOW |
-| **Groups** | 7 (list/create/get/update/leave/invite/participants) | LOW |
-| **Chats** | 1 (list) | LOW |
-| **Presence** | 1 (send) | LOW |
-| **Profile** | 2 (get/update) | LOW |
+| Category | Status | Notes |
+|----------|--------|-------|
+| Webhook config | Not built | Account detail tab exists but has no form |
+| Proxy config | Not built | Account detail tab exists but has no form |
+| Account edit | Not built | Detail page is read-only (API supports PATCH) |
 
 ### UX Gaps
 
 | # | Issue |
 |---|-------|
-| U1 | Navbar user dropdown doesn't open (Alpine.js may not be wired) |
-| U2 | No pagination on accounts list |
-| U3 | Page heading duplicates browser tab title ("Dashboard — WaLink" in both) |
-| U4 | Non-admin sidebar filtering not verified (need test with regular user) |
+| U1 | No pagination on accounts list |
+| U2 | Non-admin sidebar filtering not verified |
+
+---
+
+## Resolved Issues
+
+All code quality issues from the initial audit have been fixed:
+
+- ✅ Repeated connection-check pattern — extracted `requireConnectedClient()` helper
+- ✅ Webhook config dead code — config fields now drive dispatch behavior
+- ✅ Webhook dispatch retries and timeout — exponential back-off with configurable timeout
+- ✅ Media type detection — images, videos, audio, stickers use proper message types
+- ✅ Per-account rate limiting — token bucket (30 msg/min)
+- ✅ RBAC authentication — users, roles, permissions, JWT, API keys
+- ✅ MCP full tool coverage — 26 tools covering all core operations
+- ✅ Web messaging UI — full chat interface with send, bulk, reactions, channels
+- ✅ Admin pages — users, roles, API keys management
+- ✅ Routing inconsistencies — all fixed

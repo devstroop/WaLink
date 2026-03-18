@@ -2,52 +2,81 @@
 
 ## Overview
 
-WaLink is an HTTP API server, implementing WhatsApp's multi-device protocol. No browser or headless Chrome needed.
+WaLink is an HTTP API server and MCP server implementing WhatsApp's multi-device protocol. It provides a REST API, an MCP endpoint for AI agents, and an embedded web dashboard — all from a single Go binary. No browser or headless Chrome needed.
 
 ```
-┌──────────────┐     HTTP/JSON      ┌──────────────────────────────────┐
-│   Client     │  ◄──────────────►  │           WaLink Server          │
-│  (any lang)  │                    │                                  │
-└──────────────┘                    │  ┌──────────┐  ┌──────────────┐  │
-                                    │  │ Handlers │──│  Middleware  │  │
-                                    │  └────┬─────┘  │ (Auth, CORS) │  │
-                                    │       │        └──────────────┘  │
-                                    │  ┌────▼──────────────┐           │
-                                    │  │  AccountManager   │           │
-                                    │  │  (multi-account)  │           │
-                                    │  └────┬──────────────┘           │
-                                    │       │                          │
-                                    │  ┌────▼────────────────┐         │
-                                    │  │  Account            │         │
-                                    │  │  (whatsmeow.Client) │         │
-                                    │  └────┬────────────────┘         │
-                                    │       │                          │
-                                    │  ┌────▼────┐  ┌──────────┐       │
-                                    │  │ SQLite  │  │ WhatsApp │       │
-                                    │  │ (store) │  │ Servers  │       │
-                                    │  └─────────┘  └──────────┘       │
-                                    └──────────────────────────────────┘
+┌──────────────┐     HTTP/JSON      ┌──────────────────────────────────────┐
+│   Client     │  ◄──────────────►  │           WaLink Server              │
+│  (any lang)  │                    │                                      │
+└──────────────┘                    │  ┌──────────┐  ┌──────────────────┐  │
+                                    │  │ Handlers │──│   Middleware      │  │
+┌──────────────┐     MCP/SSE       │  │ (REST)   │  │ (Auth, RBAC,     │  │
+│  AI Agent    │  ◄──────────────►  │  └────┬─────┘  │  CORS, Billing)  │  │
+│(Claude, etc) │                    │       │        └──────────────────┘  │
+└──────────────┘                    │  ┌────▼──────────────┐               │
+                                    │  │  AccountManager   │               │
+┌──────────────┐     HTMX/HTML     │  │  (multi-account)  │               │
+│  Browser     │  ◄──────────────►  │  └────┬──────────────┘               │
+│  (Web UI)    │                    │       │                              │
+└──────────────┘                    │  ┌────▼────────────────┐             │
+                                    │  │  Account            │             │
+                                    │  │  (whatsmeow.Client) │             │
+                                    │  └────┬────────────────┘             │
+                                    │       │                              │
+                                    │  ┌────▼────┐  ┌──────────┐           │
+                                    │  │ SQLite  │  │ WhatsApp │           │
+                                    │  │ (store) │  │ Servers  │           │
+                                    │  └─────────┘  └──────────┘           │
+                                    └──────────────────────────────────────┘
 ```
 
 ## Project Layout
 
 ```
 walink/
-├── cmd/walink/main.go              Entry point, server bootstrap
+├── cmd/walink/main.go              Entry point, server bootstrap, MCP transport
 ├── config/                         TOML configuration files
 └── internal/
     ├── config/config.go            Config loading & defaults
-    ├── database/database.go        Account registry (SQLite CRUD)
+    ├── database/
+    │   ├── database.go             Account registry, users, roles, API keys, settings (SQLite)
+    │   └── billing.go              Plans, subscriptions, usage tracking
     ├── handler/
-    │   ├── health.go               Health check endpoints
-    │   ├── routes.go               Route registration
-    │   ├── accounts.go             Account CRUD handlers
-    │   └── whatsapp.go             WhatsApp operations (auth, messaging)
-    ├── middleware/middleware.go     Bearer auth & CORS
-    ├── model/model.go              Request/response types
-    └── service/
-        ├── account.go              WhatsApp-backed account lifecycle
-        └── manager.go              Multi-account orchestration
+    │   ├── routes.go               REST API route registration (64 routes)
+    │   ├── accounts.go             Account CRUD
+    │   ├── whatsapp.go             WhatsApp operations (messaging, groups, etc.)
+    │   ├── auth.go                 Login, register, password reset
+    │   ├── users.go                User CRUD (admin)
+    │   ├── roles.go                Role CRUD (admin)
+    │   ├── apikeys.go              API key management
+    │   ├── billing.go              Plans, subscriptions, usage
+    │   ├── mcp.go                  MCP settings (toggle on/off, change path)
+    │   ├── health.go               Health check
+    │   ├── proxy.go                Per-account proxy config
+    │   ├── webhook.go              Per-account webhook config
+    │   ├── messages.go             Message send/history/react/revoke
+    │   └── swagger.go              Swagger UI handler
+    ├── mcpserver/server.go         MCP tool definitions (26 tools)
+    ├── middleware/middleware.go     Auth (JWT + API key + secret), RBAC, CORS, rate limit, billing
+    ├── model/model.go              Request/response types, billing models
+    ├── service/
+    │   ├── account.go              WhatsApp-backed account lifecycle
+    │   ├── manager.go              Multi-account orchestration
+    │   └── proxy.go                SOCKS5/HTTP proxy support
+    ├── smtp/smtp.go                Email delivery for password resets
+    └── web/
+        ├── routes.go               Web dashboard route registration
+        ├── accounts.go             Account UI handlers
+        ├── admin.go                User/role admin pages
+        ├── auth.go                 Login/register/forgot-password pages
+        ├── middleware.go           Web session auth
+        ├── render.go               Template rendering
+        ├── static/                 CSS, JS assets
+        └── templates/              HTML templates (HTMX)
+            └── pages/
+                ├── messaging.html  Full messaging UI (chats, send, media, bulk)
+                ├── pricing.html    Billing plans page
+                └── ...
 ```
 
 ## Key Components
@@ -67,33 +96,70 @@ Wraps a single WhatsApp client connection. Each account has:
 - **Idle timer**: Background goroutine polls every 30s, disconnects after `idle_timeout`
 - **Auto-connect**: Any API request triggers `EnsureConnected()` — no manual warmup needed
 - **Crash recovery**: If the connection drops, the next request detects it and reconnects
+- **Phone resolution**: Accepts phone numbers, resolves to JIDs via WhatsApp
+- **Per-account rate limiting**: Token bucket (30 msg/min) for send operations
+- **Webhook dispatch**: Configurable timeout, retries with exponential back-off, HMAC signing
 
 ### Database (`database/database.go`)
 
-Account registry in SQLite. Stores account metadata (ID, phone, name, data dir, idle timeout, status). A separate SQLite database per account stores Signal protocol state.
+SQLite database storing:
+- Account registry (ID, phone, name, data dir, idle timeout, status, user_id)
+- Users (bcrypt passwords, role FK)
+- Roles and permissions (`resource:action` format)
+- API keys (SHA-256 hashed, expiry, account binding)
+- Settings (key-value store for runtime config like MCP path)
+- Billing: plans, subscriptions, daily usage
+
+### MCP Server (`mcpserver/server.go`)
+
+26 tools covering accounts, sessions, messaging, contacts, groups, presence, and profile. Uses Streamable HTTP transport with stateful SSE sessions. Supports account scoping via API key binding or explicit `account_id` parameter.
 
 ### Middleware (`middleware/middleware.go`)
 
-- **Auth**: Validates `Authorization: Bearer <key>` against configured secret. Returns 401 on mismatch.
-- **CORS**: Sets Access-Control headers from config. Handles OPTIONS preflight.
+- **Auth**: Three-path — static secret key → JWT → API key. Returns 401 on failure.
+- **RBAC**: `RequirePermission("resource:action")` checks identity permissions.
+- **MCPScope**: Auto-scopes MCP requests to the API key's bound account.
+- **CORS**: Configurable origins, methods, headers with preflight support.
+- **RateLimit**: Semaphore-based concurrent request limiter (429 when full).
+- **BillingEnforcer**: Optional plan-based enforcement (message quotas, feature gates).
 
 ## Request Flow
 
 ```
 HTTP Request
   → CORS middleware
-    → Auth middleware (Bearer token check)
-      → Handler (route matched)
-        → AccountManager.GetAccount(id)
-          → Account.EnsureConnected()   ← auto-warms if sleeping
-            → WA Client operation
-              → WhatsApp servers (encrypted WebSocket)
+    → Auth middleware (secret key / JWT / API key)
+      → RBAC permission check
+        → Billing enforcer (if enabled)
+          → Handler (route matched)
+            → AccountManager.GetAccount(id)
+              → Account.EnsureConnected()   ← auto-warms if sleeping
+                → WA Client operation
+                  → WhatsApp servers (encrypted WebSocket)
 ```
 
-## Two SQLite Databases
+MCP requests follow a similar path but through the MCP transport:
 
-1. **`~/.walink/db/walink.db`** — Account registry. One row per account.
-2. **`~/.walink/accounts/{uuid}/session.db`** — Per-account. Contains Signal protocol keys, identity store, session keys, pre-keys, sender keys, contacts, chat settings.
+```
+MCP Request (Streamable HTTP + SSE)
+  → Auth middleware
+    → MCPScope middleware (account binding)
+      → MCP tool handler
+        → AccountManager.GetAccount(id)
+          → Account.EnsureConnected()
+            → WA Client operation
+```
+
+## Data Layout
+
+```
+~/.walink/
+├── db/
+│   └── walink.db               # Account registry, users, roles, API keys, settings, billing
+└── accounts/
+    └── {uuid}/
+        └── session.db          # WhatsApp session (Signal keys, device state)
+```
 
 ## Protocol
 
