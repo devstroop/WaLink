@@ -322,7 +322,7 @@ func TestAccountLifecycle(t *testing.T) {
 	if resp.StatusCode != 404 {
 		t.Errorf("expected 404 after delete, got %d", resp.StatusCode)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 }
 
 func TestCreateAccountDuplicate(t *testing.T) {
@@ -524,7 +524,7 @@ func TestWebhookLifecycle(t *testing.T) {
 	if resp.StatusCode != 404 {
 		t.Errorf("expected 404 for no webhook, got %d", resp.StatusCode)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 
 	// 2. Set webhook
 	resp = authReq(t, srv, "PUT", base,
@@ -577,7 +577,7 @@ func TestWebhookLifecycle(t *testing.T) {
 	if resp.StatusCode != 200 {
 		t.Fatalf("expected 200, got %d", resp.StatusCode)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 
 	// 6. Verify gone
 	resp = authGet(t, srv, base)
