@@ -243,14 +243,11 @@ func (d *DB) migrate() error {
 	}
 
 	// Migration: add email column to user if missing (upgrade from earlier schema)
-	d.db.Exec(`ALTER TABLE user ADD COLUMN email TEXT NOT NULL DEFAULT ''`)
-	if err != nil {
-		return err
-	}
+	_, _ = d.db.Exec(`ALTER TABLE user ADD COLUMN email TEXT NOT NULL DEFAULT ''`)
 
 	// Add user_id to account (idempotent — SQLite ignores if column exists)
 	// NULL means no user assigned (legacy/unassigned accounts). FK only enforced when non-NULL.
-	d.db.Exec(`ALTER TABLE account ADD COLUMN user_id TEXT REFERENCES user(id) DEFAULT NULL`)
+	_, _ = d.db.Exec(`ALTER TABLE account ADD COLUMN user_id TEXT REFERENCES user(id) DEFAULT NULL`)
 
 	// ── API key table ───────────────────────────────
 	_, err = d.db.Exec(`
@@ -272,7 +269,7 @@ func (d *DB) migrate() error {
 	}
 
 	// Migration: add account_id column to api_key if missing (upgrade from earlier schema)
-	d.db.Exec(`ALTER TABLE api_key ADD COLUMN account_id TEXT REFERENCES account(id) ON DELETE CASCADE`)
+	_, _ = d.db.Exec(`ALTER TABLE api_key ADD COLUMN account_id TEXT REFERENCES account(id) ON DELETE CASCADE`)
 
 	// ── Password reset token table ──────────────────
 	_, err = d.db.Exec(`
@@ -845,7 +842,7 @@ func (d *DB) SetRolePermissions(roleID string, permissions []string) error {
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	if _, err := tx.Exec(`DELETE FROM role_permission WHERE role_id = ?`, roleID); err != nil {
 		return err

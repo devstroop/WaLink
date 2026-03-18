@@ -10,10 +10,12 @@
 # Test
 *.test
 *.out
+coverage
 coverage.html
 
 # IDE
 .idea/
+.vscode/
 *.swp
 *.swo
 *~

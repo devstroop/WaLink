@@ -127,7 +127,7 @@ func main() {
 		if !db.GetSettingBool("mcp.enabled", true) {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusServiceUnavailable)
-			w.Write([]byte(`{"error":"MCP server is disabled by administrator"}`))
+			_, _ = w.Write([]byte(`{"error":"MCP server is disabled by administrator"}`))
 			return
 		}
 		mcpInner.ServeHTTP(w, r)

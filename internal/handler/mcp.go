@@ -28,7 +28,7 @@ func (h *MCPHandler) GetMCPSettings(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(resp)
+	_ = json.NewEncoder(w).Encode(resp)
 }
 
 // UpdateMCPSettings updates MCP server configuration.
