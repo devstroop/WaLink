@@ -46,7 +46,7 @@ func testServerWithDB(t *testing.T) (*httptest.Server, *service.AccountManager, 
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
-	t.Cleanup(func() { db.Close() })
+	t.Cleanup(func() { _ = db.Close() })
 
 	cfg := &config.Config{
 		Auth:    config.AuthConfig{SecretKey: testSecret},
@@ -136,7 +136,7 @@ func TestHealthEndpoint(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GET /api/health: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != 200 {
 		t.Fatalf("expected 200, got %d", resp.StatusCode)
@@ -158,7 +158,7 @@ func TestAuthRequired(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GET: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != 401 {
 		t.Errorf("expected 401 for missing auth, got %d", resp.StatusCode)
 	}
@@ -173,7 +173,7 @@ func TestAuthWrongToken(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GET: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != 401 {
 		t.Errorf("expected 401 for wrong token, got %d", resp.StatusCode)
 	}
@@ -861,7 +861,7 @@ func TestRateLimitEnforced(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	cfg := &config.Config{
 		Auth:     config.AuthConfig{SecretKey: testSecret},

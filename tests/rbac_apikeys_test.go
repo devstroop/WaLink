@@ -498,7 +498,7 @@ func TestAPIKeyRevokedKeyRejected(t *testing.T) {
 	var key model.CreateAPIKeyResponse
 	decodeInto(t, resp, &key)
 
-	doReq(t, srv, "DELETE", "/api/v1/api-keys/"+key.ID, jwt1, "").Body.Close()
+	_ = doReq(t, srv, "DELETE", "/api/v1/api-keys/"+key.ID, jwt1, "").Body.Close()
 
 	// Revoked key is rejected
 	expectStatus(t, doReq(t, srv, "GET", "/api/v1/api-keys", key.Key, ""), 401)
@@ -644,7 +644,7 @@ func TestAPIKeyLastUsedUpdates(t *testing.T) {
 	decodeInto(t, resp, &key)
 
 	// Use the key
-	doReq(t, srv, "GET", "/api/v1/api-keys", key.Key, "").Body.Close()
+	_ = doReq(t, srv, "GET", "/api/v1/api-keys", key.Key, "").Body.Close()
 
 	// Small wait for async last_used update
 	time.Sleep(200 * time.Millisecond)

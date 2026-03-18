@@ -60,7 +60,7 @@ func main() {
 	if err != nil {
 		log.Fatal().Err(err).Msg("failed to open database")
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	// Create account manager
 	mgr, err := service.NewAccountManager(cfg, db)

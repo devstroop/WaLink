@@ -500,7 +500,7 @@ func (h *Handler) AccountQR(w http.ResponseWriter, r *http.Request) {
 		if item.Error != nil {
 			w.Header().Set("Content-Type", "text/html; charset=utf-8")
 			errMsg := template.HTMLEscapeString(item.Error.Error())
-			fmt.Fprintf(w, `<div class="flex flex-col items-center justify-center py-8">
+			_, _ = fmt.Fprintf(w, `<div class="flex flex-col items-center justify-center py-8">
 				<div class="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700 mb-3">%s</div>
 				<button hx-get="/accounts/%s/qr" hx-target="#qr-area" hx-swap="innerHTML"
 					class="text-xs text-brand-600 hover:text-brand-700 font-medium">↻ Try again</button>
@@ -511,14 +511,14 @@ func (h *Handler) AccountQR(w http.ResponseWriter, r *http.Request) {
 			png, err := qrcode.Encode(item.Code, qrcode.Medium, 512)
 			if err != nil {
 				w.Header().Set("Content-Type", "text/html; charset=utf-8")
-				fmt.Fprintf(w, `<div class="flex flex-col items-center justify-center py-8">
+				_, _ = fmt.Fprintf(w, `<div class="flex flex-col items-center justify-center py-8">
 					<div class="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">Failed to render QR</div>
 				</div>`)
 				return
 			}
 			b64 := base64.StdEncoding.EncodeToString(png)
 			w.Header().Set("Content-Type", "text/html; charset=utf-8")
-			fmt.Fprintf(w, `<div class="flex flex-col items-center justify-center py-4">
+			_, _ = fmt.Fprintf(w, `<div class="flex flex-col items-center justify-center py-4">
 				<img src="data:image/png;base64,%s" alt="QR Code" class="w-64 h-64 rounded-xl border border-gray-200 shadow-sm">
 				<p class="text-xs text-gray-500 mt-3">Open WhatsApp → Linked Devices → Link a Device</p>
 				<button hx-get="/accounts/%s/qr" hx-target="#qr-area" hx-swap="innerHTML"
@@ -527,13 +527,13 @@ func (h *Handler) AccountQR(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		fmt.Fprintf(w, `<div class="flex flex-col items-center justify-center py-8">
+		_, _ = fmt.Fprintf(w, `<div class="flex flex-col items-center justify-center py-8">
 			<div class="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">Unexpected: %s</div>
 		</div>`, template.HTMLEscapeString(item.Event))
 	case <-ctx.Done():
 		service.DrainQR(ch)
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		fmt.Fprintf(w, `<div class="flex flex-col items-center justify-center py-8">
+		_, _ = fmt.Fprintf(w, `<div class="flex flex-col items-center justify-center py-8">
 			<div class="p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-700 mb-3">QR code timed out</div>
 			<button hx-get="/accounts/%s/qr" hx-target="#qr-area" hx-swap="innerHTML"
 				class="text-xs text-brand-600 hover:text-brand-700 font-medium">↻ Try again</button>
@@ -552,7 +552,7 @@ func (h *Handler) AccountPair(w http.ResponseWriter, r *http.Request) {
 
 	if acct.IsLoggedIn() {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		fmt.Fprint(w, `<div class="max-w-sm mx-auto text-center py-6">
+		_, _ = fmt.Fprint(w, `<div class="max-w-sm mx-auto text-center py-6">
 			<div class="w-16 h-16 bg-green-50 rounded-2xl flex items-center justify-center mx-auto mb-3">
 				<svg class="w-8 h-8 text-green-600" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="m9 11 3 3L22 4"/></svg>
 			</div>
@@ -566,7 +566,7 @@ func (h *Handler) AccountPair(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err != nil {
 		errMsg := template.HTMLEscapeString(err.Error())
-		fmt.Fprintf(w, `<div class="max-w-sm mx-auto text-center space-y-4 py-6">
+		_, _ = fmt.Fprintf(w, `<div class="max-w-sm mx-auto text-center space-y-4 py-6">
 			<div class="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">%s</div>
 			<button hx-post="/accounts/%s/pair" hx-target="#pair-area" hx-swap="innerHTML"
 				class="text-xs text-brand-600 hover:text-brand-700 font-medium">Try again</button>
@@ -574,7 +574,7 @@ func (h *Handler) AccountPair(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	fmt.Fprintf(w, `<div class="max-w-sm mx-auto text-center space-y-4 py-6">
+	_, _ = fmt.Fprintf(w, `<div class="max-w-sm mx-auto text-center space-y-4 py-6">
 		<div class="p-5 bg-brand-50 border border-brand-200 rounded-xl">
 			<p class="text-xs text-gray-500 mb-2 uppercase tracking-wider font-medium">Your Pairing Code</p>
 			<p class="text-4xl font-mono font-bold text-brand-700 tracking-[0.3em]">%s</p>
