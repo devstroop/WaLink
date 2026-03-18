@@ -1155,7 +1155,7 @@ func (d *DB) CreateResetToken(rec *ResetTokenRecord) error {
 	defer d.mu.Unlock()
 
 	// Invalidate any existing unused tokens for this user
-	d.db.Exec(`UPDATE password_reset_token SET used = 1 WHERE user_id = ? AND used = 0`, rec.UserID)
+	_, _ = d.db.Exec(`UPDATE password_reset_token SET used = 1 WHERE user_id = ? AND used = 0`, rec.UserID)
 
 	_, err := d.db.Exec(
 		`INSERT INTO password_reset_token (id, user_id, token_hash, expires_at) VALUES (?, ?, ?, ?)`,
