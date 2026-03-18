@@ -31,6 +31,13 @@ const testSecret = "test-secret-key"
 // testServer builds the full middleware chain and returns an httptest.Server
 // plus the account manager for direct DB seeding.
 func testServer(t *testing.T) (*httptest.Server, *service.AccountManager) {
+	srv, mgr, _ := testServerWithDB(t)
+	return srv, mgr
+}
+
+// testServerWithDB is like testServer but also returns the database handle so
+// tests can verify DB state directly (e.g. RBAC / API key tests).
+func testServerWithDB(t *testing.T) (*httptest.Server, *service.AccountManager, *database.DB) {
 	t.Helper()
 	dir := t.TempDir()
 
@@ -61,9 +68,14 @@ func testServer(t *testing.T) (*httptest.Server, *service.AccountManager) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/health", handler.Health)
 
+	// Public auth endpoints (no auth required)
+	authH := handler.NewAuthHandler(db, cfg.Auth.SecretKey, false, nil)
+	mux.HandleFunc("POST /api/v1/auth/login", authH.Login)
+
 	api := handler.NewAPI(mgr, db)
 	apiMux := http.NewServeMux()
 	api.RegisterRoutes(apiMux)
+	handler.RegisterRBACRoutes(apiMux, db)
 
 	authed := middleware.Auth(cfg.Auth.SecretKey, db, apiMux)
 	limited := middleware.RateLimit(cfg.Limits.MaxConcurrentRequests, authed)
@@ -78,7 +90,7 @@ func testServer(t *testing.T) (*httptest.Server, *service.AccountManager) {
 	srv := httptest.NewServer(root)
 	t.Cleanup(srv.Close)
 
-	return srv, mgr
+	return srv, mgr, db
 }
 
 // authGet performs an authenticated GET request.
