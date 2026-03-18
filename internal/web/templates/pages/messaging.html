@@ -191,7 +191,7 @@
         <template x-for="(msg, idx) in messages" :key="msg._localId || msg.id || msg.message_id || idx">
           <div class="flex" :class="[msg.from_me ? 'justify-end' : 'justify-start', msg._status === 'sending' ? 'msg-optimistic' : '', msg._status === 'failed' ? 'msg-failed' : '']">
             <div class="max-w-[70%] rounded-xl px-3 py-2 text-sm shadow-sm relative group"
-              :class="msg.from_me ? 'bg-green-100 text-green-900 rounded-br-sm' : (activeChatIsChannel ? 'bg-purple-50 text-gray-900 rounded-bl-sm border border-purple-100' : 'bg-white text-gray-900 rounded-bl-sm border border-gray-100')">>
+              :class="msg.from_me ? 'bg-green-100 text-green-900 rounded-br-sm' : (activeChatIsChannel ? 'bg-purple-50 text-gray-900 rounded-bl-sm border border-purple-100' : 'bg-white text-gray-900 rounded-bl-sm border border-gray-100')">
               <!-- Sender name for group messages -->
               <p x-show="activeChatIsGroup && !msg.from_me && msg.sender_jid" class="text-[10px] font-semibold text-blue-600 mb-0.5" x-text="msg.sender_jid.split('@')[0]"></p>
               <!-- Body -->
