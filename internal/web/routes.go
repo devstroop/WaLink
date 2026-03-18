@@ -113,6 +113,14 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	inner.HandleFunc("POST /admin/roles", h.RolesCreate)
 	inner.HandleFunc("POST /admin/roles/{id}/update", h.RolesUpdate)
 	inner.HandleFunc("POST /admin/roles/{id}/delete", h.RolesDelete)
+
+	// Admin Billing
+	inner.HandleFunc("GET /admin/billing", h.BillingAdmin)
+	inner.HandleFunc("POST /admin/billing/plans", h.BillingPlanCreate)
+	inner.HandleFunc("POST /admin/billing/plans/{id}/update", h.BillingPlanUpdate)
+	inner.HandleFunc("POST /admin/billing/plans/{id}/delete", h.BillingPlanDelete)
+	inner.HandleFunc("POST /admin/billing/subscriptions/{user_id}/assign", h.BillingAssignPlan)
+	inner.HandleFunc("POST /admin/billing/subscriptions/{user_id}/delete", h.BillingDeleteSubscription)
 	// API Keys & MCP (all authenticated users)
 	inner.HandleFunc("GET /api-keys", h.APIKeysList)
 	inner.HandleFunc("POST /api-keys", h.APIKeysCreate)

@@ -668,3 +668,57 @@ type QuotaExceededResponse struct {
 	Used       int    `json:"used,omitempty"`
 	UpgradeURL string `json:"upgrade_url,omitempty"`
 }
+
+// CreatePlanRequest is the JSON body for POST /api/v1/billing/plans.
+type CreatePlanRequest struct {
+	ID          string     `json:"id"`
+	Name        string     `json:"name"`
+	Description string     `json:"description"`
+	PriceCents  int        `json:"price_cents"`
+	Interval    string     `json:"interval"` // month | year
+	Limits      PlanLimits `json:"limits"`
+	IsDefault   bool       `json:"is_default"`
+}
+
+// UpdatePlanRequest is the JSON body for PUT /api/v1/billing/plans/{id}.
+type UpdatePlanRequest struct {
+	Name        *string     `json:"name,omitempty"`
+	Description *string     `json:"description,omitempty"`
+	PriceCents  *int        `json:"price_cents,omitempty"`
+	Interval    *string     `json:"interval,omitempty"`
+	Limits      *PlanLimits `json:"limits,omitempty"`
+	IsDefault   *bool       `json:"is_default,omitempty"`
+}
+
+// AssignPlanRequest is the JSON body for PUT /api/v1/billing/subscriptions/{user_id}.
+type AssignPlanRequest struct {
+	PlanID string `json:"plan_id"`
+	Status string `json:"status,omitempty"` // active | trialing | canceled (default: active)
+}
+
+// AdminSubscriptionInfo extends SubscriptionInfo with user details for admin views.
+type AdminSubscriptionInfo struct {
+	SubscriptionInfo
+	UserID   string `json:"user_id"`
+	Username string `json:"username"`
+}
+
+// AdminSubscriptionListResponse is the response for GET /api/v1/billing/subscriptions.
+type AdminSubscriptionListResponse struct {
+	Subscriptions []AdminSubscriptionInfo `json:"subscriptions"`
+	Total         int                     `json:"total"`
+}
+
+// AdminUsageEntry is a single user's usage for admin views.
+type AdminUsageEntry struct {
+	UserID       string `json:"user_id"`
+	Username     string `json:"username"`
+	Date         string `json:"date"`
+	MessagesSent int    `json:"messages_sent"`
+}
+
+// AdminUsageResponse is the response for GET /api/v1/billing/usage/all.
+type AdminUsageResponse struct {
+	Usage []AdminUsageEntry `json:"usage"`
+	Total int               `json:"total"`
+}

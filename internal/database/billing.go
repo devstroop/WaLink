@@ -2,13 +2,15 @@ package database
 
 import (
 	"encoding/json"
+	"fmt"
 	"time"
 
 	"github.com/devstroop/walink/internal/model"
 	"github.com/google/uuid"
 )
 
-func generateID() string { return uuid.New().String() }
+func GenerateID() string { return uuid.New().String() }
+func generateID() string  { return GenerateID() }
 
 // PlanRecord is the persistent plan row.
 type PlanRecord struct {
@@ -94,7 +96,7 @@ func (d *DB) migrateBilling() error {
 	return d.seedPlans()
 }
 
-// seedPlans inserts the built-in plans.
+// seedPlans inserts the built-in plans only if they don't already exist.
 func (d *DB) seedPlans() error {
 	plans := []struct {
 		id, name, desc string
@@ -134,13 +136,7 @@ func (d *DB) seedPlans() error {
 		_, err := d.db.Exec(`
 			INSERT INTO plan (id, name, description, price_cents, interval, limits, is_default)
 			VALUES (?, ?, ?, ?, ?, ?, ?)
-			ON CONFLICT(id) DO UPDATE SET
-				name        = excluded.name,
-				description = excluded.description,
-				price_cents = excluded.price_cents,
-				interval    = excluded.interval,
-				limits      = excluded.limits,
-				is_default  = excluded.is_default
+			ON CONFLICT(id) DO NOTHING
 		`, p.id, p.name, p.desc, p.priceCents, p.interval, string(limitsJSON), boolToInt(p.isDefault))
 		if err != nil {
 			return err
@@ -374,4 +370,166 @@ func (d *DB) EnsureUserSubscription(userID, defaultPlan string) error {
 		CreatedAt:          now.Format(time.RFC3339),
 	}
 	return d.UpsertSubscription(rec)
+}
+
+// ── Admin plan CRUD ─────────────────────────────────
+
+// CreatePlan inserts a new plan.
+func (d *DB) CreatePlan(rec *PlanRecord) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	if rec.ID == "" {
+		rec.ID = generateID()
+	}
+	now := time.Now().UTC().Format(time.RFC3339)
+	_, err := d.db.Exec(`
+		INSERT INTO plan (id, name, description, price_cents, interval, limits, is_default, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+	`, rec.ID, rec.Name, rec.Description, rec.PriceCents, rec.Interval, rec.Limits, boolToInt(rec.IsDefault), now)
+	return err
+}
+
+// UpdatePlan updates an existing plan by ID.
+func (d *DB) UpdatePlan(rec *PlanRecord) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	res, err := d.db.Exec(`
+		UPDATE plan SET name = ?, description = ?, price_cents = ?, interval = ?, limits = ?, is_default = ?
+		WHERE id = ?
+	`, rec.Name, rec.Description, rec.PriceCents, rec.Interval, rec.Limits, boolToInt(rec.IsDefault), rec.ID)
+	if err != nil {
+		return err
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return fmt.Errorf("plan not found")
+	}
+	return nil
+}
+
+// DeletePlan deletes a plan by ID. Fails if subscriptions reference it.
+func (d *DB) DeletePlan(id string) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	var count int
+	_ = d.db.QueryRow(`SELECT COUNT(*) FROM subscription WHERE plan_id = ?`, id).Scan(&count)
+	if count > 0 {
+		return fmt.Errorf("cannot delete plan with %d active subscriptions", count)
+	}
+
+	res, err := d.db.Exec(`DELETE FROM plan WHERE id = ?`, id)
+	if err != nil {
+		return err
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return fmt.Errorf("plan not found")
+	}
+	return nil
+}
+
+// ── Admin subscription management ───────────────────
+
+// ListSubscriptions returns all subscriptions with user and plan info.
+func (d *DB) ListSubscriptions() ([]*SubscriptionRecord, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	rows, err := d.db.Query(`
+		SELECT id, user_id, plan_id, status, stripe_sub_id, stripe_customer_id,
+		       current_period_start, current_period_end, cancel_at_period_end, created_at, updated_at
+		FROM subscription ORDER BY updated_at DESC
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	var out []*SubscriptionRecord
+	for rows.Next() {
+		r := &SubscriptionRecord{}
+		if err := rows.Scan(&r.ID, &r.UserID, &r.PlanID, &r.Status, &r.StripeSubID, &r.StripeCustomerID,
+			&r.CurrentPeriodStart, &r.CurrentPeriodEnd, &r.CancelAtPeriodEnd, &r.CreatedAt, &r.UpdatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
+// DeleteSubscription removes a user's subscription.
+func (d *DB) DeleteSubscription(userID string) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	res, err := d.db.Exec(`DELETE FROM subscription WHERE user_id = ?`, userID)
+	if err != nil {
+		return err
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return fmt.Errorf("subscription not found")
+	}
+	return nil
+}
+
+// ── Admin usage queries ─────────────────────────────
+
+// GetUsageRange returns daily usage for a user within a date range.
+func (d *DB) GetUsageRange(userID, startDate, endDate string) ([]UsageRecord, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	rows, err := d.db.Query(`
+		SELECT user_id, date, messages FROM usage
+		WHERE user_id = ? AND date >= ? AND date <= ?
+		ORDER BY date ASC
+	`, userID, startDate, endDate)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	var out []UsageRecord
+	for rows.Next() {
+		var r UsageRecord
+		if err := rows.Scan(&r.UserID, &r.Date, &r.Messages); err != nil {
+			return nil, err
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
+// GetAllDailyUsage returns today's usage for all users.
+func (d *DB) GetAllDailyUsage() ([]UsageRecord, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	today := time.Now().UTC().Format("2006-01-02")
+	rows, err := d.db.Query(`SELECT user_id, date, messages FROM usage WHERE date = ? ORDER BY messages DESC`, today)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	var out []UsageRecord
+	for rows.Next() {
+		var r UsageRecord
+		if err := rows.Scan(&r.UserID, &r.Date, &r.Messages); err != nil {
+			return nil, err
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
+// UsageRecord represents a daily usage row.
+type UsageRecord struct {
+	UserID   string
+	Date     string
+	Messages int
 }

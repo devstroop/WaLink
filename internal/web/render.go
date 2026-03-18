@@ -27,6 +27,7 @@ var pageLayout = map[string]string{
 	"messaging":      "base",
 	"mcp":            "base",
 	"settings":       "base",
+	"billing":        "base",
 	"login":           "auth",
 	"register":        "auth",
 	"forgot-password": "auth",

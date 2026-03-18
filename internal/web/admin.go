@@ -546,6 +546,253 @@ func (h *Handler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/settings", http.StatusSeeOther)
 }
 
+// ── Billing Admin ────────────────────────────────────
+
+// requireAdmin checks the caller has the wildcard permission and redirects otherwise.
+func requireAdmin(w http.ResponseWriter, r *http.Request, dest string) bool {
+	id := getIdentity(r)
+	if id == nil || !id.HasPermission("*") {
+		setFlash(w, "error", "Admin access required.")
+		http.Redirect(w, r, dest, http.StatusSeeOther)
+		return false
+	}
+	return true
+}
+
+// BillingAdmin renders the billing management page.
+func (h *Handler) BillingAdmin(w http.ResponseWriter, r *http.Request) {
+	if !requireAdmin(w, r, "/dashboard") {
+		return
+	}
+	plans, _ := h.db.ListPlans()
+	subs, _ := h.db.ListSubscriptions()
+	usage, _ := h.db.GetAllDailyUsage()
+
+	// Build subscription rows with username + plan name.
+	type SubRow struct {
+		UserID   string
+		Username string
+		PlanID   string
+		PlanName string
+		Status   string
+		Period   string
+	}
+	subRows := make([]SubRow, 0, len(subs))
+	planMap := make(map[string]string, len(plans))
+	for _, p := range plans {
+		planMap[p.ID] = p.Name
+	}
+	for _, s := range subs {
+		uname := s.UserID
+		if u, err := h.db.GetUser(s.UserID); err == nil {
+			uname = u.Username
+		}
+		pname := planMap[s.PlanID]
+		if pname == "" {
+			pname = s.PlanID
+		}
+		subRows = append(subRows, SubRow{
+			UserID:   s.UserID,
+			Username: uname,
+			PlanID:   s.PlanID,
+			PlanName: pname,
+			Status:   s.Status,
+			Period:   s.CurrentPeriodEnd,
+		})
+	}
+
+	// Build usage rows with username.
+	type UsageRow struct {
+		UserID   string
+		Username string
+		Messages int
+	}
+	usageRows := make([]UsageRow, 0, len(usage))
+	for _, u := range usage {
+		uname := u.UserID
+		if usr, err := h.db.GetUser(u.UserID); err == nil {
+			uname = usr.Username
+		}
+		usageRows = append(usageRows, UsageRow{
+			UserID: u.UserID, Username: uname, Messages: u.Messages,
+		})
+	}
+
+	pd := h.page(w, r, "Billing", "billing", map[string]any{
+		"Plans":         plans,
+		"Subscriptions": subRows,
+		"Usage":         usageRows,
+	})
+	h.render.Page(w, http.StatusOK, "billing", pd)
+}
+
+// BillingPlanCreate handles POST /admin/billing/plans.
+func (h *Handler) BillingPlanCreate(w http.ResponseWriter, r *http.Request) {
+	if !requireAdmin(w, r, "/admin/billing") {
+		return
+	}
+	name := strings.TrimSpace(r.FormValue("name"))
+	if name == "" {
+		setFlash(w, "error", "Plan name is required.")
+		http.Redirect(w, r, "/admin/billing", http.StatusSeeOther)
+		return
+	}
+
+	price := 0
+	if v := r.FormValue("price_cents"); v != "" {
+		fmt.Sscanf(v, "%d", &price)
+	}
+	daily := 0
+	if v := r.FormValue("daily_messages"); v != "" {
+		fmt.Sscanf(v, "%d", &daily)
+	}
+	maxAcct := 0
+	if v := r.FormValue("max_accounts"); v != "" {
+		fmt.Sscanf(v, "%d", &maxAcct)
+	}
+
+	limits := fmt.Sprintf(`{"daily_messages":%d,"max_accounts":%d,"api_access":%t,"mcp_access":%t,"webhooks":%t}`,
+		daily, maxAcct,
+		r.FormValue("api_access") == "on",
+		r.FormValue("mcp_access") == "on",
+		r.FormValue("webhooks") == "on",
+	)
+
+	rec := &database.PlanRecord{
+		ID:          strings.TrimSpace(r.FormValue("id")),
+		Name:        name,
+		Description: strings.TrimSpace(r.FormValue("description")),
+		PriceCents:  price,
+		Interval:    "month",
+		Limits:      limits,
+		IsDefault:   r.FormValue("is_default") == "on",
+	}
+	if rec.ID == "" {
+		rec.ID = database.GenerateID()
+	}
+
+	if err := h.db.CreatePlan(rec); err != nil {
+		setFlash(w, "error", fmt.Sprintf("Failed to create plan: %s", err.Error()))
+	} else {
+		setFlash(w, "success", "Plan created.")
+	}
+	http.Redirect(w, r, "/admin/billing", http.StatusSeeOther)
+}
+
+// BillingPlanUpdate handles POST /admin/billing/plans/{id}/update.
+func (h *Handler) BillingPlanUpdate(w http.ResponseWriter, r *http.Request) {
+	if !requireAdmin(w, r, "/admin/billing") {
+		return
+	}
+	id := r.PathValue("id")
+	existing, err := h.db.GetPlan(id)
+	if err != nil {
+		setFlash(w, "error", "Plan not found.")
+		http.Redirect(w, r, "/admin/billing", http.StatusSeeOther)
+		return
+	}
+
+	name := strings.TrimSpace(r.FormValue("name"))
+	if name == "" {
+		name = existing.Name
+	}
+
+	price := existing.PriceCents
+	if v := r.FormValue("price_cents"); v != "" {
+		fmt.Sscanf(v, "%d", &price)
+	}
+	daily := 0
+	if v := r.FormValue("daily_messages"); v != "" {
+		fmt.Sscanf(v, "%d", &daily)
+	}
+	maxAcct := 0
+	if v := r.FormValue("max_accounts"); v != "" {
+		fmt.Sscanf(v, "%d", &maxAcct)
+	}
+
+	limits := fmt.Sprintf(`{"daily_messages":%d,"max_accounts":%d,"api_access":%t,"mcp_access":%t,"webhooks":%t}`,
+		daily, maxAcct,
+		r.FormValue("api_access") == "on",
+		r.FormValue("mcp_access") == "on",
+		r.FormValue("webhooks") == "on",
+	)
+
+	rec := &database.PlanRecord{
+		ID:          id,
+		Name:        name,
+		Description: strings.TrimSpace(r.FormValue("description")),
+		PriceCents:  price,
+		Interval:    "month",
+		Limits:      limits,
+		IsDefault:   r.FormValue("is_default") == "on",
+	}
+	if err := h.db.UpdatePlan(rec); err != nil {
+		setFlash(w, "error", fmt.Sprintf("Failed to update plan: %s", err.Error()))
+	} else {
+		setFlash(w, "success", "Plan updated.")
+	}
+	http.Redirect(w, r, "/admin/billing", http.StatusSeeOther)
+}
+
+// BillingPlanDelete handles POST /admin/billing/plans/{id}/delete.
+func (h *Handler) BillingPlanDelete(w http.ResponseWriter, r *http.Request) {
+	if !requireAdmin(w, r, "/admin/billing") {
+		return
+	}
+	id := r.PathValue("id")
+	if err := h.db.DeletePlan(id); err != nil {
+		setFlash(w, "error", fmt.Sprintf("Cannot delete plan: %s", err.Error()))
+	} else {
+		setFlash(w, "success", "Plan deleted.")
+	}
+	http.Redirect(w, r, "/admin/billing", http.StatusSeeOther)
+}
+
+// BillingAssignPlan handles POST /admin/billing/subscriptions/{user_id}/assign.
+func (h *Handler) BillingAssignPlan(w http.ResponseWriter, r *http.Request) {
+	if !requireAdmin(w, r, "/admin/billing") {
+		return
+	}
+	userID := r.PathValue("user_id")
+	planID := r.FormValue("plan_id")
+	if planID == "" {
+		setFlash(w, "error", "Plan is required.")
+		http.Redirect(w, r, "/admin/billing", http.StatusSeeOther)
+		return
+	}
+
+	now := time.Now().UTC()
+	rec := &database.SubscriptionRecord{
+		ID:                 database.GenerateID(),
+		UserID:             userID,
+		PlanID:             planID,
+		Status:             "active",
+		CurrentPeriodStart: now.Format(time.RFC3339),
+		CurrentPeriodEnd:   now.AddDate(0, 1, 0).Format(time.RFC3339),
+		CreatedAt:          now.Format(time.RFC3339),
+	}
+	if err := h.db.UpsertSubscription(rec); err != nil {
+		setFlash(w, "error", fmt.Sprintf("Failed to assign plan: %s", err.Error()))
+	} else {
+		setFlash(w, "success", "Plan assigned.")
+	}
+	http.Redirect(w, r, "/admin/billing", http.StatusSeeOther)
+}
+
+// BillingDeleteSubscription handles POST /admin/billing/subscriptions/{user_id}/delete.
+func (h *Handler) BillingDeleteSubscription(w http.ResponseWriter, r *http.Request) {
+	if !requireAdmin(w, r, "/admin/billing") {
+		return
+	}
+	userID := r.PathValue("user_id")
+	if err := h.db.DeleteSubscription(userID); err != nil {
+		setFlash(w, "error", fmt.Sprintf("Failed: %s", err.Error()))
+	} else {
+		setFlash(w, "success", "Subscription removed.")
+	}
+	http.Redirect(w, r, "/admin/billing", http.StatusSeeOther)
+}
+
 // NotFound renders the styled 404 error page.
 func (h *Handler) NotFound(w http.ResponseWriter, r *http.Request) {
 	pd := PageData{
