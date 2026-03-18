@@ -618,12 +618,44 @@ func (h *Handler) BillingAdmin(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
+	// Stripe settings from DB.
+	stripeKey := h.db.GetSetting("billing.stripe_secret_key", "")
+	stripeWebhook := h.db.GetSetting("billing.stripe_webhook_secret", "")
+	billingEnabled := h.db.GetSettingBool("billing.enabled", false)
+
 	pd := h.page(w, r, "Billing", "billing", map[string]any{
-		"Plans":         plans,
-		"Subscriptions": subRows,
-		"Usage":         usageRows,
+		"Plans":              plans,
+		"Subscriptions":      subRows,
+		"Usage":              usageRows,
+		"StripeKeySet":       stripeKey != "",
+		"StripeWebhookSet":   stripeWebhook != "",
+		"BillingEnabled":     billingEnabled,
 	})
 	h.render.Page(w, http.StatusOK, "billing", pd)
+}
+
+// BillingStripeUpdate handles POST /admin/billing/stripe.
+func (h *Handler) BillingStripeUpdate(w http.ResponseWriter, r *http.Request) {
+	if !requireAdmin(w, r, "/admin/billing") {
+		return
+	}
+
+	enabled := r.FormValue("billing_enabled") == "on"
+	if enabled {
+		_ = h.db.SetSetting("billing.enabled", "true")
+	} else {
+		_ = h.db.SetSetting("billing.enabled", "false")
+	}
+
+	if key := strings.TrimSpace(r.FormValue("stripe_secret_key")); key != "" {
+		_ = h.db.SetSetting("billing.stripe_secret_key", key)
+	}
+	if secret := strings.TrimSpace(r.FormValue("stripe_webhook_secret")); secret != "" {
+		_ = h.db.SetSetting("billing.stripe_webhook_secret", secret)
+	}
+
+	setFlash(w, "success", "Stripe settings updated.")
+	http.Redirect(w, r, "/admin/billing", http.StatusSeeOther)
 }
 
 // BillingPlanCreate handles POST /admin/billing/plans.
@@ -791,6 +823,86 @@ func (h *Handler) BillingDeleteSubscription(w http.ResponseWriter, r *http.Reque
 		setFlash(w, "success", "Subscription removed.")
 	}
 	http.Redirect(w, r, "/admin/billing", http.StatusSeeOther)
+}
+
+// ── User Subscription Page ──────────────────────────
+
+// SubscriptionPage renders the user-facing subscription view.
+func (h *Handler) SubscriptionPage(w http.ResponseWriter, r *http.Request) {
+	identity := getIdentity(r)
+	if identity == nil || identity.UserID == "system" {
+		http.Redirect(w, r, "/dashboard", http.StatusSeeOther)
+		return
+	}
+
+	userID := identity.UserID
+
+	// Current plan & limits.
+	limits, planID, _ := h.db.GetUserPlanLimits(userID)
+	plan, _ := h.db.GetPlan(planID)
+
+	// Subscription record (may not exist).
+	sub, _ := h.db.GetSubscription(userID)
+
+	// Usage.
+	dailyUsage, _ := h.db.GetDailyUsage(userID)
+	accountCount, _ := h.db.CountUserAccounts(userID)
+
+	// Available plans for comparison.
+	allPlans, _ := h.db.ListPlans()
+
+	// Build view-friendly plan info.
+	type PlanView struct {
+		ID            string
+		Name          string
+		Description   string
+		PriceCents    int
+		DailyMessages int
+		MaxAccounts   int
+		APIAccess     bool
+		MCPAccess     bool
+		Webhooks      bool
+		IsCurrent     bool
+	}
+	planViews := make([]PlanView, 0, len(allPlans))
+	for _, p := range allPlans {
+		lim := p.PlanLimits()
+		planViews = append(planViews, PlanView{
+			ID:            p.ID,
+			Name:          p.Name,
+			Description:   p.Description,
+			PriceCents:    p.PriceCents,
+			DailyMessages: lim.DailyMessages,
+			MaxAccounts:   lim.MaxAccounts,
+			APIAccess:     lim.APIAccess,
+			MCPAccess:     lim.MCPAccess,
+			Webhooks:      lim.Webhooks,
+			IsCurrent:     p.ID == planID,
+		})
+	}
+
+	// Subscription status.
+	subStatus := "none"
+	subPeriodEnd := ""
+	if sub != nil {
+		subStatus = sub.Status
+		subPeriodEnd = sub.CurrentPeriodEnd
+	}
+
+	pd := h.page(w, r, "Subscription", "subscription", map[string]any{
+		"PlanID":        planID,
+		"PlanName":      "",
+		"Limits":        limits,
+		"DailyUsage":    dailyUsage,
+		"AccountCount":  accountCount,
+		"SubStatus":     subStatus,
+		"SubPeriodEnd":  subPeriodEnd,
+		"Plans":         planViews,
+	})
+	if plan != nil {
+		pd.Data.(map[string]any)["PlanName"] = plan.Name
+	}
+	h.render.Page(w, http.StatusOK, "subscription", pd)
 }
 
 // NotFound renders the styled 404 error page.

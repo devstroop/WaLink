@@ -28,6 +28,7 @@ var pageLayout = map[string]string{
 	"mcp":            "base",
 	"settings":       "base",
 	"billing":        "base",
+	"subscription":   "base",
 	"login":           "auth",
 	"register":        "auth",
 	"forgot-password": "auth",
@@ -162,6 +163,22 @@ func funcMap() template.FuncMap {
 			return s
 		},
 		"now": func() time.Time { return time.Now() },
+		"min": func(a, b int) int {
+			if a < b {
+				return a
+			}
+			return b
+		},
+		"pctOf": func(used, limit int) int {
+			if limit <= 0 {
+				return 0
+			}
+			pct := (used * 100) / limit
+			if pct > 100 {
+				pct = 100
+			}
+			return pct
+		},
 	}
 }
 

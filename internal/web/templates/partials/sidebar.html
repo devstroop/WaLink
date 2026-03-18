@@ -52,6 +52,13 @@
       <span x-show="sidebarOpen">MCP Server</span>
     </a>
 
+    <a href="/subscription"
+       class="flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors
+              {{if eq .Page "subscription"}}bg-gray-800 text-white{{else}}hover:bg-gray-800/50 hover:text-white{{end}}">
+      <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewBox="0 0 24 24"><rect width="20" height="14" x="2" y="5" rx="2"/><path d="M2 10h20"/></svg>
+      <span x-show="sidebarOpen">Subscription</span>
+    </a>
+
     {{if .Identity.HasPermission "*"}}
     <p class="px-3 pt-4 text-xs uppercase tracking-wider text-gray-500 mb-2" x-show="sidebarOpen">Admin</p>
 
