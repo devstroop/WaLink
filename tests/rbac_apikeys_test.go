@@ -53,7 +53,7 @@ func createUser(t *testing.T, srv *httptest.Server, username, password, roleID s
 	body := `{"username":"` + username + `","password":"` + password + `","role_id":"` + roleID + `"}`
 	resp := doReq(t, srv, "POST", "/api/v1/users", testSecret, body)
 	if resp.StatusCode != http.StatusCreated {
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		t.Fatalf("create user %s: expected 201, got %d", username, resp.StatusCode)
 	}
 	var u model.UserInfo
@@ -67,7 +67,7 @@ func loginUser(t *testing.T, srv *httptest.Server, username, password string) st
 	body := `{"username":"` + username + `","password":"` + password + `"}`
 	resp := doReq(t, srv, "POST", "/api/v1/auth/login", "", body)
 	if resp.StatusCode != http.StatusOK {
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		t.Fatalf("login %s: expected 200, got %d", username, resp.StatusCode)
 	}
 	var lr model.LoginResponse
@@ -85,7 +85,7 @@ func createAccount(t *testing.T, srv *httptest.Server, phone, name, userID strin
 	body += `}`
 	resp := doReq(t, srv, "POST", "/api/v1/accounts", testSecret, body)
 	if resp.StatusCode != http.StatusCreated {
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		t.Fatalf("create account %s: expected 201, got %d", name, resp.StatusCode)
 	}
 	var out struct{ ID string `json:"id"` }
@@ -148,7 +148,7 @@ func TestRBACCreateCustomRole(t *testing.T) {
 	body := `{"name":"viewer","description":"Read-only","permissions":["accounts:read","messages:read"]}`
 	resp := doReq(t, srv, "POST", "/api/v1/roles", testSecret, body)
 	if resp.StatusCode != http.StatusCreated {
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		t.Fatalf("expected 201, got %d", resp.StatusCode)
 	}
 	var ri model.RoleInfo
@@ -347,7 +347,7 @@ func TestAPIKeyCRUD(t *testing.T) {
 	// Create basic API key (no account binding)
 	resp := doReq(t, srv, "POST", "/api/v1/api-keys", jwt1, `{"name":"Basic Key"}`)
 	if resp.StatusCode != http.StatusCreated {
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		t.Fatalf("expected 201, got %d", resp.StatusCode)
 	}
 	var key1 model.CreateAPIKeyResponse
@@ -363,7 +363,7 @@ func TestAPIKeyCRUD(t *testing.T) {
 	resp = doReq(t, srv, "POST", "/api/v1/api-keys", jwt1,
 		`{"name":"Bound Key","account_id":"`+acct1+`"}`)
 	if resp.StatusCode != http.StatusCreated {
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		t.Fatalf("expected 201, got %d", resp.StatusCode)
 	}
 	var key2 model.CreateAPIKeyResponse
@@ -377,7 +377,7 @@ func TestAPIKeyCRUD(t *testing.T) {
 	resp = doReq(t, srv, "POST", "/api/v1/api-keys", jwt1,
 		`{"name":"Expiring Key","expires_at":"`+exp+`"}`)
 	if resp.StatusCode != http.StatusCreated {
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		t.Fatalf("expected 201, got %d", resp.StatusCode)
 	}
 	var key3 model.CreateAPIKeyResponse
@@ -571,7 +571,7 @@ func TestAPIKeyAdminCanBindToAnyAccount(t *testing.T) {
 	resp := doReq(t, srv, "POST", "/api/v1/api-keys", adminJWT,
 		`{"name":"Admin Bound","account_id":"`+acct3+`"}`)
 	if resp.StatusCode != http.StatusCreated {
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		t.Fatalf("expected 201, got %d", resp.StatusCode)
 	}
 	var key model.CreateAPIKeyResponse

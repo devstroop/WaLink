@@ -584,7 +584,7 @@ func TestWebhookLifecycle(t *testing.T) {
 	if resp.StatusCode != 404 {
 		t.Errorf("expected 404 after delete, got %d", resp.StatusCode)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 }
 
 func TestWebhookMissingURL(t *testing.T) {
@@ -620,7 +620,7 @@ func TestProxyLifecycle(t *testing.T) {
 	if resp.StatusCode != 404 {
 		t.Errorf("expected 404 for no proxy, got %d", resp.StatusCode)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 
 	// 2. Set proxy
 	resp = authReq(t, srv, "PUT", base,
@@ -629,7 +629,7 @@ func TestProxyLifecycle(t *testing.T) {
 		body, _ := io.ReadAll(resp.Body)
 		t.Fatalf("expected 200, got %d: %s", resp.StatusCode, body)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 
 	// 3. Get — should return config (no password)
 	resp = authGet(t, srv, base)
@@ -656,14 +656,14 @@ func TestProxyLifecycle(t *testing.T) {
 	if resp.StatusCode != 200 {
 		t.Fatalf("expected 200, got %d", resp.StatusCode)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 
 	// 5. Verify gone
 	resp = authGet(t, srv, base)
 	if resp.StatusCode != 404 {
 		t.Errorf("expected 404 after delete, got %d", resp.StatusCode)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 }
 
 // ─── Endpoints requiring connection → error ────────
@@ -911,7 +911,7 @@ func TestRateLimitEnforced(t *testing.T) {
 			req.Header.Set("Authorization", "Bearer "+testSecret)
 			resp, _ := http.DefaultClient.Do(req)
 			if resp != nil {
-				resp.Body.Close()
+				_ = resp.Body.Close()
 			}
 		}()
 	}
@@ -1023,7 +1023,7 @@ func TestUpdatePhoneNumber(t *testing.T) {
 		body, _ := io.ReadAll(resp.Body)
 		t.Fatalf("expected 200, got %d: %s", resp.StatusCode, body)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 }
 
 func TestUpdatePhoneNumberConflict(t *testing.T) {
@@ -1060,5 +1060,5 @@ func TestDeleteSessionNoSession(t *testing.T) {
 		body, _ := io.ReadAll(resp.Body)
 		t.Fatalf("expected 200, got %d: %s", resp.StatusCode, body)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 }
