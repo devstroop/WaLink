@@ -24,6 +24,7 @@ type Config struct {
 	Swagger  SwaggerConfig  `toml:"swagger"`
 	Web      WebConfig       `toml:"web"`
 	MCP      MCPConfig       `toml:"mcp"`
+	Billing  BillingConfig   `toml:"billing"`
 }
 
 type ServerConfig struct {
@@ -89,6 +90,13 @@ type WebConfig struct {
 type MCPConfig struct {
 	Enabled bool   `toml:"enabled"`
 	Path    string `toml:"path"`
+}
+
+type BillingConfig struct {
+	Enabled              bool   `toml:"enabled"`
+	StripeSecretKey      string `toml:"stripe_secret_key"`
+	StripeWebhookSecret  string `toml:"stripe_webhook_secret"`
+	DefaultPlan          string `toml:"default_plan"`
 }
 
 // Load reads config from config/app.toml (next to binary or working dir),
@@ -226,6 +234,18 @@ func applyEnvOverrides(cfg *Config) {
 	if v := os.Getenv("WALINK_MCP_PATH"); v != "" {
 		cfg.MCP.Path = v
 	}
+	if v := os.Getenv("WALINK_BILLING_ENABLED"); v != "" {
+		cfg.Billing.Enabled = v == "true" || v == "1"
+	}
+	if v := os.Getenv("WALINK_BILLING_STRIPE_SECRET_KEY"); v != "" {
+		cfg.Billing.StripeSecretKey = v
+	}
+	if v := os.Getenv("WALINK_BILLING_STRIPE_WEBHOOK_SECRET"); v != "" {
+		cfg.Billing.StripeWebhookSecret = v
+	}
+	if v := os.Getenv("WALINK_BILLING_DEFAULT_PLAN"); v != "" {
+		cfg.Billing.DefaultPlan = v
+	}
 }
 
 func defaults() *Config {
@@ -253,6 +273,7 @@ func defaults() *Config {
 		Swagger: SwaggerConfig{Enabled: true, Path: "/api-docs"},
 		Web:     WebConfig{Enabled: true},
 		MCP:     MCPConfig{Enabled: true, Path: "/mcp"},
+		Billing: BillingConfig{DefaultPlan: "free"},
 	}
 }
 

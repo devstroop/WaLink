@@ -243,6 +243,7 @@ func (a *API) SendMessage(w http.ResponseWriter, r *http.Request) {
 				writeError(w, http.StatusInternalServerError, err.Error())
 				return
 			}
+			a.trackMessageSend(r)
 			writeJSON(w, http.StatusOK, model.SendMessageResponse{Status: "sent", MessageID: msgID})
 			return
 		}
@@ -263,6 +264,7 @@ func (a *API) SendMessage(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusInternalServerError, sendErr.Error())
 			return
 		}
+		a.trackMessageSend(r)
 		writeJSON(w, http.StatusOK, model.SendMessageResponse{Status: "sent", MessageID: msgID})
 		return
 	}
@@ -279,6 +281,7 @@ func (a *API) SendMessage(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	a.trackMessageSend(r)
 	writeJSON(w, http.StatusOK, model.SendMessageResponse{Status: "sent", MessageID: msgID})
 }
 

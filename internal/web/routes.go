@@ -52,6 +52,7 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	inner.HandleFunc("POST /login", h.LoginSubmit)
 	inner.HandleFunc("POST /logout", h.Logout)
 	inner.HandleFunc("GET /about", h.AboutPage)
+	inner.HandleFunc("GET /pricing", h.PricingPage)
 	inner.HandleFunc("GET /terms", h.TermsPage)
 	inner.HandleFunc("GET /privacy", h.PrivacyPage)
 	inner.HandleFunc("GET /forgot-password", h.ForgotPasswordPage)

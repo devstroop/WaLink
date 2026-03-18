@@ -29,6 +29,7 @@ func WebAuth(secret string, db *database.DB, regEnabled bool, next http.Handler)
 		"/about":           true,
 		"/terms":           true,
 		"/privacy":         true,
+		"/pricing":         true,
 	}
 	if regEnabled {
 		publicPaths["/register"] = true

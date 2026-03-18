@@ -302,6 +302,11 @@ func (d *DB) migrate() error {
 		return err
 	}
 
+	// ── Billing tables (plan, subscription, usage) ──
+	if err := d.migrateBilling(); err != nil {
+		return err
+	}
+
 	return nil
 }
 

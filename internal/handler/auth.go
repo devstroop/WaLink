@@ -146,6 +146,9 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Create free subscription for new user
+	_ = h.db.EnsureUserSubscription(rec.ID, "free")
+
 	user, _ := h.db.GetUser(rec.ID)
 	if user != nil {
 		writeJSON(w, http.StatusCreated, model.UserInfo{

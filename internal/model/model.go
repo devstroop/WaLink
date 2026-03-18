@@ -586,3 +586,85 @@ type ErrorResponse struct {
 	Error   string  `json:"error"`
 	Message *string `json:"message,omitempty"`
 }
+
+// ──────────────────────────────────────────────────────
+// Plans & Billing
+// ──────────────────────────────────────────────────────
+
+// PlanLimits defines enforceable quotas for a plan.
+type PlanLimits struct {
+	DailyMessages int  `json:"daily_messages"` // 0 = unlimited
+	MaxAccounts   int  `json:"max_accounts"`   // 0 = unlimited
+	APIAccess     bool `json:"api_access"`
+	MCPAccess     bool `json:"mcp_access"`
+	Webhooks      bool `json:"webhooks"`
+}
+
+// PlanInfo is the API-facing plan representation.
+type PlanInfo struct {
+	ID          string     `json:"id"`
+	Name        string     `json:"name"`
+	Description string     `json:"description"`
+	PriceCents  int        `json:"price_cents"`
+	Interval    string     `json:"interval"` // month | year
+	Limits      PlanLimits `json:"limits"`
+	IsDefault   bool       `json:"is_default"`
+}
+
+// PlanListResponse is the response for GET /api/v1/billing/plans.
+type PlanListResponse struct {
+	Plans []PlanInfo `json:"plans"`
+	Total int        `json:"total"`
+}
+
+// SubscriptionInfo is the API-facing subscription representation.
+type SubscriptionInfo struct {
+	ID                 string `json:"id"`
+	PlanID             string `json:"plan_id"`
+	PlanName           string `json:"plan_name"`
+	Status             string `json:"status"` // active | trialing | past_due | canceled
+	CurrentPeriodStart string `json:"current_period_start"`
+	CurrentPeriodEnd   string `json:"current_period_end"`
+	CancelAtPeriodEnd  bool   `json:"cancel_at_period_end"`
+}
+
+// UsageInfo is the API-facing daily usage summary.
+type UsageInfo struct {
+	Date          string `json:"date"`
+	MessagesSent  int    `json:"messages_sent"`
+	DailyLimit    int    `json:"daily_limit"` // 0 = unlimited
+	AccountsUsed  int    `json:"accounts_used"`
+	AccountLimit  int    `json:"account_limit"` // 0 = unlimited
+}
+
+// BillingResponse is the response for GET /api/v1/billing.
+type BillingResponse struct {
+	Subscription SubscriptionInfo `json:"subscription"`
+	Usage        UsageInfo        `json:"usage"`
+	Plan         PlanInfo         `json:"plan"`
+}
+
+// CheckoutRequest is the JSON body for POST /api/v1/billing/checkout.
+type CheckoutRequest struct {
+	PlanID    string `json:"plan_id"`
+	SuccessURL string `json:"success_url,omitempty"`
+	CancelURL  string `json:"cancel_url,omitempty"`
+}
+
+// CheckoutResponse is returned when creating a Stripe Checkout session.
+type CheckoutResponse struct {
+	URL string `json:"url"`
+}
+
+// PortalResponse is returned when creating a Stripe Customer Portal session.
+type PortalResponse struct {
+	URL string `json:"url"`
+}
+
+// QuotaExceededResponse is returned when a plan limit is hit.
+type QuotaExceededResponse struct {
+	Error      string `json:"error"`
+	Limit      int    `json:"limit,omitempty"`
+	Used       int    `json:"used,omitempty"`
+	UpgradeURL string `json:"upgrade_url,omitempty"`
+}

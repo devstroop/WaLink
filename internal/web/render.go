@@ -15,6 +15,7 @@ import (
 var pageLayout = map[string]string{
 	"home":            "home",
 	"about":           "home",
+	"pricing":         "home",
 	"terms":           "home",
 	"privacy":         "home",
 	"dashboard":      "base",
@@ -124,6 +125,9 @@ func funcMap() template.FuncMap {
 		"upper":     strings.ToUpper,
 		"lower":     strings.ToLower,
 		"timeAgo":   timeAgo,
+		"divCents": func(cents int) string {
+			return fmt.Sprintf("%d", cents/100)
+		},
 		"initial": func(s string) string {
 			for _, r := range s {
 				return string(r)

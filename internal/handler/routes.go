@@ -10,13 +10,22 @@ import (
 
 // API groups all route handlers.
 type API struct {
-	mgr *service.AccountManager
-	db  *database.DB
+	mgr            *service.AccountManager
+	db             *database.DB
+	billingEnabled bool
 }
 
 // NewAPI creates a new API handler group.
 func NewAPI(mgr *service.AccountManager, db *database.DB) *API {
 	return &API{mgr: mgr, db: db}
+}
+
+// SetBillingEnabled configures whether the API enforces billing limits.
+func (a *API) SetBillingEnabled(enabled bool) { a.billingEnabled = enabled }
+
+// trackMessageSend increments the daily usage counter for the caller.
+func (a *API) trackMessageSend(r *http.Request) {
+	middleware.IncrementMessageUsage(a.db, a.billingEnabled, middleware.GetIdentity(r).UserID)
 }
 
 // RegisterRoutes wires every endpoint into the mux.
