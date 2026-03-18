@@ -123,7 +123,10 @@ func main() {
 
 	mcpPath := db.GetSetting("mcp.path", "/mcp")
 	mcpSrv := mcpserver.New(mgr, db, version)
-	mcpTransport := mcphttp.NewStreamableHTTPServer(mcpSrv, mcphttp.WithStateful(true))
+	mcpTransport := mcphttp.NewStreamableHTTPServer(mcpSrv,
+		mcphttp.WithStateful(true),
+		mcphttp.WithSessionIdleTTL(10*time.Minute),
+	)
 	mcpInner := middleware.Auth(cfg.Auth.SecretKey, db, middleware.MCPScope(db, mcpTransport))
 	// Gate: check DB setting at runtime so admin can toggle without restart
 	mcpHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -133,9 +136,8 @@ func main() {
 			_, _ = w.Write([]byte(`{"error":"MCP server is disabled by administrator"}`))
 			return
 		}
-		// SSE streams (GET for notifications, POST for streaming responses) are
-		// long-lived. Clear the server's WriteTimeout so they aren't killed.
 		rc := http.NewResponseController(w)
+		_ = rc.SetReadDeadline(time.Time{})
 		_ = rc.SetWriteDeadline(time.Time{})
 		mcpInner.ServeHTTP(w, r)
 	})
@@ -162,11 +164,14 @@ func main() {
 
 	addr := fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port)
 	srv := &http.Server{
-		Addr:         addr,
-		Handler:      root,
-		ReadTimeout:  30 * time.Second,
-		WriteTimeout: 30 * time.Second,
-		IdleTimeout:  60 * time.Second,
+		Addr:    addr,
+		Handler: root,
+		// ReadHeaderTimeout guards against slowloris attacks (slow header sending).
+		// Do NOT use ReadTimeout here — it applies to the entire request lifecycle
+		// including handler execution, which kills long-lived SSE streams and
+		// slow WhatsApp operations (group creation can take up to 75s).
+		ReadHeaderTimeout: 30 * time.Second,
+		IdleTimeout:       60 * time.Second,
 	}
 
 	// Graceful shutdown

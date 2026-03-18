@@ -832,7 +832,8 @@ func registerTools(s *server.MCPServer, mgr *service.AccountManager, db *databas
 				return mcp.NewToolResultError("participants is required"), nil
 			}
 
-			group, err := acct.CreateGroup(ctx, name, splitCSV(participantsStr))
+			parts := splitCSV(participantsStr)
+			group, err := acct.CreateGroup(ctx, name, parts)
 			if err != nil {
 				return mcp.NewToolResultError(err.Error()), nil
 			}
@@ -983,7 +984,15 @@ func registerTools(s *server.MCPServer, mgr *service.AccountManager, db *databas
 }
 
 // splitCSV splits a comma-separated string into trimmed, non-empty parts.
+// It also handles JSON array input (e.g. ["a","b"]) which some MCP clients send.
 func splitCSV(s string) []string {
+	s = strings.TrimSpace(s)
+	if strings.HasPrefix(s, "[") {
+		var arr []string
+		if json.Unmarshal([]byte(s), &arr) == nil {
+			return arr
+		}
+	}
 	var out []string
 	for _, p := range strings.Split(s, ",") {
 		p = strings.TrimSpace(p)
