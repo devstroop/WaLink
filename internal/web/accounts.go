@@ -372,9 +372,9 @@ func (h *Handler) AccountSessionStatus(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if acct != nil && acct.IsLoggedIn() {
-		fmt.Fprint(w, `<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">Connected</span>`)
+		_, _ = fmt.Fprint(w, `<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">Connected</span>`)
 	} else {
-		fmt.Fprint(w, `<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">Disconnected</span>`)
+		_, _ = fmt.Fprint(w, `<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">Disconnected</span>`)
 	}
 }
 
@@ -391,7 +391,7 @@ func (h *Handler) AccountSessionTab(w http.ResponseWriter, r *http.Request) {
 
 	if acct.IsLoggedIn() {
 		// Connected state — show status info and disconnect button
-		fmt.Fprintf(w, `<div class="flex flex-col items-center justify-center py-10 space-y-4">
+		_, _ = fmt.Fprintf(w, `<div class="flex flex-col items-center justify-center py-10 space-y-4">
 			<div class="w-20 h-20 bg-green-50 rounded-2xl flex items-center justify-center">
 				<svg class="w-10 h-10 text-green-600" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="m9 11 3 3L22 4"/></svg>
 			</div>
@@ -410,7 +410,7 @@ func (h *Handler) AccountSessionTab(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Disconnected state — show QR / Phone Pairing toggle
-	fmt.Fprintf(w, `<div x-data="{ mode: 'qr' }" class="space-y-5">
+	_, _ = fmt.Fprintf(w, `<div x-data="{ mode: 'qr' }" class="space-y-5">
 		<div class="flex items-center justify-center">
 			<div class="flex bg-gray-100 rounded-lg p-0.5">
 				<button @click="mode = 'qr'" :class="mode === 'qr' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500 hover:text-gray-700'"
@@ -469,7 +469,7 @@ func (h *Handler) AccountQR(w http.ResponseWriter, r *http.Request) {
 
 	if acct.IsLoggedIn() {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		fmt.Fprint(w, `<div class="flex flex-col items-center justify-center py-8">
+		_, _ = fmt.Fprint(w, `<div class="flex flex-col items-center justify-center py-8">
 			<div class="w-16 h-16 bg-green-50 rounded-2xl flex items-center justify-center mb-3">
 				<svg class="w-8 h-8 text-green-600" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="m9 11 3 3L22 4"/></svg>
 			</div>
@@ -486,7 +486,7 @@ func (h *Handler) AccountQR(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		errMsg := template.HTMLEscapeString(err.Error())
-		fmt.Fprintf(w, `<div class="flex flex-col items-center justify-center py-8">
+		_, _ = fmt.Fprintf(w, `<div class="flex flex-col items-center justify-center py-8">
 			<div class="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700 mb-3">%s</div>
 			<button hx-get="/accounts/%s/qr" hx-target="#qr-area" hx-swap="innerHTML"
 				class="text-xs text-brand-600 hover:text-brand-700 font-medium">↻ Try again</button>
@@ -627,7 +627,7 @@ func (h *Handler) MessageSend(w http.ResponseWriter, r *http.Request) {
 	// Check for file attachment
 	file, header, err := r.FormFile("file")
 	if err == nil && header != nil {
-		defer file.Close()
+		defer func() { _ = file.Close() }()
 		data, err := io.ReadAll(file)
 		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to read file"})

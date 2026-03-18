@@ -19,7 +19,7 @@ func setupManager(t *testing.T) *AccountManager {
 	if err != nil {
 		t.Fatalf("Open DB: %v", err)
 	}
-	t.Cleanup(func() { db.Close() })
+	t.Cleanup(func() { _ = db.Close() })
 
 	cfg := &config.Config{
 		Accounts: config.AccountsConfig{
@@ -183,7 +183,7 @@ func TestManagerDiscoverAccounts(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Open DB: %v", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	// Pre-seed the DB
 	if err := db.CreateAccount(&database.AccountRecord{

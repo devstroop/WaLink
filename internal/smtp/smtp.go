@@ -71,14 +71,14 @@ func (c *Client) sendTLS(addr string, auth smtp.Auth, from, to string, msg []byt
 	if err != nil {
 		return fmt.Errorf("tls dial: %w", err)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	host, _, _ := net.SplitHostPort(addr)
 	cl, err := smtp.NewClient(conn, host)
 	if err != nil {
 		return fmt.Errorf("smtp client: %w", err)
 	}
-	defer cl.Close()
+	defer func() { _ = cl.Close() }()
 
 	if auth != nil {
 		if err := cl.Auth(auth); err != nil {

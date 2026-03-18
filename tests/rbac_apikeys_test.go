@@ -445,7 +445,7 @@ func TestAPIKeyOtherUserSeesNoKeys(t *testing.T) {
 	jwt2 := loginUser(t, srv, "user2", "user2pass123")
 
 	// user1 creates a key
-	doReq(t, srv, "POST", "/api/v1/api-keys", jwt1, `{"name":"mine"}`).Body.Close()
+	_ = doReq(t, srv, "POST", "/api/v1/api-keys", jwt1, `{"name":"mine"}`).Body.Close()
 
 	// user2 sees 0 keys
 	resp := doReq(t, srv, "GET", "/api/v1/api-keys", jwt2, "")

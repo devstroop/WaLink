@@ -12,7 +12,7 @@ func openTestDB(t *testing.T) *DB {
 	if err != nil {
 		t.Fatalf("Open(%s): %v", path, err)
 	}
-	t.Cleanup(func() { db.Close() })
+	t.Cleanup(func() { _ = db.Close() })
 	return db
 }
 

@@ -1495,7 +1495,7 @@ func (a *Account) ListChats(ctx context.Context) ([]model.ChatInfo, error) {
 			seen[id] = true
 			chat := model.ChatInfo{
 				ID:      id,
-				Name:    g.GroupName.Name,
+				Name:    g.Name,
 				IsGroup: true,
 			}
 			enrich(&chat, g.JID)
@@ -2099,7 +2099,7 @@ func (a *Account) doDispatchWebhook(eventType string, payload map[string]any) {
 			}
 			return
 		}
-		resp.Body.Close()
+		_ = resp.Body.Close()
 
 		if resp.StatusCode < 500 {
 			if resp.StatusCode >= 400 {

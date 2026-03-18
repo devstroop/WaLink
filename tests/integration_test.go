@@ -121,7 +121,7 @@ func authReq(t *testing.T, srv *httptest.Server, method, path, body string) *htt
 // decodeJSON reads and decodes the response body.
 func decodeJSON(t *testing.T, resp *http.Response, v any) {
 	t.Helper()
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if err := json.NewDecoder(resp.Body).Decode(v); err != nil {
 		t.Fatalf("decode json: %v", err)
 	}
@@ -328,7 +328,7 @@ func TestAccountLifecycle(t *testing.T) {
 func TestCreateAccountDuplicate(t *testing.T) {
 	srv, _ := testServer(t)
 
-	authReq(t, srv, "POST", "/api/v1/accounts",
+	_ = authReq(t, srv, "POST", "/api/v1/accounts",
 		`{"phone_number":"1234567890","account_name":"first"}`).Body.Close()
 
 	resp := authReq(t, srv, "POST", "/api/v1/accounts",
@@ -1029,7 +1029,7 @@ func TestUpdatePhoneNumber(t *testing.T) {
 func TestUpdatePhoneNumberConflict(t *testing.T) {
 	srv, _ := testServer(t)
 
-	authReq(t, srv, "POST", "/api/v1/accounts",
+	_ = authReq(t, srv, "POST", "/api/v1/accounts",
 		`{"phone_number":"5550003333","account_name":"p1"}`).Body.Close()
 	resp := authReq(t, srv, "POST", "/api/v1/accounts",
 		`{"phone_number":"5550004444","account_name":"p2"}`)

@@ -27,7 +27,7 @@ func writeError(w http.ResponseWriter, code int, msg string) {
 }
 
 func readJSON(r *http.Request, v any) error {
-	defer r.Body.Close()
+	defer func() { _ = r.Body.Close() }()
 	return json.NewDecoder(r.Body).Decode(v)
 }
 

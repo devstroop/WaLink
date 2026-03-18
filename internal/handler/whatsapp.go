@@ -224,7 +224,7 @@ func (a *API) SendMessage(w http.ResponseWriter, r *http.Request) {
 
 		file, header, err := r.FormFile("file")
 		if err == nil {
-			defer file.Close()
+			defer func() { _ = file.Close() }()
 			if header.Size > a.mgr.Config().Limits.MaxUploadSize {
 				writeError(w, http.StatusRequestEntityTooLarge, "file too large")
 				return

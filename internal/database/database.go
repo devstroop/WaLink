@@ -120,7 +120,7 @@ func Open(path string) (*DB, error) {
 
 	d := &DB{db: conn}
 	if err := d.migrate(); err != nil {
-		conn.Close()
+		_ = conn.Close()
 		return nil, fmt.Errorf("migrate: %w", err)
 	}
 	return d, nil
@@ -397,7 +397,7 @@ func (d *DB) ListAccounts() ([]*AccountRecord, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var out []*AccountRecord
 	for rows.Next() {
@@ -461,7 +461,7 @@ func (d *DB) ListAccountsByUser(userID string) ([]*AccountRecord, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var out []*AccountRecord
 	for rows.Next() {
@@ -564,7 +564,7 @@ func (d *DB) GetLastMessagePerChat(accountID string) (map[string]*LastMessageInf
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	result := make(map[string]*LastMessageInfo)
 	for rows.Next() {
@@ -597,7 +597,7 @@ func (d *DB) GetUnreadCountPerChat(accountID string) (map[string]int, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	result := make(map[string]int)
 	for rows.Next() {
@@ -656,7 +656,7 @@ func (d *DB) ListMessages(accountID, chatJID string, limit int, before string) (
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var out []*MessageRecord
 	for rows.Next() {
@@ -778,7 +778,7 @@ func (d *DB) ListRoles() ([]*RoleRecord, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var out []*RoleRecord
 	for rows.Next() {
@@ -820,7 +820,7 @@ func (d *DB) GetRolePermissions(roleID string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var perms []string
 	for rows.Next() {
@@ -918,7 +918,7 @@ func (d *DB) ListUsers() ([]*UserRecord, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var out []*UserRecord
 	for rows.Next() {
@@ -1048,7 +1048,7 @@ func (d *DB) ListAPIKeysByUser(userID string) ([]*APIKeyRecord, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var out []*APIKeyRecord
 	for rows.Next() {
@@ -1070,7 +1070,7 @@ func (d *DB) ListAllAPIKeys() ([]*APIKeyRecord, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var out []*APIKeyRecord
 	for rows.Next() {
@@ -1229,7 +1229,7 @@ func (d *DB) GetAllSettings() (map[string]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	m := make(map[string]string)
 	for rows.Next() {
