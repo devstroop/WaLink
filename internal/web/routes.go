@@ -116,7 +116,7 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 
 	// Admin Billing
 	inner.HandleFunc("GET /admin/billing", h.BillingAdmin)
-	inner.HandleFunc("POST /admin/billing/stripe", h.BillingStripeUpdate)
+	inner.HandleFunc("POST /admin/billing/stripe", h.PaymentGatewayUpdate) // legacy redirect
 	inner.HandleFunc("POST /admin/billing/plans", h.BillingPlanCreate)
 	inner.HandleFunc("POST /admin/billing/plans/{id}/update", h.BillingPlanUpdate)
 	inner.HandleFunc("POST /admin/billing/plans/{id}/delete", h.BillingPlanDelete)
@@ -135,6 +135,7 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	// Settings
 	inner.HandleFunc("GET /settings", h.Settings)
 	inner.HandleFunc("POST /settings/password", h.ChangePassword)
+	inner.HandleFunc("POST /settings/payment-gateway", h.PaymentGatewayUpdate)
 
 	// Root redirect
 	inner.HandleFunc("GET /{$}", h.Root)

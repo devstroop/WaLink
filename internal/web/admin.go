@@ -486,9 +486,34 @@ func (h *Handler) Settings(w http.ResponseWriter, r *http.Request) {
 	if identity != nil && identity.UserID != "system" {
 		user, _ = h.db.GetUser(identity.UserID)
 	}
-	pd := h.page(w, r, "Settings", "settings", map[string]any{
+
+	data := map[string]any{
 		"User": user,
-	})
+	}
+
+	// Payment gateway settings (admin only).
+	if identity != nil && identity.HasPermission("*") {
+		stripeKey := h.db.GetSetting("billing.stripe_secret_key", "")
+		stripeWebhook := h.db.GetSetting("billing.stripe_webhook_secret", "")
+		razorpayKey := h.db.GetSetting("billing.razorpay_key_id", "")
+		razorpaySecret := h.db.GetSetting("billing.razorpay_key_secret", "")
+		payuKey := h.db.GetSetting("billing.payu_merchant_key", "")
+		payuSalt := h.db.GetSetting("billing.payu_merchant_salt", "")
+		activeGateway := h.db.GetSetting("billing.active_gateway", "")
+		billingEnabled := h.db.GetSettingBool("billing.enabled", false)
+
+		data["IsAdmin"] = true
+		data["BillingEnabled"] = billingEnabled
+		data["ActiveGateway"] = activeGateway
+		data["StripeKeySet"] = stripeKey != ""
+		data["StripeWebhookSet"] = stripeWebhook != ""
+		data["RazorpayKeySet"] = razorpayKey != ""
+		data["RazorpaySecretSet"] = razorpaySecret != ""
+		data["PayUKeySet"] = payuKey != ""
+		data["PayUSaltSet"] = payuSalt != ""
+	}
+
+	pd := h.page(w, r, "Settings", "settings", data)
 	h.render.Page(w, http.StatusOK, "settings", pd)
 }
 
@@ -618,35 +643,33 @@ func (h *Handler) BillingAdmin(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	// Stripe settings from DB.
-	stripeKey := h.db.GetSetting("billing.stripe_secret_key", "")
-	stripeWebhook := h.db.GetSetting("billing.stripe_webhook_secret", "")
-	billingEnabled := h.db.GetSettingBool("billing.enabled", false)
-
 	pd := h.page(w, r, "Billing", "billing", map[string]any{
-		"Plans":              plans,
-		"Subscriptions":      subRows,
-		"Usage":              usageRows,
-		"StripeKeySet":       stripeKey != "",
-		"StripeWebhookSet":   stripeWebhook != "",
-		"BillingEnabled":     billingEnabled,
+		"Plans":         plans,
+		"Subscriptions": subRows,
+		"Usage":         usageRows,
 	})
 	h.render.Page(w, http.StatusOK, "billing", pd)
 }
 
-// BillingStripeUpdate handles POST /admin/billing/stripe.
-func (h *Handler) BillingStripeUpdate(w http.ResponseWriter, r *http.Request) {
-	if !requireAdmin(w, r, "/admin/billing") {
+// PaymentGatewayUpdate handles POST /settings/payment-gateway.
+func (h *Handler) PaymentGatewayUpdate(w http.ResponseWriter, r *http.Request) {
+	if !requireAdmin(w, r, "/settings") {
 		return
 	}
 
-	enabled := r.FormValue("billing_enabled") == "on"
-	if enabled {
+	// Billing enabled toggle.
+	if r.FormValue("billing_enabled") == "on" {
 		_ = h.db.SetSetting("billing.enabled", "true")
 	} else {
 		_ = h.db.SetSetting("billing.enabled", "false")
 	}
 
+	// Active gateway.
+	if gw := strings.TrimSpace(r.FormValue("active_gateway")); gw != "" {
+		_ = h.db.SetSetting("billing.active_gateway", gw)
+	}
+
+	// Stripe.
 	if key := strings.TrimSpace(r.FormValue("stripe_secret_key")); key != "" {
 		_ = h.db.SetSetting("billing.stripe_secret_key", key)
 	}
@@ -654,8 +677,24 @@ func (h *Handler) BillingStripeUpdate(w http.ResponseWriter, r *http.Request) {
 		_ = h.db.SetSetting("billing.stripe_webhook_secret", secret)
 	}
 
-	setFlash(w, "success", "Stripe settings updated.")
-	http.Redirect(w, r, "/admin/billing", http.StatusSeeOther)
+	// Razorpay.
+	if key := strings.TrimSpace(r.FormValue("razorpay_key_id")); key != "" {
+		_ = h.db.SetSetting("billing.razorpay_key_id", key)
+	}
+	if secret := strings.TrimSpace(r.FormValue("razorpay_key_secret")); secret != "" {
+		_ = h.db.SetSetting("billing.razorpay_key_secret", secret)
+	}
+
+	// PayU Money.
+	if key := strings.TrimSpace(r.FormValue("payu_merchant_key")); key != "" {
+		_ = h.db.SetSetting("billing.payu_merchant_key", key)
+	}
+	if salt := strings.TrimSpace(r.FormValue("payu_merchant_salt")); salt != "" {
+		_ = h.db.SetSetting("billing.payu_merchant_salt", salt)
+	}
+
+	setFlash(w, "success", "Payment gateway settings updated.")
+	http.Redirect(w, r, "/settings", http.StatusSeeOther)
 }
 
 // BillingPlanCreate handles POST /admin/billing/plans.

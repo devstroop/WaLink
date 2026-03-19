@@ -1,52 +1,6 @@
 {{define "content"}}
 <div x-data="{ showCreatePlan: false, editPlan: null, assignSub: null }" class="space-y-8">
 
-  <!-- ── Stripe Configuration ───────────────────────── -->
-  <div class="bg-white rounded-xl border border-gray-200 p-6 space-y-4">
-    <div class="flex items-center justify-between">
-      <div>
-        <h3 class="text-lg font-semibold text-gray-900">Payment Gateway</h3>
-        <p class="text-sm text-gray-500">Configure Stripe for online payments and subscriptions.</p>
-      </div>
-      {{if .Data.BillingEnabled}}
-      <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">Active</span>
-      {{else}}
-      <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">Inactive</span>
-      {{end}}
-    </div>
-    <form method="POST" action="/admin/billing/stripe" class="space-y-4" autocomplete="off">
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">Stripe Secret Key</label>
-          <input type="password" name="stripe_secret_key" placeholder="{{if .Data.StripeKeySet}}••••••••••••••••{{else}}sk_live_... or sk_test_...{{end}}" autocomplete="new-password"
-            class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500">
-          {{if .Data.StripeKeySet}}
-          <p class="mt-1 text-xs text-green-600">Key is configured. Leave blank to keep current value.</p>
-          {{end}}
-        </div>
-        <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">Webhook Signing Secret</label>
-          <input type="password" name="stripe_webhook_secret" placeholder="{{if .Data.StripeWebhookSet}}••••••••••••••••{{else}}whsec_...{{end}}" autocomplete="new-password"
-            class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500">
-          {{if .Data.StripeWebhookSet}}
-          <p class="mt-1 text-xs text-green-600">Secret is configured. Leave blank to keep current value.</p>
-          {{end}}
-        </div>
-      </div>
-      <div class="flex items-center justify-between">
-        <label class="flex items-center gap-2 text-sm text-gray-700">
-          <input type="checkbox" name="billing_enabled" {{if .Data.BillingEnabled}}checked{{end}}
-            class="rounded border-gray-300 text-brand-600 focus:ring-brand-500">
-          Enable Stripe billing
-        </label>
-        <button type="submit"
-          class="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-brand-600 rounded-lg hover:bg-brand-700 transition-colors">
-          Save Settings
-        </button>
-      </div>
-    </form>
-  </div>
-
   <!-- ── Plans Section ──────────────────────────────── -->
   <div>
     <div class="flex items-center justify-between mb-4">
