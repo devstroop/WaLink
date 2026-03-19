@@ -64,6 +64,7 @@
       <span x-show="!sidebarOpen" class="sidebar-tooltip">MCP Server</span>
     </a>
 
+    {{if not (.Identity.HasPermission "*")}}
     <a href="/subscription" title="Subscription"
        class="sidebar-link flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors relative group
               {{if eq .Page "subscription"}}bg-gray-800 text-white{{else}}hover:bg-gray-800/50 hover:text-white{{end}}">
@@ -71,6 +72,7 @@
       <span x-show="sidebarOpen" x-transition>Subscription</span>
       <span x-show="!sidebarOpen" class="sidebar-tooltip">Subscription</span>
     </a>
+    {{end}}
 
     {{if .Identity.HasPermission "*"}}
     <p class="px-3 pt-4 text-xs uppercase tracking-wider text-gray-500 mb-2" x-show="sidebarOpen" x-transition>Admin</p>
@@ -103,7 +105,10 @@
   </nav>
 
   <!-- Footer -->
-  <div class="border-t border-gray-800 p-4" @click="if($event.target.closest('a')) mobileMenu = false">
+   <div class="p-4">
+     <p class="px-3 mt-2 text-xs text-gray-600" x-show="sidebarOpen" x-transition>{{if hasPrefix .Version "v"}}{{.Version}}{{else if eq .Version "dev"}}dev{{else}}v{{.Version}}{{end}}</p>
+   </div>
+   <div class="border-t border-gray-800 p-4" @click="if($event.target.closest('a')) mobileMenu = false">
     <a href="/settings" title="Settings"
        class="sidebar-link flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors hover:bg-gray-800/50 hover:text-white relative group
               {{if eq .Page "settings"}}bg-gray-800 text-white{{end}}">
@@ -111,7 +116,6 @@
       <span x-show="sidebarOpen" x-transition>Settings</span>
       <span x-show="!sidebarOpen" class="sidebar-tooltip">Settings</span>
     </a>
-    <p class="px-3 mt-2 text-xs text-gray-600" x-show="sidebarOpen" x-transition>{{if hasPrefix .Version "v"}}{{.Version}}{{else if eq .Version "dev"}}dev{{else}}v{{.Version}}{{end}}</p>
   </div>
 </aside>
 {{end}}
