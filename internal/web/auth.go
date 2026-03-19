@@ -174,7 +174,8 @@ func (h *Handler) Root(w http.ResponseWriter, r *http.Request) {
 
 // AboutPage renders the public about page.
 func (h *Handler) AboutPage(w http.ResponseWriter, r *http.Request) {
-	data := PageData{Title: "About — WaLink", Page: "about", Version: h.version}
+	data := PageData{Title: "About — WaLink", Page: "about", Version: h.version,
+		Data: map[string]any{"RegistrationEnabled": h.regEnabled}}
 	h.render.Page(w, http.StatusOK, "about", data)
 }
 
@@ -207,13 +208,15 @@ func (h *Handler) PricingPage(w http.ResponseWriter, r *http.Request) {
 
 // TermsPage renders the public terms of service page.
 func (h *Handler) TermsPage(w http.ResponseWriter, r *http.Request) {
-	data := PageData{Title: "Terms of Service — WaLink", Page: "terms", Version: h.version}
+	data := PageData{Title: "Terms of Service — WaLink", Page: "terms", Version: h.version,
+		Data: map[string]any{"RegistrationEnabled": h.regEnabled}}
 	h.render.Page(w, http.StatusOK, "terms", data)
 }
 
 // PrivacyPage renders the public privacy policy page.
 func (h *Handler) PrivacyPage(w http.ResponseWriter, r *http.Request) {
-	data := PageData{Title: "Privacy Policy — WaLink", Page: "privacy", Version: h.version}
+	data := PageData{Title: "Privacy Policy — WaLink", Page: "privacy", Version: h.version,
+		Data: map[string]any{"RegistrationEnabled": h.regEnabled}}
 	h.render.Page(w, http.StatusOK, "privacy", data)
 }
 

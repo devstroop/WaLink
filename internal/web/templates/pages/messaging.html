@@ -6,7 +6,7 @@
     <div class="flex items-center gap-3">
       <h3 class="text-base font-semibold text-gray-900">Messaging</h3>
       {{if .Data.Accounts}}
-      <select x-model="sender" @change="onAccountChange()" class="text-sm border border-gray-300 rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-green-500 focus:border-green-500 max-w-[240px]">
+      <select x-model="sender" @change="onAccountChange()" class="text-sm border border-gray-300 rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-brand-500 focus:border-brand-500 max-w-[240px]">
         <option value="">Select account…</option>
         {{range .Data.Accounts}}
         <option value="{{.ID}}">{{.AccountName}}{{if .PhoneNumber}} ({{.PhoneNumber}}){{end}} {{if .Connected}}● Connected{{else}}○ Offline{{end}}</option>
@@ -21,7 +21,7 @@
         <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
         Bulk Send
       </button>
-      <button @click="showNewChat = true" :disabled="!sender" class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 disabled:opacity-50 transition-colors">
+      <button @click="showNewChat = true" :disabled="!sender" class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-brand-600 rounded-lg hover:bg-brand-700 disabled:opacity-50 transition-colors">
         <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
         New Chat
       </button>
@@ -36,7 +36,7 @@
       <!-- Tab bar -->
       <div class="flex border-b border-gray-200 shrink-0">
         <template x-for="t in ['chats','contacts','groups','channels']" :key="t">
-          <button @click="tab = t; loadTab()" :class="tab === t ? 'border-green-500 text-green-700 bg-green-50/50' : 'border-transparent text-gray-500 hover:text-gray-700'"
+          <button @click="tab = t; loadTab()" :class="tab === t ? 'border-brand-500 text-brand-700 bg-brand-50/50' : 'border-transparent text-gray-500 hover:text-gray-700'"
             class="flex-1 px-3 py-2.5 text-xs font-semibold uppercase tracking-wider border-b-2 transition-colors" x-text="t"></button>
         </template>
       </div>
@@ -45,7 +45,7 @@
       <div class="px-3 py-2 shrink-0">
         <div class="relative">
           <svg class="absolute left-2.5 top-2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
-          <input type="text" x-model="search" placeholder="Search…" class="w-full pl-8 pr-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500">
+          <input type="text" x-model="search" placeholder="Search…" class="w-full pl-8 pr-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-brand-500">
         </div>
       </div>
 
@@ -183,7 +183,7 @@
       <div x-show="activeChat" x-ref="msgScroll" class="flex-1 overflow-y-auto px-4 py-3 space-y-1">
         <!-- Load older -->
         <div x-show="hasOlder && !msgsLoading" class="text-center py-2">
-          <button @click="activeChatIsChannel ? loadOlderChannelMessages() : loadOlderMessages()" class="text-xs text-green-600 hover:text-green-700 font-medium">Load older messages</button>
+          <button @click="activeChatIsChannel ? loadOlderChannelMessages() : loadOlderMessages()" class="text-xs text-brand-600 hover:text-brand-700 font-medium">Load older messages</button>
         </div>
         <div x-show="msgsLoading" class="text-center py-4">
           <svg class="w-5 h-5 text-gray-300 animate-spin mx-auto" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
@@ -285,11 +285,11 @@
               </button>
             </div>
             <textarea x-model="composeText" @keydown.enter.prevent="if (!$event.shiftKey) sendMessage()" rows="1"
-              placeholder="Type a message…" class="w-full rounded-xl border border-gray-200 px-4 py-2.5 text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500 resize-none"
+              placeholder="Type a message…" class="w-full rounded-xl border border-gray-200 px-4 py-2.5 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 resize-none"
               style="min-height:40px; max-height:120px;" @input="$el.style.height='auto'; $el.style.height=$el.scrollHeight+'px'"></textarea>
           </div>
           <!-- Send -->
-          <button type="submit" :disabled="(!composeText.trim() && !composeFile) || sending" class="p-2.5 bg-green-600 text-white rounded-xl hover:bg-green-700 disabled:opacity-40 transition-colors shrink-0">
+          <button type="submit" :disabled="(!composeText.trim() && !composeFile) || sending" class="p-2.5 bg-brand-600 text-white rounded-xl hover:bg-brand-700 disabled:opacity-40 transition-colors shrink-0">
             <svg x-show="!sending" class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="m22 2-7 20-4-9-9-4z"/><path d="M22 2 11 13"/></svg>
             <svg x-show="sending" class="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
           </button>
@@ -305,11 +305,11 @@
       <h4 class="text-lg font-semibold text-gray-900">New Message</h4>
       <div>
         <label class="block text-sm font-medium text-gray-700 mb-1">Phone Number</label>
-        <input type="tel" x-model="newChatPhone" placeholder="919876543210" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500">
+        <input type="tel" x-model="newChatPhone" placeholder="919876543210" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500">
       </div>
       <div class="flex justify-end gap-2">
         <button @click="showNewChat = false" class="px-4 py-2 text-sm font-medium text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50">Cancel</button>
-        <button @click="startNewChat()" :disabled="!newChatPhone.trim()" class="px-4 py-2 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 disabled:opacity-50">Start Chat</button>
+        <button @click="startNewChat()" :disabled="!newChatPhone.trim()" class="px-4 py-2 text-sm font-medium text-white bg-brand-600 rounded-lg hover:bg-brand-700 disabled:opacity-50">Start Chat</button>
       </div>
     </div>
   </div>
@@ -321,20 +321,20 @@
       <h4 class="text-lg font-semibold text-gray-900">Bulk Campaign</h4>
       <div>
         <label class="block text-sm font-medium text-gray-700 mb-1">Recipients <span class="text-gray-400">(one phone per line)</span></label>
-        <textarea x-model="bulk.phones" rows="5" placeholder="919876543210&#10;919876543211" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono focus:ring-2 focus:ring-green-500 focus:border-green-500"></textarea>
+        <textarea x-model="bulk.phones" rows="5" placeholder="919876543210&#10;919876543211" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono focus:ring-2 focus:ring-brand-500 focus:border-brand-500"></textarea>
         <p class="text-xs text-gray-400 mt-1"><span x-text="bulk.phones.split('\\n').filter(l => l.trim()).length"></span> recipient(s)</p>
       </div>
       <div>
         <label class="block text-sm font-medium text-gray-700 mb-1">Message</label>
-        <textarea x-model="bulk.text" rows="3" placeholder="Type your message…" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500"></textarea>
+        <textarea x-model="bulk.text" rows="3" placeholder="Type your message…" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500"></textarea>
       </div>
       <div>
         <label class="block text-sm font-medium text-gray-700 mb-1">Attachment <span class="text-gray-400">(optional)</span></label>
-        <input type="file" @change="bulk.file = $event.target.files[0]" class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-green-50 file:text-green-700 hover:file:bg-green-100">
+        <input type="file" @change="bulk.file = $event.target.files[0]" class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-brand-50 file:text-brand-700 hover:file:bg-brand-100">
       </div>
       <div>
         <label class="block text-sm font-medium text-gray-700 mb-1">Delay between messages <span class="text-gray-400">(seconds)</span></label>
-        <input type="number" x-model.number="bulk.delay" min="1" max="60" class="rounded-lg border border-gray-300 px-3 py-2 text-sm w-24 focus:ring-2 focus:ring-green-500 focus:border-green-500">
+        <input type="number" x-model.number="bulk.delay" min="1" max="60" class="rounded-lg border border-gray-300 px-3 py-2 text-sm w-24 focus:ring-2 focus:ring-brand-500 focus:border-brand-500">
       </div>
       <!-- Progress -->
       <div x-show="bulkRunning || bulkDone" class="space-y-2">
@@ -352,7 +352,7 @@
       <div class="flex justify-end gap-2">
         <button x-show="bulkRunning" @click="bulkAbort = true" class="px-4 py-2 text-sm font-medium text-red-600 border border-red-200 rounded-lg hover:bg-red-50">Abort</button>
         <button @click="showBulk = false" x-show="!bulkRunning" class="px-4 py-2 text-sm font-medium text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50">Close</button>
-        <button @click="sendBulk()" :disabled="!sender || bulkRunning || !bulk.phones.trim() || !bulk.text.trim()" class="px-4 py-2 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 disabled:opacity-50">
+        <button @click="sendBulk()" :disabled="!sender || bulkRunning || !bulk.phones.trim() || !bulk.text.trim()" class="px-4 py-2 text-sm font-medium text-white bg-brand-600 rounded-lg hover:bg-brand-700 disabled:opacity-50">
           <span x-text="bulkRunning ? 'Sending…' : 'Start Campaign'"></span>
         </button>
       </div>

@@ -1,12 +1,18 @@
 {{define "component/stat-card"}}
 {{/* Usage: {{template "component/stat-card" (dict "label" "Accounts" "value" "12" "icon" "users" "color" "brand")}} */}}
-<div class="bg-white rounded-xl border border-gray-200 p-5">
+<div class="bg-white rounded-xl border border-gray-200 p-5 hover:shadow-md transition-shadow">
   <div class="flex items-center justify-between">
     <div>
       <p class="text-sm text-gray-500">{{.label}}</p>
       <p class="text-2xl font-bold text-gray-900 mt-1">{{.value}}</p>
     </div>
-    <div class="w-10 h-10 rounded-lg bg-{{.color}}-50 text-{{.color}}-600 flex items-center justify-center">
+    <div class="w-10 h-10 rounded-lg flex items-center justify-center
+      {{if eq .color "brand"}}bg-emerald-50 text-emerald-600{{end}}
+      {{if eq .color "green"}}bg-green-50 text-green-600{{end}}
+      {{if eq .color "yellow"}}bg-amber-50 text-amber-600{{end}}
+      {{if eq .color "blue"}}bg-blue-50 text-blue-600{{end}}
+      {{if eq .color "red"}}bg-red-50 text-red-600{{end}}
+      {{if eq .color "purple"}}bg-purple-50 text-purple-600{{end}}">
       {{if eq .icon "accounts"}}
       <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewBox="0 0 24 24"><path d="M22 17a2 2 0 0 1-2 2H6.828a2 2 0 0 0-1.414.586l-2.202 2.202A.71.71 0 0 1 2 21.286V5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2z"/></svg>
       {{else if eq .icon "connected"}}

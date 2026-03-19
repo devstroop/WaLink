@@ -41,20 +41,21 @@
       <div>
         <label for="current" class="block text-sm font-medium text-gray-700 mb-1">Current Password</label>
         <input type="password" id="current" name="current_password" required autocomplete="current-password"
-          class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500">
+          class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500">
       </div>
       <div>
         <label for="new" class="block text-sm font-medium text-gray-700 mb-1">New Password</label>
         <input type="password" id="new" name="new_password" required minlength="8" autocomplete="new-password"
-          class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500">
+          class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500">
       </div>
       <div>
         <label for="confirm" class="block text-sm font-medium text-gray-700 mb-1">Confirm New Password</label>
         <input type="password" id="confirm" name="confirm_password" required minlength="8" autocomplete="new-password"
-          class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500">
+          class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500">
       </div>
       <button type="submit"
-        class="inline-flex items-center px-4 py-2 rounded-lg text-sm font-medium text-white bg-green-600 hover:bg-green-700 focus:ring-2 focus:ring-green-500 focus:ring-offset-2 transition-colors">
+        class="btn-loading inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-white bg-brand-600 hover:bg-brand-700 focus:ring-2 focus:ring-brand-500 focus:ring-offset-2 transition-colors">
+        <svg class="btn-spinner hidden w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
         Update Password
       </button>
     </form>

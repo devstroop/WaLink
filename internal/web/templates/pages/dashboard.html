@@ -1,7 +1,13 @@
 {{define "content"}}
 <div class="space-y-6">
+  <!-- Welcome header -->
+  <div class="bg-gradient-to-r from-brand-600 to-brand-700 rounded-2xl p-6 sm:p-8 text-white">
+    <h2 class="text-xl sm:text-2xl font-bold">Welcome back{{if .Identity}}, {{.Identity.Username}}{{end}}</h2>
+    <p class="mt-1 text-brand-100 text-sm">Here's an overview of your WhatsApp accounts.</p>
+  </div>
+
   <!-- Stats -->
-  <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+  <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
     {{template "component/stat-card" (dict "label" "Total Accounts" "value" .Data.TotalAccounts "icon" "accounts" "color" "brand")}}
     {{template "component/stat-card" (dict "label" "Connected" "value" .Data.Connected "icon" "connected" "color" "green")}}
     {{template "component/stat-card" (dict "label" "Disconnected" "value" .Data.Disconnected "icon" "disconnected" "color" "yellow")}}
