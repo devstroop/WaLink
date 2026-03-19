@@ -2,11 +2,12 @@
 <div x-data="waApp()" x-init="init()" class="-m-6 flex flex-col" style="height: calc(100vh - 4rem);">
 
   <!-- Top bar: account picker + view tabs -->
-  <div class="flex items-center justify-between bg-white border-b border-gray-200 px-4 py-2 shrink-0">
-    <div class="flex items-center gap-3">
-      <h3 class="text-base font-semibold text-gray-900">Messaging</h3>
+  <div class="flex flex-wrap items-center justify-between gap-2 bg-white border-b border-gray-200 px-4 py-2 shrink-0"
+       :class="activeChat ? 'hidden md:flex' : 'flex'">
+    <div class="flex items-center gap-3 min-w-0">
+      <h3 class="text-base font-semibold text-gray-900 shrink-0">Messaging</h3>
       {{if .Data.Accounts}}
-      <select x-model="sender" @change="onAccountChange()" class="text-sm border border-gray-300 rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-brand-500 focus:border-brand-500 max-w-[240px]">
+      <select x-model="sender" @change="onAccountChange()" class="text-sm border border-gray-300 rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-brand-500 focus:border-brand-500 min-w-0 max-w-[180px] md:max-w-[240px]">
         <option value="">Select account…</option>
         {{range .Data.Accounts}}
         <option value="{{.ID}}">{{.AccountName}}{{if .PhoneNumber}} ({{.PhoneNumber}}){{end}} {{if .Connected}}● Connected{{else}}○ Offline{{end}}</option>
@@ -16,7 +17,7 @@
       <span class="text-sm text-gray-400">No accounts. <a href="/accounts" class="text-brand-600 hover:underline">Create one</a></span>
       {{end}}
     </div>
-    <div class="flex items-center gap-1">
+    <div class="flex items-center gap-1 shrink-0">
       <button @click="showBulk = true" class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors">
         <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
         Bulk Send
@@ -32,7 +33,8 @@
   <div class="flex flex-1 min-h-0">
 
     <!-- Left panel: chat list + tabs -->
-    <div class="w-80 xl:w-96 border-r border-gray-200 flex flex-col bg-white shrink-0">
+    <div class="w-full md:w-80 xl:w-96 border-r border-gray-200 flex flex-col bg-white md:shrink-0"
+         :class="activeChat ? 'hidden md:flex' : 'flex'">
       <!-- Tab bar -->
       <div class="flex border-b border-gray-200 shrink-0">
         <template x-for="t in ['chats','contacts','groups','channels']" :key="t">
@@ -146,7 +148,8 @@
     </div>
 
     <!-- Right panel: conversation view -->
-    <div class="flex-1 flex flex-col bg-gray-50 min-w-0">
+    <div class="flex-1 flex flex-col bg-gray-50 min-w-0"
+         :class="activeChat ? 'flex' : 'hidden md:flex'">
 
       <!-- No chat selected -->
       <div x-show="!activeChat" class="flex-1 flex flex-col items-center justify-center text-gray-400">
@@ -157,6 +160,11 @@
       <!-- Chat header -->
       <div x-show="activeChat" class="flex items-center justify-between bg-white border-b border-gray-200 px-4 py-2.5 shrink-0">
         <div class="flex items-center gap-3 min-w-0">
+          <!-- Back button (mobile only) -->
+          <button @click="activeChat = ''; activeChatName = ''; activeChatIsGroup = false; activeChatIsChannel = false; messages = [];"
+                  class="md:hidden p-1.5 -ml-1 rounded-lg text-gray-500 hover:bg-gray-100 hover:text-gray-700 transition-colors shrink-0">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/></svg>
+          </button>
           <div class="w-9 h-9 rounded-full flex items-center justify-center text-sm font-semibold shrink-0"
             :class="activeChatIsChannel ? 'bg-purple-100 text-purple-700' : (activeChatIsGroup ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600')">
             <span x-text="activeChatName ? activeChatName.charAt(0).toUpperCase() : '?'"></span>
