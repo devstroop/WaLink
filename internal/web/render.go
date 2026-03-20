@@ -189,6 +189,17 @@ func funcMap() template.FuncMap {
 			}
 			return pct
 		},
+		"fmtDate": func(s string) string {
+			if s == "" {
+				return ""
+			}
+			for _, layout := range []string{time.RFC3339, "2006-01-02T15:04:05Z07:00", "2006-01-02"} {
+				if t, err := time.Parse(layout, s); err == nil {
+					return t.Format("Jan 2, 2006")
+				}
+			}
+			return s
+		},
 	}
 }
 

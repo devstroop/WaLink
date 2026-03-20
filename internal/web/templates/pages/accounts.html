@@ -1,5 +1,5 @@
 {{define "content"}}
-<div class="space-y-6">
+<div class="space-y-6" x-init="if(new URLSearchParams(location.search).get('new')==='1') $nextTick(()=>$refs.createModal.showModal())">
   <!-- Header -->
   <div class="flex items-center justify-between">
     <div>

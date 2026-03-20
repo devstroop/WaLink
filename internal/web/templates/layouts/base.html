@@ -32,21 +32,24 @@
       x-data="{
         sidebarOpen: localStorage.getItem('sidebarOpen') !== 'false',
         mobileMenu: false,
-        grpTools:   localStorage.getItem('grpTools')   !== 'false',
-        grpBilling: localStorage.getItem('grpBilling') !== 'false',
-        grpAdmin:   localStorage.getItem('grpAdmin')   !== 'false',
+        grpAccounts: localStorage.getItem('grpAccounts') !== 'false',
+        grpTools:    localStorage.getItem('grpTools')    !== 'false',
+        grpBilling:  localStorage.getItem('grpBilling')  !== 'false',
+        grpAdmin:    localStorage.getItem('grpAdmin')    !== 'false',
         init() {
           const p = window.location.pathname;
-          if (p.startsWith('/admin/billing'))              this.grpBilling = true;
-          if (p === '/admin/users' || p === '/admin/roles') this.grpAdmin   = true;
-          if (p === '/api-keys' || p === '/mcp-server')    this.grpTools   = true;
+          if (p === '/accounts' || p.startsWith('/accounts/') || p === '/whatsapp') this.grpAccounts = true;
+          if (p.startsWith('/admin/billing'))                  this.grpBilling  = true;
+          if (p === '/admin/users' || p === '/admin/roles')    this.grpAdmin    = true;
+          if (p === '/api-keys' || p === '/mcp-server')        this.grpTools    = true;
         }
       }"
       x-effect="
-        localStorage.setItem('sidebarOpen', sidebarOpen);
-        localStorage.setItem('grpTools',    grpTools);
-        localStorage.setItem('grpBilling',  grpBilling);
-        localStorage.setItem('grpAdmin',    grpAdmin);
+        localStorage.setItem('sidebarOpen',  sidebarOpen);
+        localStorage.setItem('grpAccounts',  grpAccounts);
+        localStorage.setItem('grpTools',     grpTools);
+        localStorage.setItem('grpBilling',   grpBilling);
+        localStorage.setItem('grpAdmin',     grpAdmin);
       "
       hx-boost="true">
   <!-- Mobile sidebar backdrop -->

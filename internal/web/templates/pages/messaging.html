@@ -5,24 +5,61 @@
   <div class="flex flex-wrap items-center justify-between gap-2 bg-white border-b border-gray-200 px-4 py-2 shrink-0"
        :class="activeChat ? 'hidden md:flex' : 'flex'">
     <div class="flex items-center gap-3 min-w-0">
-      <h3 class="text-base font-semibold text-gray-900 shrink-0">Messaging</h3>
-      {{if .Data.Accounts}}
-      <select x-model="sender" @change="onAccountChange()" class="text-sm border border-gray-300 rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-brand-500 focus:border-brand-500 min-w-0 max-w-[180px] md:max-w-[240px]">
-        <option value="">Select account…</option>
-        {{range .Data.Accounts}}
-        <option value="{{.ID}}">{{.AccountName}}{{if .PhoneNumber}} ({{.PhoneNumber}}){{end}} {{if .Connected}}● Connected{{else}}○ Offline{{end}}</option>
-        {{end}}
-      </select>
-      {{else}}
-      <span class="text-sm text-gray-400">No accounts. <a href="/accounts" class="text-brand-600 hover:underline">Create one</a></span>
-      {{end}}
+      <h3 class="text-base text-gray-900 shrink-0">Account</h3>
+      <!-- Custom account picker -->
+      <div x-data="{ open: false }" @keydown.escape.window="open = false" class="relative">
+        <button @click="open = !open" type="button"
+                class="flex items-center gap-2 pl-3 pr-2 py-1.5 border rounded-xl text-left transition-all max-w-[260px] min-w-[160px]"
+                :class="open ? 'border-brand-400 ring-2 ring-brand-100 bg-white' : (sender && !senderConnected ? 'border-amber-300 bg-amber-50 hover:border-amber-400' : 'border-gray-200 bg-white hover:border-gray-300')">
+          <template x-if="!sender">
+            <span class="flex-1 text-sm text-gray-400 truncate">Select account…</span>
+          </template>
+          <template x-if="sender">
+            <div class="flex items-center gap-2 flex-1 min-w-0">
+              <span class="w-2 h-2 rounded-full shrink-0" :class="senderConnected ? 'bg-green-500' : 'bg-amber-400'"></span>
+              <span class="text-sm font-medium text-gray-900 truncate" x-text="selectedAccountName"></span>
+            </div>
+          </template>
+          <svg class="w-3.5 h-3.5 text-gray-400 shrink-0 transition-transform ml-1" :class="open ? 'rotate-180' : ''"
+               fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg>
+        </button>
+        <!-- Dropdown panel -->
+        <div x-show="open" @click.outside="open = false"
+             x-transition:enter="transition ease-out duration-100" x-transition:enter-start="opacity-0 scale-95" x-transition:enter-end="opacity-100 scale-100"
+             x-transition:leave="transition ease-in duration-75" x-transition:leave-start="opacity-100 scale-100" x-transition:leave-end="opacity-0 scale-95"
+             class="absolute top-full left-0 mt-1.5 w-72 bg-white border border-gray-200 rounded-xl shadow-xl z-50 py-1.5 overflow-hidden origin-top-left">
+          {{if .Data.Accounts}}
+          {{range .Data.Accounts}}
+          <button type="button"
+                  @click="sender = '{{.ID}}'; open = false; onAccountChange()"
+                  class="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-gray-50 transition-colors text-left group"
+                  :class="sender === '{{.ID}}' ? 'bg-brand-50' : ''">
+            <div class="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0 transition-all"
+                 :class="sender === '{{.ID}}' ? 'bg-brand-600 text-white' : 'bg-gray-100 text-gray-600'">
+              {{if .AccountName}}{{slice .AccountName 0 1}}{{else}}?{{end}}
+            </div>
+            <div class="flex-1 min-w-0">
+              <p class="text-sm font-medium text-gray-900 truncate">{{.AccountName}}</p>
+              {{if .PhoneNumber}}<p class="text-xs text-gray-400">{{.PhoneNumber}}</p>{{end}}
+            </div>
+            <span class="inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-full shrink-0 {{if .Connected}}text-green-700 bg-green-100{{else}}text-amber-700 bg-amber-100{{end}}">
+              <span class="w-1.5 h-1.5 rounded-full {{if .Connected}}bg-green-500{{else}}bg-amber-400{{end}}"></span>
+              {{if .Connected}}Online{{else}}Offline{{end}}
+            </span>
+          </button>
+          {{end}}
+          {{else}}
+          <div class="px-4 py-3 text-sm text-gray-400 text-center">No accounts yet. <a href="/accounts" class="text-brand-600 hover:underline">Create one</a></div>
+          {{end}}
+        </div>
+      </div>
     </div>
     <div class="flex items-center gap-1 shrink-0">
-      <button @click="showBulk = true" class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors">
+      <button @click="showBulk = true" :disabled="!sender || !senderConnected" class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
         <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
         Bulk Send
       </button>
-      <button @click="showNewChat = true" :disabled="!sender" class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-brand-600 rounded-lg hover:bg-brand-700 disabled:opacity-50 transition-colors">
+      <button @click="showNewChat = true" :disabled="!sender || !senderConnected" class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-brand-600 rounded-lg hover:bg-brand-700 disabled:opacity-50 transition-colors">
         <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
         New Chat
       </button>
@@ -38,13 +75,14 @@
       <!-- Tab bar -->
       <div class="flex border-b border-gray-200 shrink-0">
         <template x-for="t in ['chats','contacts','groups','channels']" :key="t">
-          <button @click="tab = t; loadTab()" :class="tab === t ? 'border-brand-500 text-brand-700 bg-brand-50/50' : 'border-transparent text-gray-500 hover:text-gray-700'"
-            class="flex-1 px-3 py-2.5 text-xs font-semibold uppercase tracking-wider border-b-2 transition-colors" x-text="t"></button>
+          <button @click="if(senderConnected) { tab = t; loadTab(); }" :disabled="!senderConnected"
+            :class="tab === t ? 'border-brand-500 text-brand-700 bg-brand-50/50' : 'border-transparent text-gray-500 hover:text-gray-700'"
+            class="flex-1 px-3 py-2.5 text-xs font-semibold uppercase tracking-wider border-b-2 transition-colors disabled:opacity-40 disabled:cursor-not-allowed" x-text="t"></button>
         </template>
       </div>
 
       <!-- Search bar -->
-      <div class="px-3 py-2 shrink-0">
+      <div x-show="senderConnected" class="px-3 py-2 shrink-0">
         <div class="relative">
           <svg class="absolute left-2.5 top-2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
           <input type="text" x-model="search" placeholder="Search…" class="w-full pl-8 pr-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-brand-500">
@@ -59,11 +97,25 @@
         </div>
         <!-- No account -->
         <div x-show="!sender && !loading" class="px-4 py-12 text-center text-sm text-gray-400">Select an account to begin</div>
+        <!-- Account offline -->
+        <div x-show="sender && !senderConnected && !loading" class="flex flex-col items-center justify-center px-6 py-10 text-center space-y-4">
+          <div class="w-14 h-14 rounded-full bg-amber-100 flex items-center justify-center">
+            <svg class="w-7 h-7 text-amber-500" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M18.364 5.636a9 9 0 010 12.728M5.636 5.636a9 9 0 000 12.728M15.536 8.464a5 5 0 010 7.072M8.464 8.464a5 5 0 000 7.072M12 12h.01"/></svg>
+          </div>
+          <div>
+            <p class="text-sm font-semibold text-gray-800">Account not connected</p>
+            <p class="text-xs text-gray-500 mt-1">This WhatsApp account is offline.<br>Connect it to start messaging.</p>
+          </div>
+          <a href="/accounts" class="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-medium text-white bg-brand-600 rounded-lg hover:bg-brand-700 transition-colors">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
+            Go to Accounts
+          </a>
+        </div>
         <!-- Error -->
         <div x-show="listError && !loading" class="px-4 py-8 text-center text-sm text-red-500" x-text="listError"></div>
 
         <!-- Chats tab -->
-        <div x-show="tab === 'chats' && !loading && sender">
+        <div x-show="tab === 'chats' && !loading && sender && senderConnected">
           <template x-for="c in filteredChats" :key="c.id">
             <button @click="openChat(c.id, c.name, c.is_group)" class="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition-colors text-left border-b border-gray-100"
               :class="activeChat === c.id ? 'bg-green-50 hover:bg-green-50' : ''">
@@ -83,11 +135,11 @@
               </div>
             </button>
           </template>
-          <div x-show="filteredChats.length === 0 && !loading && sender" class="px-4 py-12 text-center text-sm text-gray-400">No chats found</div>
+          <div x-show="filteredChats.length === 0 && !loading && sender && senderConnected" class="px-4 py-12 text-center text-sm text-gray-400">No chats found</div>
         </div>
 
         <!-- Contacts tab -->
-        <div x-show="tab === 'contacts' && !loading && sender">
+        <div x-show="tab === 'contacts' && !loading && sender && senderConnected">
           <template x-for="c in filteredContacts" :key="c.id">
             <button @click="openChat(c.id, contactName(c), false)" class="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition-colors text-left border-b border-gray-100"
               :class="activeChat === c.id ? 'bg-green-50 hover:bg-green-50' : ''">
@@ -100,11 +152,11 @@
               </div>
             </button>
           </template>
-          <div x-show="filteredContacts.length === 0 && !loading && sender" class="px-4 py-12 text-center text-sm text-gray-400">No contacts found</div>
+          <div x-show="filteredContacts.length === 0 && !loading && sender && senderConnected" class="px-4 py-12 text-center text-sm text-gray-400">No contacts found</div>
         </div>
 
         <!-- Groups tab -->
-        <div x-show="tab === 'groups' && !loading && sender">
+        <div x-show="tab === 'groups' && !loading && sender && senderConnected">
           <template x-for="g in filteredGroups" :key="g.id">
             <button @click="openChat(g.id, g.name, true)" class="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition-colors text-left border-b border-gray-100"
               :class="activeChat === g.id ? 'bg-green-50 hover:bg-green-50' : ''">
@@ -117,11 +169,11 @@
               </div>
             </button>
           </template>
-          <div x-show="filteredGroups.length === 0 && !loading && sender" class="px-4 py-12 text-center text-sm text-gray-400">No groups found</div>
+          <div x-show="filteredGroups.length === 0 && !loading && sender && senderConnected" class="px-4 py-12 text-center text-sm text-gray-400">No groups found</div>
         </div>
 
         <!-- Channels tab -->
-        <div x-show="tab === 'channels' && !loading && sender">
+        <div x-show="tab === 'channels' && !loading && sender && senderConnected">
           <template x-for="ch in filteredChannels" :key="ch.id">
             <button @click="openChannel(ch)" class="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition-colors text-left border-b border-gray-100"
               :class="activeChat === ch.id ? 'bg-green-50 hover:bg-green-50' : ''">
@@ -142,7 +194,7 @@
               </div>
             </button>
           </template>
-          <div x-show="filteredChannels.length === 0 && !loading && sender" class="px-4 py-12 text-center text-sm text-gray-400">No channels found</div>
+          <div x-show="filteredChannels.length === 0 && !loading && sender && senderConnected" class="px-4 py-12 text-center text-sm text-gray-400">No channels found</div>
         </div>
       </div>
     </div>
@@ -151,8 +203,35 @@
     <div class="flex-1 flex flex-col bg-gray-50 min-w-0"
          :class="activeChat ? 'flex' : 'hidden md:flex'">
 
-      <!-- No chat selected -->
-      <div x-show="!activeChat" class="flex-1 flex flex-col items-center justify-center text-gray-400">
+      <!-- No chat selected + account not connected -->
+      <div x-show="!activeChat && sender && !senderConnected" class="flex-1 flex flex-col items-center justify-center px-8 py-12 text-center space-y-5">
+        <div class="relative">
+          <svg class="w-20 h-20 text-gray-200" fill="none" stroke="currentColor" stroke-width="1" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+          <span class="absolute -bottom-1 -right-1 w-7 h-7 rounded-full bg-amber-100 border-2 border-white flex items-center justify-center">
+            <svg class="w-3.5 h-3.5 text-amber-500" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg>
+          </span>
+        </div>
+        <div>
+          <p class="text-base font-semibold text-gray-800">This account is offline</p>
+          <p class="text-sm text-gray-500 mt-1.5 leading-relaxed">The selected WhatsApp account isn't connected.<br>Scan the QR code on the Accounts page to reconnect.</p>
+        </div>
+        <div class="flex flex-col sm:flex-row gap-2">
+          <a href="/accounts" class="inline-flex items-center justify-center gap-2 px-5 py-2.5 text-sm font-medium text-white bg-brand-600 rounded-xl hover:bg-brand-700 transition-colors">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><path d="M14 17h7M17 14v7"/></svg>
+            Connect via QR
+          </a>
+          <button @click="sender = ''; senderConnected = false" class="inline-flex items-center justify-center gap-2 px-5 py-2.5 text-sm font-medium text-gray-600 bg-gray-100 rounded-xl hover:bg-gray-200 transition-colors">
+            Switch Account
+          </button>
+        </div>
+      </div>
+      <!-- No chat selected + no account selected -->
+      <div x-show="!activeChat && !sender" class="flex-1 flex flex-col items-center justify-center text-gray-400">
+        <svg class="w-16 h-16 mb-4 text-gray-200" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+        <p class="text-sm">Select an account to start messaging</p>
+      </div>
+      <!-- No chat selected + account connected -->
+      <div x-show="!activeChat && sender && senderConnected" class="flex-1 flex flex-col items-center justify-center text-gray-400">
         <svg class="w-16 h-16 mb-4 text-gray-200" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
         <p class="text-sm">Select a chat to start messaging</p>
       </div>
@@ -275,8 +354,13 @@
         <p class="text-xs text-purple-600">This is a read-only channel. Only admins can post messages.</p>
       </div>
 
+      <!-- Account offline compose blocker -->
+      <div x-show="activeChat && !senderConnected" class="bg-amber-50 border-t border-amber-200 px-4 py-3 shrink-0 flex items-center gap-3">
+        <svg class="w-4 h-4 text-amber-500 shrink-0" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg>
+        <p class="text-xs text-amber-700 flex-1">Account is offline. <a href="/accounts" class="font-semibold underline hover:no-underline">Reconnect it</a> to send messages.</p>
+      </div>
       <!-- Compose area -->
-      <div x-show="activeChat && !activeChatIsChannel" class="bg-white border-t border-gray-200 px-4 py-3 shrink-0">
+      <div x-show="activeChat && !activeChatIsChannel && senderConnected" class="bg-white border-t border-gray-200 px-4 py-3 shrink-0">
         <form @submit.prevent="sendMessage()" class="flex items-end gap-2">
           <!-- File attach -->
           <label class="p-2 text-gray-400 hover:text-gray-600 cursor-pointer rounded-lg hover:bg-gray-100 transition-colors shrink-0">
@@ -369,11 +453,26 @@
 </div>
 
 <script>
+window._accountConnected = {
+  {{range .Data.Accounts}}"{{.ID}}": {{if .Connected}}true{{else}}false{{end}},
+  {{end}}
+};
+window._accountMeta = {
+  {{range .Data.Accounts}}"{{.ID}}": { name: "{{.AccountName}}", phone: "{{.PhoneNumber}}" },
+  {{end}}
+};
 function waApp() {
   return {
-    sender: '', tab: 'chats', search: '',
+    sender: '', senderConnected: false, tab: 'chats', search: '',
     loading: false, listError: '',
     chats: [], contacts: [], groups: [], channels: [],
+
+    get selectedAccountName() {
+      if (!this.sender) return '';
+      const m = window._accountMeta[this.sender];
+      if (!m) return this.sender;
+      return m.name + (m.phone ? ' · ' + m.phone : '');
+    },
     activeChat: '', activeChatName: '', activeChatIsGroup: false, activeChatIsChannel: false,
     messages: [], msgsLoading: false, hasOlder: false, oldestTs: '',
     channelMessages: [], channelOldestServerID: 0,
@@ -391,7 +490,7 @@ function waApp() {
       const sel = document.querySelector('select[x-model="sender"]');
       if (sel) {
         const opts = [...sel.options].filter(o => o.value && o.textContent.includes('Connected'));
-        if (opts.length) { this.sender = opts[0].value; this.onAccountChange(); }
+        if (opts.length) { this.sender = opts[0].value; this.senderConnected = true; this.onAccountChange(); }
       }
     },
 
@@ -399,7 +498,9 @@ function waApp() {
       this.activeChat = '';
       this.messages = [];
       this.replyTo = null;
-      if (this.sender) this.loadTab();
+      this.chats = []; this.contacts = []; this.groups = []; this.channels = [];
+      this.senderConnected = this.sender ? (window._accountConnected[this.sender] === true) : false;
+      if (this.sender && this.senderConnected) this.loadTab();
     },
 
     async loadTab() {
@@ -407,16 +508,16 @@ function waApp() {
       this.loading = true; this.listError = '';
       try {
         if (this.tab === 'chats') {
-          const r = await this.api('GET', `/messaging/${this.sender}/chats`);
+          const r = await this.api('GET', `/whatsapp/${this.sender}/chats`);
           this.chats = r.chats || [];
         } else if (this.tab === 'contacts') {
-          const r = await this.api('GET', `/messaging/${this.sender}/contacts`);
+          const r = await this.api('GET', `/whatsapp/${this.sender}/contacts`);
           this.contacts = r || [];
         } else if (this.tab === 'groups') {
-          const r = await this.api('GET', `/messaging/${this.sender}/groups`);
+          const r = await this.api('GET', `/whatsapp/${this.sender}/groups`);
           this.groups = r || [];
         } else if (this.tab === 'channels') {
-          const r = await this.api('GET', `/messaging/${this.sender}/newsletters`);
+          const r = await this.api('GET', `/whatsapp/${this.sender}/newsletters`);
           this.channels = r || [];
         }
       } catch (e) { this.listError = e.message; }
@@ -451,7 +552,7 @@ function waApp() {
     async loadChannelMessages() {
       this.msgsLoading = true;
       try {
-        const r = await this.api('GET', `/messaging/${this.sender}/newsletter-messages?jid=${encodeURIComponent(this.activeChat)}`);
+        const r = await this.api('GET', `/whatsapp/${this.sender}/newsletter-messages?jid=${encodeURIComponent(this.activeChat)}`);
         const raw = r.messages || [];
         this.messages = raw.slice().reverse();
         this.hasOlder = raw.length >= 50;
@@ -466,7 +567,7 @@ function waApp() {
       if (!this.channelOldestServerID) return;
       this.msgsLoading = true;
       try {
-        const r = await this.api('GET', `/messaging/${this.sender}/newsletter-messages?jid=${encodeURIComponent(this.activeChat)}&before=${this.channelOldestServerID}`);
+        const r = await this.api('GET', `/whatsapp/${this.sender}/newsletter-messages?jid=${encodeURIComponent(this.activeChat)}&before=${this.channelOldestServerID}`);
         const raw = r.messages || [];
         const older = raw.slice().reverse();
         this.messages = [...older, ...this.messages];
@@ -486,7 +587,7 @@ function waApp() {
       this.activeChat = '';
       this.messages = [];
       try {
-        await this.api('POST', `/messaging/${this.sender}/newsletter-unfollow`, { jid: channelId });
+        await this.api('POST', `/whatsapp/${this.sender}/newsletter-unfollow`, { jid: channelId });
       } catch (e) {
         // Revert on failure
         if (channelBackup) this.channels.splice(channelIdx, 0, channelBackup);
@@ -497,7 +598,7 @@ function waApp() {
     async loadMessages() {
       this.msgsLoading = true;
       try {
-        const r = await this.api('GET', `/messaging/${this.sender}/messages?chat=${encodeURIComponent(this.activeChat)}`);
+        const r = await this.api('GET', `/whatsapp/${this.sender}/messages?chat=${encodeURIComponent(this.activeChat)}`);
         const raw = r.messages || [];
         this.messages = raw.slice().reverse();
         this.hasOlder = raw.length >= 50;
@@ -512,7 +613,7 @@ function waApp() {
     async pollMessages() {
       if (!this.activeChat || !this.sender) return;
       try {
-        const r = await this.api('GET', `/messaging/${this.sender}/messages?chat=${encodeURIComponent(this.activeChat)}`);
+        const r = await this.api('GET', `/whatsapp/${this.sender}/messages?chat=${encodeURIComponent(this.activeChat)}`);
         const raw = r.messages || [];
         const fresh = raw.slice().reverse();
         if (fresh.length === 0) return;
@@ -554,7 +655,7 @@ function waApp() {
       if (!this.oldestTs) return;
       this.msgsLoading = true;
       try {
-        const r = await this.api('GET', `/messaging/${this.sender}/messages?chat=${encodeURIComponent(this.activeChat)}&before=${encodeURIComponent(this.oldestTs)}`);
+        const r = await this.api('GET', `/whatsapp/${this.sender}/messages?chat=${encodeURIComponent(this.activeChat)}&before=${encodeURIComponent(this.oldestTs)}`);
         const raw = r.messages || [];
         const older = raw.slice().reverse();
         this.messages = [...older, ...this.messages];
@@ -609,7 +710,7 @@ function waApp() {
         fd.append('chat', this.activeChat);
         if (text.trim()) fd.append('text', text);
         if (file) fd.append('file', file);
-        const res = await fetch(`/messaging/${this.sender}/send`, { method: 'POST', body: fd, credentials: 'same-origin' });
+        const res = await fetch(`/whatsapp/${this.sender}/send`, { method: 'POST', body: fd, credentials: 'same-origin' });
         if (!res.ok) { const b = await res.json().catch(() => ({})); throw new Error(b.error || res.statusText); }
         const data = await res.json();
         // Update optimistic message with server data
@@ -648,7 +749,7 @@ function waApp() {
       const prev = msg.reactions[emoji] || 0;
       msg.reactions = { ...msg.reactions, [emoji]: prev + 1 };
       try {
-        await this.api('POST', `/messaging/${this.sender}/react`, { chat_jid: this.activeChat, message_id: msg.id, emoji });
+        await this.api('POST', `/whatsapp/${this.sender}/react`, { chat_jid: this.activeChat, message_id: msg.id, emoji });
       } catch (e) {
         // Revert on failure
         const cur = msg.reactions[emoji] || 1;
@@ -680,7 +781,7 @@ function waApp() {
           fd.append('phone', phone);
           fd.append('text', this.bulk.text);
           if (this.bulk.file) fd.append('file', this.bulk.file);
-          const res = await fetch(`/messaging/${this.sender}/send`, { method: 'POST', body: fd, credentials: 'same-origin' });
+          const res = await fetch(`/whatsapp/${this.sender}/send`, { method: 'POST', body: fd, credentials: 'same-origin' });
           if (!res.ok) { const b = await res.json().catch(() => ({})); throw new Error(b.error || res.statusText); }
           this.bulkSent++;
         } catch (e) {
@@ -745,7 +846,7 @@ function waApp() {
       const unread = this.messages.filter(m => !m.from_me).map(m => m.id || m.message_id).filter(Boolean);
       if (!unread.length) return;
       // Fire-and-forget — don't block the UI
-      this.api('POST', `/messaging/${this.sender}/mark-read`, { chat_jid: this.activeChat, message_ids: unread }).catch(() => {});
+      this.api('POST', `/whatsapp/${this.sender}/mark-read`, { chat_jid: this.activeChat, message_ids: unread }).catch(() => {});
       // Clear the unread badge in the chat list
       const chat = this.chats.find(c => c.id === this.activeChat);
       if (chat) chat.unread_count = 0;

@@ -473,7 +473,7 @@ func (h *Handler) Messaging(w http.ResponseWriter, r *http.Request) {
 		rows = append(rows, h.infoToRow(a))
 	}
 
-	pd := h.page(w, r, "Messaging", "messaging", map[string]any{
+	pd := h.page(w, r, "WhatsApp Web", "messaging", map[string]any{
 		"Accounts": rows,
 	})
 	h.render.Page(w, http.StatusOK, "messaging", pd)
