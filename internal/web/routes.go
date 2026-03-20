@@ -135,6 +135,8 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	// Settings
 	inner.HandleFunc("GET /settings", h.Settings)
 	inner.HandleFunc("POST /settings/password", h.ChangePassword)
+	inner.HandleFunc("POST /settings/appearance", h.AppearanceUpdate)
+	inner.HandleFunc("POST /settings/localization", h.LocalizationUpdate)
 	inner.HandleFunc("POST /settings/payment-gateway", h.PaymentGatewayUpdate)
 
 	// Root redirect

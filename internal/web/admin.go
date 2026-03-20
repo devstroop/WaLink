@@ -487,8 +487,18 @@ func (h *Handler) Settings(w http.ResponseWriter, r *http.Request) {
 		user, _ = h.db.GetUser(identity.UserID)
 	}
 
+	// Appearance + localization settings (visible to all authenticated users).
+	currency := h.db.GetSetting("localization.currency", "USD")
+	timezone := h.db.GetSetting("localization.timezone", "UTC")
+	appName := h.db.GetSetting("appearance.app_name", "")
+	appTagline := h.db.GetSetting("appearance.app_tagline", "")
+
 	data := map[string]any{
-		"User": user,
+		"User":       user,
+		"Currency":   currency,
+		"Timezone":   timezone,
+		"AppName":    appName,
+		"AppTagline": appTagline,
 	}
 
 	// Payment gateway settings (admin only).
@@ -515,6 +525,48 @@ func (h *Handler) Settings(w http.ResponseWriter, r *http.Request) {
 
 	pd := h.page(w, r, "Settings", "settings", data)
 	h.render.Page(w, http.StatusOK, "settings", pd)
+}
+
+// AppearanceUpdate handles POST /settings/appearance.
+func (h *Handler) AppearanceUpdate(w http.ResponseWriter, r *http.Request) {
+	appName := strings.TrimSpace(r.FormValue("app_name"))
+	appTagline := strings.TrimSpace(r.FormValue("app_tagline"))
+
+	_ = h.db.SetSetting("appearance.app_name", appName)
+	_ = h.db.SetSetting("appearance.app_tagline", appTagline)
+
+	setFlash(w, "success", "Appearance settings saved.")
+	http.Redirect(w, r, "/settings", http.StatusSeeOther)
+}
+
+// LocalizationUpdate handles POST /settings/localization.
+func (h *Handler) LocalizationUpdate(w http.ResponseWriter, r *http.Request) {
+	validCurrencies := map[string]bool{
+		"USD": true, "INR": true, "EUR": true, "GBP": true,
+		"AED": true, "SGD": true, "AUD": true, "CAD": true, "JPY": true,
+	}
+	validTimezones := map[string]bool{
+		"UTC": true, "Asia/Kolkata": true, "America/New_York": true,
+		"America/Los_Angeles": true, "America/Chicago": true,
+		"Europe/London": true, "Europe/Berlin": true,
+		"Asia/Dubai": true, "Asia/Singapore": true,
+		"Asia/Tokyo": true, "Australia/Sydney": true,
+	}
+
+	currency := r.FormValue("currency")
+	if !validCurrencies[currency] {
+		currency = "USD"
+	}
+	timezone := r.FormValue("timezone")
+	if !validTimezones[timezone] {
+		timezone = "UTC"
+	}
+
+	_ = h.db.SetSetting("localization.currency", currency)
+	_ = h.db.SetSetting("localization.timezone", timezone)
+
+	setFlash(w, "success", "Localization settings saved.")
+	http.Redirect(w, r, "/settings", http.StatusSeeOther)
 }
 
 // ChangePassword handles POST /settings/password.
