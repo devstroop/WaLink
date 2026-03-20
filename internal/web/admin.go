@@ -819,15 +819,21 @@ func (h *Handler) BillingPlanCreate(w http.ResponseWriter, r *http.Request) {
 
 	price := 0
 	if v := r.FormValue("price_cents"); v != "" {
-		fmt.Sscanf(v, "%d", &price)
+		if _, err := fmt.Sscanf(v, "%d", &price); err != nil {
+			price = 0
+		}
 	}
 	daily := 0
 	if v := r.FormValue("daily_messages"); v != "" {
-		fmt.Sscanf(v, "%d", &daily)
+		if _, err := fmt.Sscanf(v, "%d", &daily); err != nil {
+			daily = 0
+		}
 	}
 	maxAcct := 0
 	if v := r.FormValue("max_accounts"); v != "" {
-		fmt.Sscanf(v, "%d", &maxAcct)
+		if _, err := fmt.Sscanf(v, "%d", &maxAcct); err != nil {
+			maxAcct = 0
+		}
 	}
 
 	limits := fmt.Sprintf(`{"daily_messages":%d,"max_accounts":%d,"api_access":%t,"mcp_access":%t,"webhooks":%t}`,
@@ -878,15 +884,21 @@ func (h *Handler) BillingPlanUpdate(w http.ResponseWriter, r *http.Request) {
 
 	price := existing.PriceCents
 	if v := r.FormValue("price_cents"); v != "" {
-		fmt.Sscanf(v, "%d", &price)
+		if _, err := fmt.Sscanf(v, "%d", &price); err != nil {
+			price = existing.PriceCents
+		}
 	}
 	daily := 0
 	if v := r.FormValue("daily_messages"); v != "" {
-		fmt.Sscanf(v, "%d", &daily)
+		if _, err := fmt.Sscanf(v, "%d", &daily); err != nil {
+			daily = 0
+		}
 	}
 	maxAcct := 0
 	if v := r.FormValue("max_accounts"); v != "" {
-		fmt.Sscanf(v, "%d", &maxAcct)
+		if _, err := fmt.Sscanf(v, "%d", &maxAcct); err != nil {
+			maxAcct = 0
+		}
 	}
 
 	limits := fmt.Sprintf(`{"daily_messages":%d,"max_accounts":%d,"api_access":%t,"mcp_access":%t,"webhooks":%t}`,
