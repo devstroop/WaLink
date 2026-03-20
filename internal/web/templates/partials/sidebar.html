@@ -1,177 +1,163 @@
 {{define "partial/sidebar"}}
-<aside class="fixed lg:static inset-y-0 left-0 z-40 w-64 bg-gray-900 text-gray-300 flex flex-col shrink-0 transition-all duration-200 ease-in-out"
+{{- $item := "flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-gray-400 hover:text-white hover:bg-white/5 transition-colors relative group" -}}
+{{- $active := "bg-white/10 text-white" -}}
+{{- $child := "flex items-center gap-3 pl-9 pr-3 py-2 rounded-lg text-sm text-gray-400 hover:text-white hover:bg-white/5 transition-colors relative group" -}}
+<aside class="fixed lg:static inset-y-0 left-0 z-40 bg-gray-900 flex flex-col shrink-0 transition-all duration-200 ease-in-out"
        :class="[
-         sidebarOpen ? 'lg:w-64' : 'lg:w-16',
+         sidebarOpen ? 'w-64 lg:w-64' : 'w-64 lg:w-[4.25rem]',
          mobileMenu ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
        ]"
        x-cloak>
 
-  <!-- ── Brand ───────────────────────────────────── -->
-  <div class="h-16 flex items-center px-4 border-b border-gray-800 shrink-0">
-    <div class="flex items-center gap-3 min-w-0">
-      <div class="w-8 h-8 rounded-lg bg-[#25D366] text-white flex items-center justify-center shrink-0">
+  <!-- Brand -->
+  <div class="h-16 flex items-center px-4 border-b border-white/5 shrink-0">
+    <a href="/dashboard" class="flex items-center gap-3 min-w-0">
+      <div class="w-8 h-8 rounded-xl bg-[#25D366] text-white flex items-center justify-center shrink-0">
         <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52s.198-.298.298-.497c.099-.198.05-.371-.025-.52s-.669-1.612-.916-2.207c-.242-.579-.487-.5-.669-.51a13 13 0 0 0-.57-.01c-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074s2.096 3.2 5.077 4.487c.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413s.248-1.289.173-1.413c-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 0 1-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 0 1-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.82 9.82 0 0 1 2.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.82 11.82 0 0 0 12.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.9 11.9 0 0 0 5.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.82 11.82 0 0 0-3.48-8.413"/></svg>
       </div>
-      <span class="font-semibold text-white text-lg whitespace-nowrap" x-show="sidebarOpen" x-transition>WaLink</span>
-    </div>
-    <button @click="mobileMenu = false" class="ml-auto p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-gray-800 lg:hidden">
+      <span x-show="sidebarOpen" x-transition class="font-bold text-white text-base whitespace-nowrap">WaLink</span>
+    </a>
+    <button @click="mobileMenu = false" class="ml-auto p-1.5 rounded-lg text-gray-500 hover:text-white hover:bg-white/10 lg:hidden">
       <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12"/></svg>
     </button>
   </div>
 
-  <!-- ── Navigation ──────────────────────────────── -->
-  <nav class="flex-1 py-3 px-2 overflow-y-auto space-y-0.5" @click="if($event.target.closest('a')) mobileMenu = false">
+  <!-- Navigation -->
+  <nav class="flex-1 px-2 py-2 overflow-y-auto space-y-px" @click="if($event.target.closest('a')) mobileMenu = false">
 
-    <!-- Workspace label -->
-    <p class="px-3 pt-1 pb-1.5 text-xs font-semibold uppercase tracking-wider text-gray-500" x-show="sidebarOpen" x-transition>Workspace</p>
-
-    <a href="/dashboard" title="Dashboard"
-       class="sidebar-link flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors relative group
-              {{if eq .Page "dashboard"}}bg-gray-800 text-white{{else}}hover:bg-gray-800/50 hover:text-white{{end}}">
-      <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewBox="0 0 24 24"><rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/></svg>
+    <a href="/dashboard" title="Dashboard" class="{{$item}} {{if eq .Page "dashboard"}}{{$active}}{{end}}">
+      <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" viewBox="0 0 24 24"><rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/></svg>
       <span x-show="sidebarOpen" x-transition>Dashboard</span>
       <span x-show="!sidebarOpen" class="sidebar-tooltip">Dashboard</span>
     </a>
 
-    <a href="/accounts" title="Accounts"
-       class="sidebar-link flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors relative group
-              {{if or (eq .Page "accounts") (eq .Page "account-detail")}}bg-gray-800 text-white{{else}}hover:bg-gray-800/50 hover:text-white{{end}}">
-      <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewBox="0 0 24 24"><path d="M22 17a2 2 0 0 1-2 2H6.828a2 2 0 0 0-1.414.586l-2.202 2.202A.71.71 0 0 1 2 21.286V5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2z"/></svg>
+    <a href="/accounts" title="Accounts" class="{{$item}} {{if or (eq .Page "accounts") (eq .Page "account-detail")}}{{$active}}{{end}}">
+      <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" viewBox="0 0 24 24"><path d="M22 17a2 2 0 0 1-2 2H6.828a2 2 0 0 0-1.414.586l-2.202 2.202A.71.71 0 0 1 2 21.286V5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2z"/></svg>
       <span x-show="sidebarOpen" x-transition>Accounts</span>
       <span x-show="!sidebarOpen" class="sidebar-tooltip">Accounts</span>
     </a>
 
-    <a href="/messaging" title="Messaging"
-       class="sidebar-link flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors relative group
-              {{if eq .Page "messaging"}}bg-gray-800 text-white{{else}}hover:bg-gray-800/50 hover:text-white{{end}}">
-      <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewBox="0 0 24 24"><path d="m22 2-7 20-4-9-9-4z"/><path d="M22 2 11 13"/></svg>
+    <a href="/messaging" title="Messaging" class="{{$item}} {{if eq .Page "messaging"}}{{$active}}{{end}}">
+      <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" viewBox="0 0 24 24"><path d="m22 2-7 20-4-9-9-4z"/><path d="M22 2 11 13"/></svg>
       <span x-show="sidebarOpen" x-transition>Messaging</span>
       <span x-show="!sidebarOpen" class="sidebar-tooltip">Messaging</span>
     </a>
 
     {{if .Identity}}
 
-    <!-- ── Developer group ── -->
-    <div x-show="!sidebarOpen" class="border-t border-gray-800/60 mx-2 my-2"></div>
+    <div class="my-1 mx-1 border-t border-white/5"></div>
 
-    <div class="mt-3" x-show="sidebarOpen">
-      <button @click="grpTools = !grpTools"
-        class="w-full flex items-center justify-between px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-gray-500 hover:text-gray-300 rounded-lg hover:bg-gray-800/20 transition-colors">
-        <span>Developer</span>
-        <svg :class="grpTools ? 'rotate-0' : '-rotate-90'" class="w-3.5 h-3.5 transition-transform shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
+    <!-- Developer group -->
+    <div>
+      <button @click="grpTools = !grpTools" title="Developer"
+              class="w-full {{$item}} {{if or (eq .Page "api-keys") (eq .Page "mcp")}}{{$active}}{{end}}">
+        <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" viewBox="0 0 24 24"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+        <span x-show="sidebarOpen" x-transition class="flex-1 text-left">Developer</span>
+        <svg x-show="sidebarOpen" :class="grpTools ? 'rotate-180' : ''" class="w-4 h-4 shrink-0 transition-transform duration-200 opacity-50" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
+        <span x-show="!sidebarOpen" class="sidebar-tooltip">Developer</span>
       </button>
-    </div>
-
-    <div x-show="!sidebarOpen || grpTools" :class="sidebarOpen ? 'border-l border-gray-700/50 ml-5 pl-1 mt-1 mb-0.5' : ''">
-      <a href="/api-keys" title="API Keys"
-         class="sidebar-link flex items-center gap-3 px-3 py-1.5 rounded-lg text-sm transition-colors relative group
-                {{if eq .Page "api-keys"}}bg-gray-800 text-white{{else}}hover:bg-gray-800/50 hover:text-white{{end}}">
-        <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewBox="0 0 24 24"><path d="M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z"/><circle cx="16.5" cy="7.5" r=".5" fill="currentColor"/></svg>
-        <span x-show="sidebarOpen" x-transition>API Keys</span>
-        <span x-show="!sidebarOpen" class="sidebar-tooltip">API Keys</span>
-      </a>
-      <a href="/mcp-server" title="MCP Server"
-         class="sidebar-link flex items-center gap-3 px-3 py-1.5 rounded-lg text-sm transition-colors relative group
-                {{if eq .Page "mcp"}}bg-gray-800 text-white{{else}}hover:bg-gray-800/50 hover:text-white{{end}}">
-        <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewBox="0 0 24 24"><path d="M12 2a4 4 0 0 0-4 4v2H6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V10a2 2 0 0 0-2-2h-2V6a4 4 0 0 0-4-4z"/><circle cx="12" cy="15" r="1"/></svg>
-        <span x-show="sidebarOpen" x-transition>MCP Server</span>
-        <span x-show="!sidebarOpen" class="sidebar-tooltip">MCP Server</span>
-      </a>
+      <div x-show="sidebarOpen && grpTools" x-transition class="space-y-px mt-px">
+        <a href="/api-keys" title="API Keys" class="{{$child}} {{if eq .Page "api-keys"}}{{$active}}{{end}}">
+          <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" viewBox="0 0 24 24"><path d="M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z"/><circle cx="16.5" cy="7.5" r=".5" fill="currentColor"/></svg>
+          API Keys
+        </a>
+        <a href="/mcp-server" title="MCP Server" class="{{$child}} {{if eq .Page "mcp"}}{{$active}}{{end}}">
+          <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" viewBox="0 0 24 24"><rect width="16" height="10" x="4" y="8" rx="2"/><path d="M8 12h.01M12 12h.01M16 12h.01"/></svg>
+          MCP Server
+        </a>
+      </div>
+      <div x-show="!sidebarOpen" class="space-y-px mt-px">
+        <a href="/api-keys" title="API Keys" class="{{$item}} justify-center {{if eq .Page "api-keys"}}{{$active}}{{end}}">
+          <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" viewBox="0 0 24 24"><path d="M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z"/><circle cx="16.5" cy="7.5" r=".5" fill="currentColor"/></svg>
+          <span class="sidebar-tooltip">API Keys</span>
+        </a>
+        <a href="/mcp-server" title="MCP Server" class="{{$item}} justify-center {{if eq .Page "mcp"}}{{$active}}{{end}}">
+          <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" viewBox="0 0 24 24"><rect width="16" height="10" x="4" y="8" rx="2"/><path d="M8 12h.01M12 12h.01M16 12h.01"/></svg>
+          <span class="sidebar-tooltip">MCP Server</span>
+        </a>
+      </div>
     </div>
 
     {{if not (.Identity.HasPermission "*")}}
-    <!-- Non-admin: My Subscription -->
-    <div x-show="!sidebarOpen" class="border-t border-gray-800/60 mx-2 my-2"></div>
-    <p class="px-3 mt-3 mb-1 text-xs font-semibold uppercase tracking-wider text-gray-500" x-show="sidebarOpen" x-transition>My Account</p>
-    <a href="/subscription" title="Subscription"
-       class="sidebar-link flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors relative group
-              {{if eq .Page "subscription"}}bg-gray-800 text-white{{else}}hover:bg-gray-800/50 hover:text-white{{end}}">
-      <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewBox="0 0 24 24"><rect width="20" height="14" x="2" y="5" rx="2"/><path d="M2 10h20"/></svg>
-      <span x-show="sidebarOpen" x-transition>Subscription</span>
-      <span x-show="!sidebarOpen" class="sidebar-tooltip">Subscription</span>
+    <a href="/subscription" title="My Subscription" class="{{$item}} {{if eq .Page "subscription"}}{{$active}}{{end}}">
+      <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" viewBox="0 0 24 24"><rect width="20" height="14" x="2" y="5" rx="2"/><path d="M2 10h20"/></svg>
+      <span x-show="sidebarOpen" x-transition>My Subscription</span>
+      <span x-show="!sidebarOpen" class="sidebar-tooltip">My Subscription</span>
     </a>
     {{end}}
 
     {{if .Identity.HasPermission "*"}}
 
-    <!-- ── User Management group ── -->
-    <div x-show="!sidebarOpen" class="border-t border-gray-800/60 mx-2 my-2"></div>
+    <div class="my-1 mx-1 border-t border-white/5"></div>
 
-    <div class="mt-3" x-show="sidebarOpen">
-      <button @click="grpAdmin = !grpAdmin"
-        class="w-full flex items-center justify-between px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-gray-500 hover:text-gray-300 rounded-lg hover:bg-gray-800/20 transition-colors">
-        <span>User Management</span>
-        <svg :class="grpAdmin ? 'rotate-0' : '-rotate-90'" class="w-3.5 h-3.5 transition-transform shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
+    <!-- User Management group -->
+    <div>
+      <button @click="grpAdmin = !grpAdmin" title="User Management"
+              class="w-full {{$item}} {{if or (eq .Page "users") (eq .Page "roles")}}{{$active}}{{end}}">
+        <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M16 3.128a4 4 0 0 1 0 7.744M22 21v-2a4 4 0 0 0-3-3.87"/><circle cx="9" cy="7" r="4"/></svg>
+        <span x-show="sidebarOpen" x-transition class="flex-1 text-left">User Management</span>
+        <svg x-show="sidebarOpen" :class="grpAdmin ? 'rotate-180' : ''" class="w-4 h-4 shrink-0 transition-transform duration-200 opacity-50" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
+        <span x-show="!sidebarOpen" class="sidebar-tooltip">User Management</span>
       </button>
+      <div x-show="sidebarOpen && grpAdmin" x-transition class="space-y-px mt-px">
+        <a href="/admin/users" title="Users" class="{{$child}} {{if eq .Page "users"}}{{$active}}{{end}}">
+          <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M20 20c0-4-3.582-7-8-7s-8 3-8 7"/></svg>
+          Users
+        </a>
+        <a href="/admin/roles" title="Roles & Permissions" class="{{$child}} {{if eq .Page "roles"}}{{$active}}{{end}}">
+          <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" viewBox="0 0 24 24"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/></svg>
+          Roles &amp; Permissions
+        </a>
+      </div>
+      <div x-show="!sidebarOpen" class="space-y-px mt-px">
+        <a href="/admin/users" title="Users" class="{{$item}} justify-center {{if eq .Page "users"}}{{$active}}{{end}}">
+          <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M20 20c0-4-3.582-7-8-7s-8 3-8 7"/></svg>
+          <span class="sidebar-tooltip">Users</span>
+        </a>
+        <a href="/admin/roles" title="Roles" class="{{$item}} justify-center {{if eq .Page "roles"}}{{$active}}{{end}}">
+          <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" viewBox="0 0 24 24"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/></svg>
+          <span class="sidebar-tooltip">Roles</span>
+        </a>
+      </div>
     </div>
 
-    <div x-show="!sidebarOpen || grpAdmin" :class="sidebarOpen ? 'border-l border-gray-700/50 ml-5 pl-1 mt-1 mb-0.5' : ''">
-      <a href="/admin/users" title="Users"
-         class="sidebar-link flex items-center gap-3 px-3 py-1.5 rounded-lg text-sm transition-colors relative group
-                {{if eq .Page "users"}}bg-gray-800 text-white{{else}}hover:bg-gray-800/50 hover:text-white{{end}}">
-        <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M16 3.128a4 4 0 0 1 0 7.744M22 21v-2a4 4 0 0 0-3-3.87"/><circle cx="9" cy="7" r="4"/></svg>
-        <span x-show="sidebarOpen" x-transition>Users</span>
-        <span x-show="!sidebarOpen" class="sidebar-tooltip">Users</span>
-      </a>
-      <a href="/admin/roles" title="Roles & Permissions"
-         class="sidebar-link flex items-center gap-3 px-3 py-1.5 rounded-lg text-sm transition-colors relative group
-                {{if eq .Page "roles"}}bg-gray-800 text-white{{else}}hover:bg-gray-800/50 hover:text-white{{end}}">
-        <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewBox="0 0 24 24"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/></svg>
-        <span x-show="sidebarOpen" x-transition>Roles &amp; Permissions</span>
-        <span x-show="!sidebarOpen" class="sidebar-tooltip">Roles</span>
-      </a>
-    </div>
-
-    <!-- ── Billing group ── -->
-    <div class="mt-2" x-show="sidebarOpen">
-      <button @click="grpBilling = !grpBilling"
-        class="w-full flex items-center justify-between px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-gray-500 hover:text-gray-300 rounded-lg hover:bg-gray-800/20 transition-colors">
-        <span>Billing</span>
-        <svg :class="grpBilling ? 'rotate-0' : '-rotate-90'" class="w-3.5 h-3.5 transition-transform shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
+    <!-- Billing group -->
+    <div>
+      <button @click="grpBilling = !grpBilling" title="Billing"
+              class="w-full {{$item}} {{if or (eq .Page "billing-plans") (or (eq .Page "billing-subscriptions") (eq .Page "billing-usage"))}}{{$active}}{{end}}">
+        <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" viewBox="0 0 24 24"><rect width="20" height="14" x="2" y="5" rx="2"/><path d="M2 10h20"/></svg>
+        <span x-show="sidebarOpen" x-transition class="flex-1 text-left">Billing</span>
+        <svg x-show="sidebarOpen" :class="grpBilling ? 'rotate-180' : ''" class="w-4 h-4 shrink-0 transition-transform duration-200 opacity-50" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
+        <span x-show="!sidebarOpen" class="sidebar-tooltip">Billing</span>
       </button>
-    </div>
-
-    <div x-show="!sidebarOpen || grpBilling" :class="sidebarOpen ? 'border-l border-gray-700/50 ml-5 pl-1 mt-1 mb-0.5' : ''">
-      <a href="/admin/billing/plans" title="Plans"
-         class="sidebar-link flex items-center gap-3 px-3 py-1.5 rounded-lg text-sm transition-colors relative group
-                {{if eq .Page "billing-plans"}}bg-gray-800 text-white{{else}}hover:bg-gray-800/50 hover:text-white{{end}}">
-        <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewBox="0 0 24 24"><rect width="8" height="4" x="8" y="2" rx="1" ry="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M12 11h4M12 16h4M8 11h.01M8 16h.01"/></svg>
-        <span x-show="sidebarOpen" x-transition>Plans</span>
-        <span x-show="!sidebarOpen" class="sidebar-tooltip">Plans</span>
-      </a>
-      <a href="/admin/billing/subscriptions" title="Subscriptions"
-         class="sidebar-link flex items-center gap-3 px-3 py-1.5 rounded-lg text-sm transition-colors relative group
-                {{if eq .Page "billing-subscriptions"}}bg-gray-800 text-white{{else}}hover:bg-gray-800/50 hover:text-white{{end}}">
-        <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewBox="0 0 24 24"><rect width="20" height="14" x="2" y="5" rx="2"/><path d="M2 10h20"/></svg>
-        <span x-show="sidebarOpen" x-transition>Subscriptions</span>
-        <span x-show="!sidebarOpen" class="sidebar-tooltip">Subscriptions</span>
-      </a>
-      <a href="/admin/billing/usage" title="Usage & Analytics"
-         class="sidebar-link flex items-center gap-3 px-3 py-1.5 rounded-lg text-sm transition-colors relative group
-                {{if eq .Page "billing-usage"}}bg-gray-800 text-white{{else}}hover:bg-gray-800/50 hover:text-white{{end}}">
-        <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
-        <span x-show="sidebarOpen" x-transition>Usage &amp; Analytics</span>
-        <span x-show="!sidebarOpen" class="sidebar-tooltip">Usage</span>
-      </a>
-    </div>
-
-    <!-- ── Configuration group ── -->
-    <div class="mt-2" x-show="sidebarOpen">
-      <button @click="grpConfig = !grpConfig"
-        class="w-full flex items-center justify-between px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-gray-500 hover:text-gray-300 rounded-lg hover:bg-gray-800/20 transition-colors">
-        <span>Configuration</span>
-        <svg :class="grpConfig ? 'rotate-0' : '-rotate-90'" class="w-3.5 h-3.5 transition-transform shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
-      </button>
-    </div>
-
-    <div x-show="!sidebarOpen || grpConfig" :class="sidebarOpen ? 'border-l border-gray-700/50 ml-5 pl-1 mt-1 mb-0.5' : ''">
-      <a href="/admin/configuration" title="Payment Gateways"
-         class="sidebar-link flex items-center gap-3 px-3 py-1.5 rounded-lg text-sm transition-colors relative group
-                {{if eq .Page "admin-config"}}bg-gray-800 text-white{{else}}hover:bg-gray-800/50 hover:text-white{{end}}">
-        <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewBox="0 0 24 24"><path d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 0 0 3-3V8a3 3 0 0 0-3-3H6a3 3 0 0 0-3 3v8a3 3 0 0 0 3 3z"/></svg>
-        <span x-show="sidebarOpen" x-transition>Payment Gateways</span>
-        <span x-show="!sidebarOpen" class="sidebar-tooltip">Payment Gateways</span>
-      </a>
+      <div x-show="sidebarOpen && grpBilling" x-transition class="space-y-px mt-px">
+        <a href="/admin/billing/plans" title="Plans" class="{{$child}} {{if eq .Page "billing-plans"}}{{$active}}{{end}}">
+          <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" viewBox="0 0 24 24"><rect width="8" height="4" x="8" y="2" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M12 11h4M12 16h4M8 11h.01M8 16h.01"/></svg>
+          Plans
+        </a>
+        <a href="/admin/billing/subscriptions" title="Subscriptions" class="{{$child}} {{if eq .Page "billing-subscriptions"}}{{$active}}{{end}}">
+          <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          Subscriptions
+        </a>
+        <a href="/admin/billing/usage" title="Usage & Analytics" class="{{$child}} {{if eq .Page "billing-usage"}}{{$active}}{{end}}">
+          <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
+          Usage &amp; Analytics
+        </a>
+      </div>
+      <div x-show="!sidebarOpen" class="space-y-px mt-px">
+        <a href="/admin/billing/plans" title="Plans" class="{{$item}} justify-center {{if eq .Page "billing-plans"}}{{$active}}{{end}}">
+          <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" viewBox="0 0 24 24"><rect width="8" height="4" x="8" y="2" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/></svg>
+          <span class="sidebar-tooltip">Plans</span>
+        </a>
+        <a href="/admin/billing/subscriptions" title="Subscriptions" class="{{$item}} justify-center {{if eq .Page "billing-subscriptions"}}{{$active}}{{end}}">
+          <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+          <span class="sidebar-tooltip">Subscriptions</span>
+        </a>
+        <a href="/admin/billing/usage" title="Usage" class="{{$item}} justify-center {{if eq .Page "billing-usage"}}{{$active}}{{end}}">
+          <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
+          <span class="sidebar-tooltip">Usage</span>
+        </a>
+      </div>
     </div>
 
     {{end}}
@@ -179,22 +165,17 @@
 
   </nav>
 
-  <!-- ── Footer ──────────────────────────────────── -->
-  <div class="shrink-0">
-    <p class="px-6 py-1 text-xs text-gray-600" x-show="sidebarOpen" x-transition>
+  <!-- Footer -->
+  <div class="shrink-0 border-t border-white/5 px-2 py-2" @click="if($event.target.closest('a')) mobileMenu = false">
+    <a href="/settings" title="Settings" class="{{$item}} {{if eq .Page "settings"}}{{$active}}{{end}}">
+      <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" viewBox="0 0 24 24"><path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915"/><circle cx="12" cy="12" r="3"/></svg>
+      <span x-show="sidebarOpen" x-transition>Settings</span>
+      <span x-show="!sidebarOpen" class="sidebar-tooltip">Settings</span>
+    </a>
+    <p x-show="sidebarOpen" x-transition class="px-3 pt-1 pb-0.5 text-xs text-gray-600">
       {{if hasPrefix .Version "v"}}{{.Version}}{{else if eq .Version "dev"}}dev{{else}}v{{.Version}}{{end}}
     </p>
-    <div class="border-t border-gray-800 p-3" @click="if($event.target.closest('a')) mobileMenu = false">
-      <a href="/settings" title="Settings"
-         class="sidebar-link flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors hover:bg-gray-800/50 hover:text-white relative group
-                {{if eq .Page "settings"}}bg-gray-800 text-white{{end}}">
-        <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewBox="0 0 24 24"><path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915"/><circle cx="12" cy="12" r="3"/></svg>
-        <span x-show="sidebarOpen" x-transition>Settings</span>
-        <span x-show="!sidebarOpen" class="sidebar-tooltip">Settings</span>
-      </a>
-    </div>
   </div>
 
 </aside>
 {{end}}
-

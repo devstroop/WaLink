@@ -35,13 +35,11 @@
         grpTools:   localStorage.getItem('grpTools')   !== 'false',
         grpBilling: localStorage.getItem('grpBilling') !== 'false',
         grpAdmin:   localStorage.getItem('grpAdmin')   !== 'false',
-        grpConfig:  localStorage.getItem('grpConfig')  !== 'false',
         init() {
           const p = window.location.pathname;
-          if (p.startsWith('/admin/billing'))    this.grpBilling = true;
-          if (p === '/admin/users' || p === '/admin/roles') this.grpAdmin = true;
-          if (p === '/admin/configuration')       this.grpConfig  = true;
-          if (p === '/api-keys' || p === '/mcp-server')    this.grpTools  = true;
+          if (p.startsWith('/admin/billing'))              this.grpBilling = true;
+          if (p === '/admin/users' || p === '/admin/roles') this.grpAdmin   = true;
+          if (p === '/api-keys' || p === '/mcp-server')    this.grpTools   = true;
         }
       }"
       x-effect="
@@ -49,7 +47,6 @@
         localStorage.setItem('grpTools',    grpTools);
         localStorage.setItem('grpBilling',  grpBilling);
         localStorage.setItem('grpAdmin',    grpAdmin);
-        localStorage.setItem('grpConfig',   grpConfig);
       "
       hx-boost="true">
   <!-- Mobile sidebar backdrop -->

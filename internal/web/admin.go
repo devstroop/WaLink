@@ -492,12 +492,29 @@ func (h *Handler) Settings(w http.ResponseWriter, r *http.Request) {
 	appName := h.db.GetSetting("appearance.app_name", "")
 	appTagline := h.db.GetSetting("appearance.app_tagline", "")
 
+	stripeKey := h.db.GetSetting("billing.stripe_secret_key", "")
+	stripeWebhook := h.db.GetSetting("billing.stripe_webhook_secret", "")
+	razorpayKey := h.db.GetSetting("billing.razorpay_key_id", "")
+	razorpaySecret := h.db.GetSetting("billing.razorpay_key_secret", "")
+	payuKey := h.db.GetSetting("billing.payu_merchant_key", "")
+	payuSalt := h.db.GetSetting("billing.payu_merchant_salt", "")
+	activeGateway := h.db.GetSetting("billing.active_gateway", "")
+	billingEnabled := h.db.GetSettingBool("billing.enabled", false)
+
 	data := map[string]any{
-		"User":       user,
-		"Currency":   currency,
-		"Timezone":   timezone,
-		"AppName":    appName,
-		"AppTagline": appTagline,
+		"User":             user,
+		"Currency":         currency,
+		"Timezone":         timezone,
+		"AppName":          appName,
+		"AppTagline":       appTagline,
+		"BillingEnabled":   billingEnabled,
+		"ActiveGateway":    activeGateway,
+		"StripeKeySet":     stripeKey != "",
+		"StripeWebhookSet": stripeWebhook != "",
+		"RazorpayKeySet":   razorpayKey != "",
+		"RazorpaySecretSet": razorpaySecret != "",
+		"PayUKeySet":       payuKey != "",
+		"PayUSaltSet":      payuSalt != "",
 	}
 
 	pd := h.page(w, r, "Settings", "settings", data)
@@ -802,7 +819,7 @@ func (h *Handler) PaymentGatewayUpdate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	setFlash(w, "success", "Payment gateway settings updated.")
-	http.Redirect(w, r, "/admin/configuration", http.StatusSeeOther)
+	http.Redirect(w, r, "/settings", http.StatusSeeOther)
 }
 
 // BillingPlanCreate handles POST /admin/billing/plans.
