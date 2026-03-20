@@ -305,9 +305,27 @@ func (h *Handler) ResetPasswordPage(w http.ResponseWriter, r *http.Request) {
 	token := r.URL.Query().Get("token")
 	if token == "" {
 		setFlash(w, "error", "Invalid or missing reset token.")
-		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		http.Redirect(w, r, "/forgot-password", http.StatusSeeOther)
 		return
 	}
+
+	// Pre-validate the token so the user gets immediate feedback instead of
+	// filling the form and only seeing the error after submission.
+	tokenHash := sha256.Sum256([]byte(token))
+	hashHex := hex.EncodeToString(tokenHash[:])
+	rec, err := h.db.GetResetTokenByHash(hashHex)
+	if err != nil || rec == nil {
+		setFlash(w, "error", "This reset link is invalid. Please request a new one.")
+		http.Redirect(w, r, "/forgot-password", http.StatusSeeOther)
+		return
+	}
+	expiresAt, parseErr := time.Parse(time.RFC3339, rec.ExpiresAt)
+	if parseErr != nil || expiresAt.Before(time.Now()) {
+		setFlash(w, "error", "This reset link has expired. Please request a new one.")
+		http.Redirect(w, r, "/forgot-password", http.StatusSeeOther)
+		return
+	}
+
 	data := PageData{
 		Title: "Reset Password — WaLink",
 		Page:  "reset-password",
@@ -327,7 +345,7 @@ func (h *Handler) ResetPasswordSubmit(w http.ResponseWriter, r *http.Request) {
 
 	if token == "" {
 		setFlash(w, "error", "Invalid reset token.")
-		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		http.Redirect(w, r, "/forgot-password", http.StatusSeeOther)
 		return
 	}
 	if password == "" || len(password) < 8 {
@@ -346,15 +364,15 @@ func (h *Handler) ResetPasswordSubmit(w http.ResponseWriter, r *http.Request) {
 
 	rec, err := h.db.GetResetTokenByHash(hashHex)
 	if err != nil || rec == nil {
-		setFlash(w, "error", "Invalid or expired reset token.")
-		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		setFlash(w, "error", "This reset link is invalid. Please request a new one.")
+		http.Redirect(w, r, "/forgot-password", http.StatusSeeOther)
 		return
 	}
 
 	expiresAt, err := time.Parse(time.RFC3339, rec.ExpiresAt)
 	if err != nil || expiresAt.Before(time.Now()) {
-		setFlash(w, "error", "Reset token has expired.")
-		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		setFlash(w, "error", "This reset link has expired. Please request a new one.")
+		http.Redirect(w, r, "/forgot-password", http.StatusSeeOther)
 		return
 	}
 
