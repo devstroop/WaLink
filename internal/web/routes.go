@@ -115,13 +115,19 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	inner.HandleFunc("POST /admin/roles/{id}/delete", h.RolesDelete)
 
 	// Admin Billing
-	inner.HandleFunc("GET /admin/billing", h.BillingAdmin)
-	inner.HandleFunc("POST /admin/billing/stripe", h.PaymentGatewayUpdate) // legacy redirect
+	inner.HandleFunc("GET /admin/billing", h.BillingAdmin)                                            // redirects to /admin/billing/plans
+	inner.HandleFunc("GET /admin/billing/plans", h.BillingPlansPage)
+	inner.HandleFunc("GET /admin/billing/subscriptions", h.BillingSubscriptionsPage)
+	inner.HandleFunc("GET /admin/billing/usage", h.BillingUsagePage)
+	inner.HandleFunc("POST /admin/billing/stripe", h.PaymentGatewayUpdate)                            // legacy
 	inner.HandleFunc("POST /admin/billing/plans", h.BillingPlanCreate)
 	inner.HandleFunc("POST /admin/billing/plans/{id}/update", h.BillingPlanUpdate)
 	inner.HandleFunc("POST /admin/billing/plans/{id}/delete", h.BillingPlanDelete)
 	inner.HandleFunc("POST /admin/billing/subscriptions/{user_id}/assign", h.BillingAssignPlan)
 	inner.HandleFunc("POST /admin/billing/subscriptions/{user_id}/delete", h.BillingDeleteSubscription)
+
+	// Admin Configuration
+	inner.HandleFunc("GET /admin/configuration", h.ConfigurationPage)
 	// API Keys & MCP (all authenticated users)
 	inner.HandleFunc("GET /api-keys", h.APIKeysList)
 	inner.HandleFunc("POST /api-keys", h.APIKeysCreate)

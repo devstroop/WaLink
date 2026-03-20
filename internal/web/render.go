@@ -27,8 +27,12 @@ var pageLayout = map[string]string{
 	"messaging":      "base",
 	"mcp":            "base",
 	"settings":       "base",
-	"billing":        "base",
-	"subscription":   "base",
+	"billing":                "base",
+	"billing-plans":          "base",
+	"billing-subscriptions":  "base",
+	"billing-usage":          "base",
+	"admin-config":           "base",
+	"subscription":           "base",
 	"login":           "auth",
 	"register":        "auth",
 	"forgot-password": "auth",
@@ -155,6 +159,12 @@ func funcMap() template.FuncMap {
 			return s[:n] + "…"
 		},
 		"add": func(a, b int) int { return a + b },
+		"divInt": func(a, b int) int {
+			if b == 0 {
+				return 0
+			}
+			return a / b
+		},
 		"seq": func(n int) []int {
 			s := make([]int, n)
 			for i := range s {

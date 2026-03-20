@@ -487,7 +487,6 @@ func (h *Handler) Settings(w http.ResponseWriter, r *http.Request) {
 		user, _ = h.db.GetUser(identity.UserID)
 	}
 
-	// Appearance + localization settings (visible to all authenticated users).
 	currency := h.db.GetSetting("localization.currency", "USD")
 	timezone := h.db.GetSetting("localization.timezone", "UTC")
 	appName := h.db.GetSetting("appearance.app_name", "")
@@ -499,28 +498,6 @@ func (h *Handler) Settings(w http.ResponseWriter, r *http.Request) {
 		"Timezone":   timezone,
 		"AppName":    appName,
 		"AppTagline": appTagline,
-	}
-
-	// Payment gateway settings (admin only).
-	if identity != nil && identity.HasPermission("*") {
-		stripeKey := h.db.GetSetting("billing.stripe_secret_key", "")
-		stripeWebhook := h.db.GetSetting("billing.stripe_webhook_secret", "")
-		razorpayKey := h.db.GetSetting("billing.razorpay_key_id", "")
-		razorpaySecret := h.db.GetSetting("billing.razorpay_key_secret", "")
-		payuKey := h.db.GetSetting("billing.payu_merchant_key", "")
-		payuSalt := h.db.GetSetting("billing.payu_merchant_salt", "")
-		activeGateway := h.db.GetSetting("billing.active_gateway", "")
-		billingEnabled := h.db.GetSettingBool("billing.enabled", false)
-
-		data["IsAdmin"] = true
-		data["BillingEnabled"] = billingEnabled
-		data["ActiveGateway"] = activeGateway
-		data["StripeKeySet"] = stripeKey != ""
-		data["StripeWebhookSet"] = stripeWebhook != ""
-		data["RazorpayKeySet"] = razorpayKey != ""
-		data["RazorpaySecretSet"] = razorpaySecret != ""
-		data["PayUKeySet"] = payuKey != ""
-		data["PayUSaltSet"] = payuSalt != ""
 	}
 
 	pd := h.page(w, r, "Settings", "settings", data)
@@ -636,29 +613,55 @@ func requireAdmin(w http.ResponseWriter, r *http.Request, dest string) bool {
 	return true
 }
 
-// BillingAdmin renders the billing management page.
+// BillingAdmin redirects to the Plans page (the primary billing section).
 func (h *Handler) BillingAdmin(w http.ResponseWriter, r *http.Request) {
+	if !requireAdmin(w, r, "/dashboard") {
+		return
+	}
+	http.Redirect(w, r, "/admin/billing/plans", http.StatusSeeOther)
+}
+
+// shared row types used by the separate billing pages.
+type subRow struct {
+	UserID   string
+	Username string
+	PlanID   string
+	PlanName string
+	Status   string
+	Period   string
+}
+
+type usageRow struct {
+	UserID   string
+	Username string
+	Messages int
+}
+
+// BillingPlansPage renders GET /admin/billing/plans.
+func (h *Handler) BillingPlansPage(w http.ResponseWriter, r *http.Request) {
+	if !requireAdmin(w, r, "/dashboard") {
+		return
+	}
+	plans, _ := h.db.ListPlans()
+	pd := h.page(w, r, "Plans", "billing-plans", map[string]any{
+		"Plans": plans,
+	})
+	h.render.Page(w, http.StatusOK, "billing-plans", pd)
+}
+
+// BillingSubscriptionsPage renders GET /admin/billing/subscriptions.
+func (h *Handler) BillingSubscriptionsPage(w http.ResponseWriter, r *http.Request) {
 	if !requireAdmin(w, r, "/dashboard") {
 		return
 	}
 	plans, _ := h.db.ListPlans()
 	subs, _ := h.db.ListSubscriptions()
-	usage, _ := h.db.GetAllDailyUsage()
 
-	// Build subscription rows with username + plan name.
-	type SubRow struct {
-		UserID   string
-		Username string
-		PlanID   string
-		PlanName string
-		Status   string
-		Period   string
-	}
-	subRows := make([]SubRow, 0, len(subs))
 	planMap := make(map[string]string, len(plans))
 	for _, p := range plans {
 		planMap[p.ID] = p.Name
 	}
+	rows := make([]subRow, 0, len(subs))
 	for _, s := range subs {
 		uname := s.UserID
 		if u, err := h.db.GetUser(s.UserID); err == nil {
@@ -668,39 +671,92 @@ func (h *Handler) BillingAdmin(w http.ResponseWriter, r *http.Request) {
 		if pname == "" {
 			pname = s.PlanID
 		}
-		subRows = append(subRows, SubRow{
-			UserID:   s.UserID,
-			Username: uname,
-			PlanID:   s.PlanID,
-			PlanName: pname,
-			Status:   s.Status,
-			Period:   s.CurrentPeriodEnd,
+		rows = append(rows, subRow{
+			UserID: s.UserID, Username: uname,
+			PlanID: s.PlanID, PlanName: pname,
+			Status: s.Status, Period: s.CurrentPeriodEnd,
 		})
 	}
 
-	// Build usage rows with username.
-	type UsageRow struct {
-		UserID   string
-		Username string
-		Messages int
+	var active, trial, canceled int
+	for _, r := range rows {
+		switch r.Status {
+		case "active":
+			active++
+		case "trialing":
+			trial++
+		case "canceled":
+			canceled++
+		}
 	}
-	usageRows := make([]UsageRow, 0, len(usage))
+
+	pd := h.page(w, r, "Subscriptions", "billing-subscriptions", map[string]any{
+		"Subscriptions": rows,
+		"Plans":         plans,
+		"ActiveCount":   active,
+		"TrialCount":    trial,
+		"CanceledCount": canceled,
+	})
+	h.render.Page(w, http.StatusOK, "billing-subscriptions", pd)
+}
+
+// BillingUsagePage renders GET /admin/billing/usage.
+func (h *Handler) BillingUsagePage(w http.ResponseWriter, r *http.Request) {
+	if !requireAdmin(w, r, "/dashboard") {
+		return
+	}
+	usage, _ := h.db.GetAllDailyUsage()
+	rows := make([]usageRow, 0, len(usage))
 	for _, u := range usage {
 		uname := u.UserID
 		if usr, err := h.db.GetUser(u.UserID); err == nil {
 			uname = usr.Username
 		}
-		usageRows = append(usageRows, UsageRow{
-			UserID: u.UserID, Username: uname, Messages: u.Messages,
-		})
+		rows = append(rows, usageRow{UserID: u.UserID, Username: uname, Messages: u.Messages})
 	}
 
-	pd := h.page(w, r, "Billing", "billing", map[string]any{
-		"Plans":         plans,
-		"Subscriptions": subRows,
-		"Usage":         usageRows,
+	total := 0
+	for _, r := range rows {
+		total += r.Messages
+	}
+	avg := 0
+	if len(rows) > 0 {
+		avg = total / len(rows)
+	}
+
+	pd := h.page(w, r, "Usage", "billing-usage", map[string]any{
+		"Usage":         rows,
+		"TotalMessages": total,
+		"AvgMessages":   avg,
 	})
-	h.render.Page(w, http.StatusOK, "billing", pd)
+	h.render.Page(w, http.StatusOK, "billing-usage", pd)
+}
+
+// ConfigurationPage renders GET /admin/configuration (payment gateway config).
+func (h *Handler) ConfigurationPage(w http.ResponseWriter, r *http.Request) {
+	if !requireAdmin(w, r, "/dashboard") {
+		return
+	}
+	stripeKey := h.db.GetSetting("billing.stripe_secret_key", "")
+	stripeWebhook := h.db.GetSetting("billing.stripe_webhook_secret", "")
+	razorpayKey := h.db.GetSetting("billing.razorpay_key_id", "")
+	razorpaySecret := h.db.GetSetting("billing.razorpay_key_secret", "")
+	payuKey := h.db.GetSetting("billing.payu_merchant_key", "")
+	payuSalt := h.db.GetSetting("billing.payu_merchant_salt", "")
+	activeGateway := h.db.GetSetting("billing.active_gateway", "")
+	billingEnabled := h.db.GetSettingBool("billing.enabled", false)
+
+	pd := h.page(w, r, "Configuration", "admin-config", map[string]any{
+		"BillingEnabled":  billingEnabled,
+		"ActiveGateway":   activeGateway,
+		"StripeKeySet":    stripeKey != "",
+		"StripeWebhookSet": stripeWebhook != "",
+		"RazorpayKeySet":  razorpayKey != "",
+		"RazorpaySecretSet": razorpaySecret != "",
+		"PayUKeySet":      payuKey != "",
+		"PayUSaltSet":     payuSalt != "",
+	})
+	h.render.Page(w, http.StatusOK, "admin-config", pd)
 }
 
 // PaymentGatewayUpdate handles POST /settings/payment-gateway.
@@ -746,7 +802,7 @@ func (h *Handler) PaymentGatewayUpdate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	setFlash(w, "success", "Payment gateway settings updated.")
-	http.Redirect(w, r, "/settings", http.StatusSeeOther)
+	http.Redirect(w, r, "/admin/configuration", http.StatusSeeOther)
 }
 
 // BillingPlanCreate handles POST /admin/billing/plans.
