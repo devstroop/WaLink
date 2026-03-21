@@ -853,11 +853,13 @@ func (h *Handler) BillingPlanCreate(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	limits := fmt.Sprintf(`{"daily_messages":%d,"max_accounts":%d,"api_access":%t,"mcp_access":%t,"webhooks":%t}`,
+	limits := fmt.Sprintf(`{"daily_messages":%d,"max_accounts":%d,"api_access":%t,"mcp_access":%t,"webhooks":%t,"copilot":%t,"autopilot":%t}`,
 		daily, maxAcct,
 		r.FormValue("api_access") == "on",
 		r.FormValue("mcp_access") == "on",
 		r.FormValue("webhooks") == "on",
+		r.FormValue("copilot") == "on",
+		r.FormValue("autopilot") == "on",
 	)
 
 	rec := &database.PlanRecord{
@@ -918,11 +920,13 @@ func (h *Handler) BillingPlanUpdate(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	limits := fmt.Sprintf(`{"daily_messages":%d,"max_accounts":%d,"api_access":%t,"mcp_access":%t,"webhooks":%t}`,
+	limits := fmt.Sprintf(`{"daily_messages":%d,"max_accounts":%d,"api_access":%t,"mcp_access":%t,"webhooks":%t,"copilot":%t,"autopilot":%t}`,
 		daily, maxAcct,
 		r.FormValue("api_access") == "on",
 		r.FormValue("mcp_access") == "on",
 		r.FormValue("webhooks") == "on",
+		r.FormValue("copilot") == "on",
+		r.FormValue("autopilot") == "on",
 	)
 
 	rec := &database.PlanRecord{
@@ -1038,6 +1042,8 @@ func (h *Handler) SubscriptionPage(w http.ResponseWriter, r *http.Request) {
 		APIAccess     bool
 		MCPAccess     bool
 		Webhooks      bool
+		Copilot       bool
+		Autopilot     bool
 		IsCurrent     bool
 	}
 	planViews := make([]PlanView, 0, len(allPlans))
@@ -1053,6 +1059,8 @@ func (h *Handler) SubscriptionPage(w http.ResponseWriter, r *http.Request) {
 			APIAccess:     lim.APIAccess,
 			MCPAccess:     lim.MCPAccess,
 			Webhooks:      lim.Webhooks,
+			Copilot:       lim.Copilot,
+			Autopilot:     lim.Autopilot,
 			IsCurrent:     p.ID == planID,
 		})
 	}

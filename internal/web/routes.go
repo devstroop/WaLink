@@ -4,6 +4,7 @@ import (
 	"io/fs"
 	"net/http"
 
+	"github.com/devstroop/walink/internal/config"
 	"github.com/devstroop/walink/internal/database"
 	"github.com/devstroop/walink/internal/service"
 	smtpclient "github.com/devstroop/walink/internal/smtp"
@@ -18,10 +19,11 @@ type Handler struct {
 	version    string
 	regEnabled bool
 	smtp       *smtpclient.Client
+	llmCfg     config.LLMConfig
 }
 
 // New creates a new web UI handler.
-func New(mgr *service.AccountManager, db *database.DB, secret, version string, regEnabled bool, mailer *smtpclient.Client) *Handler {
+func New(mgr *service.AccountManager, db *database.DB, secret, version string, regEnabled bool, mailer *smtpclient.Client, llmCfg config.LLMConfig) *Handler {
 	return &Handler{
 		mgr:        mgr,
 		db:         db,
@@ -30,6 +32,7 @@ func New(mgr *service.AccountManager, db *database.DB, secret, version string, r
 		version:    version,
 		regEnabled: regEnabled,
 		smtp:       mailer,
+		llmCfg:     llmCfg,
 	}
 }
 
@@ -128,6 +131,19 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 
 	// Admin Configuration
 	inner.HandleFunc("GET /admin/configuration", h.ConfigurationPage)
+
+	// AI Settings (merged into Settings page)
+	inner.HandleFunc("POST /settings/ai", h.AISettingsUpdate)
+
+	// AI Assistant (Mode 1 — personal chat)
+	inner.HandleFunc("GET /assistant", h.AssistantPage)
+	inner.HandleFunc("POST /assistant/chat", h.AssistantChat)
+	inner.HandleFunc("POST /assistant/clear", h.AssistantClear)
+
+	// Autopilot (Mode 2 — per-account auto-reply config)
+	inner.HandleFunc("GET /accounts/{id}/autopilot", h.AutopilotPage)
+	inner.HandleFunc("POST /accounts/{id}/autopilot", h.AutopilotSave)
+	inner.HandleFunc("POST /accounts/{id}/autopilot/toggle", h.AutopilotToggle)
 	// API Keys & MCP (all authenticated users)
 	inner.HandleFunc("GET /api-keys", h.APIKeysList)
 	inner.HandleFunc("POST /api-keys", h.APIKeysCreate)

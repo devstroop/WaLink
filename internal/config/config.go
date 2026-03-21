@@ -25,6 +25,7 @@ type Config struct {
 	Web      WebConfig       `toml:"web"`
 	MCP      MCPConfig       `toml:"mcp"`
 	Billing  BillingConfig   `toml:"billing"`
+	LLM      LLMConfig       `toml:"llm"`
 }
 
 type ServerConfig struct {
@@ -97,6 +98,14 @@ type BillingConfig struct {
 	StripeSecretKey      string `toml:"stripe_secret_key"`
 	StripeWebhookSecret  string `toml:"stripe_webhook_secret"`
 	DefaultPlan          string `toml:"default_plan"`
+}
+
+type LLMConfig struct {
+	Enabled  bool   `toml:"enabled"`
+	Provider string `toml:"provider"` // "openai" | "ollama"
+	APIKey   string `toml:"api_key"`  // required for OpenAI; leave blank for Ollama
+	BaseURL  string `toml:"base_url"` // override API endpoint; blank = provider default
+	Model    string `toml:"model"`    // e.g. "gpt-4o-mini", "llama3.2"
 }
 
 // Load reads config from config/app.toml (next to binary or working dir),
@@ -245,6 +254,21 @@ func applyEnvOverrides(cfg *Config) {
 	}
 	if v := os.Getenv("WALINK_BILLING_DEFAULT_PLAN"); v != "" {
 		cfg.Billing.DefaultPlan = v
+	}
+	if v := os.Getenv("WALINK_LLM_ENABLED"); v != "" {
+		cfg.LLM.Enabled = v == "true" || v == "1"
+	}
+	if v := os.Getenv("WALINK_LLM_PROVIDER"); v != "" {
+		cfg.LLM.Provider = v
+	}
+	if v := os.Getenv("WALINK_LLM_API_KEY"); v != "" {
+		cfg.LLM.APIKey = v
+	}
+	if v := os.Getenv("WALINK_LLM_BASE_URL"); v != "" {
+		cfg.LLM.BaseURL = v
+	}
+	if v := os.Getenv("WALINK_LLM_MODEL"); v != "" {
+		cfg.LLM.Model = v
 	}
 }
 

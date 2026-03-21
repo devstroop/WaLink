@@ -108,25 +108,25 @@ func (d *DB) seedPlans() error {
 		{
 			id: "free", name: "Free", desc: "Free forever — 20 messages/day, 1 account",
 			priceCents: 0, interval: "month",
-			limits:    model.PlanLimits{DailyMessages: 20, MaxAccounts: 1, APIAccess: false, MCPAccess: false, Webhooks: false},
+			limits:    model.PlanLimits{DailyMessages: 20, MaxAccounts: 1, APIAccess: false, MCPAccess: false, Webhooks: false, Copilot: false, Autopilot: false},
 			isDefault: true,
 		},
 		{
 			id: "pro", name: "Professional", desc: "1 account, unlimited messages, full API & MCP access",
 			priceCents: 900, interval: "month",
-			limits:    model.PlanLimits{DailyMessages: 0, MaxAccounts: 1, APIAccess: true, MCPAccess: true, Webhooks: true},
+			limits:    model.PlanLimits{DailyMessages: 0, MaxAccounts: 1, APIAccess: true, MCPAccess: true, Webhooks: true, Copilot: true, Autopilot: false},
 			isDefault: false,
 		},
 		{
 			id: "business", name: "Business", desc: "Pay per account, unlimited messages, full API & MCP access",
 			priceCents: 2900, interval: "month",
-			limits:    model.PlanLimits{DailyMessages: 0, MaxAccounts: 5, APIAccess: true, MCPAccess: true, Webhooks: true},
+			limits:    model.PlanLimits{DailyMessages: 0, MaxAccounts: 5, APIAccess: true, MCPAccess: true, Webhooks: true, Copilot: true, Autopilot: true},
 			isDefault: false,
 		},
 		{
 			id: "enterprise", name: "Enterprise", desc: "Unlimited accounts, unlimited messages, dedicated support",
 			priceCents: 9900, interval: "month",
-			limits:    model.PlanLimits{DailyMessages: 0, MaxAccounts: 0, APIAccess: true, MCPAccess: true, Webhooks: true},
+			limits:    model.PlanLimits{DailyMessages: 0, MaxAccounts: 0, APIAccess: true, MCPAccess: true, Webhooks: true, Copilot: true, Autopilot: true},
 			isDefault: false,
 		},
 	}

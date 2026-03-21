@@ -1,6 +1,7 @@
 package web
 
 import (
+	"encoding/json"
 	"fmt"
 	"html/template"
 	"io/fs"
@@ -27,6 +28,8 @@ var pageLayout = map[string]string{
 	"messaging":      "base",
 	"mcp":            "base",
 	"settings":       "base",
+	"assistant":      "base",
+	"autopilot":      "base",
 	"billing":                "base",
 	"billing-plans":          "base",
 	"billing-subscriptions":  "base",
@@ -199,6 +202,13 @@ func funcMap() template.FuncMap {
 				}
 			}
 			return s
+		},
+		"json": func(v any) (template.JS, error) {
+			b, err := json.Marshal(v)
+			if err != nil {
+				return "null", err
+			}
+			return template.JS(b), nil
 		},
 	}
 }

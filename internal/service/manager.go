@@ -23,6 +23,10 @@ type AccountManager struct {
 	cfg     *config.Config
 	db      *database.DB
 	baseDir string
+
+	// onMessage is invoked (in a goroutine) for every incoming message across all accounts.
+	// Set via SetOnMessage; nil = no hook.
+	onMessage func(accountID, chatJID, senderJID, body string)
 }
 
 // NewAccountManager creates a new manager.
@@ -82,6 +86,13 @@ func (m *AccountManager) CreateAccount(req model.CreateAccountRequest) (*model.C
 	acct.WebhookCfg = m.cfg.Webhooks
 
 	m.mu.Lock()
+	// Attach the global message hook if one is registered.
+	if m.onMessage != nil {
+		fn := m.onMessage
+		acct.OnIncomingMessage = func(chatJID, senderJID, body string) {
+			fn(id, chatJID, senderJID, body)
+		}
+	}
 	m.accounts[id] = acct
 	m.mu.Unlock()
 
@@ -103,6 +114,22 @@ func (m *AccountManager) GetAccount(id string) *Account {
 // DB returns the underlying database handle.
 func (m *AccountManager) DB() *database.DB {
 	return m.db
+}
+
+// SetOnMessage registers a global hook called whenever any account receives a message.
+// Safe to call at any time; applies to all currently-loaded and future accounts.
+func (m *AccountManager) SetOnMessage(fn func(accountID, chatJID, senderJID, body string)) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.onMessage = fn
+	for _, acct := range m.accounts {
+		id := acct.ID
+		acct.mu.Lock()
+		acct.OnIncomingMessage = func(chatJID, senderJID, body string) {
+			fn(id, chatJID, senderJID, body)
+		}
+		acct.mu.Unlock()
+	}
 }
 
 // ListAccounts returns info for all known accounts.
@@ -273,6 +300,15 @@ func (m *AccountManager) DiscoverAccounts(ctx context.Context) error {
 			log.Warn().Str("id", rec.ID).Err(err).Msg("failed to load proxy config")
 		} else if proxyCfg != nil {
 			acct.Proxy = ProxyConfigFromDB(proxyCfg)
+		}
+
+		// Attach global message hook if registered.
+		if m.onMessage != nil {
+			fn := m.onMessage
+			id := rec.ID
+			acct.OnIncomingMessage = func(chatJID, senderJID, body string) {
+				fn(id, chatJID, senderJID, body)
+			}
 		}
 
 		m.accounts[rec.ID] = acct

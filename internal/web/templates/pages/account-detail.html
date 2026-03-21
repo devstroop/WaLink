@@ -87,6 +87,11 @@
                 class="pb-3 px-1 text-sm font-medium border-b-2 transition-colors">Webhook</button>
         <button @click="tab = 'proxy'" :class="tab === 'proxy' ? 'border-brand-500 text-brand-600' : 'border-transparent text-gray-500 hover:text-gray-700'"
                 class="pb-3 px-1 text-sm font-medium border-b-2 transition-colors">Proxy</button>
+        <a href="/accounts/{{.Data.Account.ID}}/autopilot"
+           class="pb-3 px-1 text-sm font-medium border-b-2 transition-colors border-transparent text-gray-500 hover:text-gray-700 flex items-center gap-1.5">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" viewBox="0 0 24 24"><path d="M9.813 15.904 9 18.75l-.813-2.846a4.5 4.5 0 0 0-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 0 0 3.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 0 0 3.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 0 0-3.09 3.09Z"/></svg>
+          Autopilot
+        </a>
       </nav>
     </div>
 

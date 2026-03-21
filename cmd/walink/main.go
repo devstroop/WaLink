@@ -154,8 +154,10 @@ func main() {
 
 	// Web UI (embedded HTMX dashboard)
 	if cfg.Web.Enabled {
-		webUI := web.New(mgr, db, cfg.Auth.SecretKey, version, cfg.Auth.RegistrationEnabled, mailer)
+		webUI := web.New(mgr, db, cfg.Auth.SecretKey, version, cfg.Auth.RegistrationEnabled, mailer, cfg.LLM)
 		webUI.RegisterRoutes(mux)
+		// Wire autopilot auto-reply hook.
+		webUI.InitAutoReply()
 		log.Info().Msg("web UI enabled at /")
 	}
 

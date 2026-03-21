@@ -48,6 +48,10 @@ type Account struct {
 	Proxy        *ProxyConfig // nil = direct, set via PUT /accounts/{id}/proxy
 	WebhookCfg   config.WebhookConfig // global webhook defaults (timeout, retries)
 
+	// OnIncomingMessage is called (in a goroutine) for every non-self text message received.
+	// Set by the AccountManager after registration.
+	OnIncomingMessage func(chatJID, senderJID, body string)
+
 	rejected     bool // true after phone-number mismatch; blocks autoReconnect
 	db           *database.DB
 	client       *whatsmeow.Client
@@ -1644,6 +1648,18 @@ func (a *Account) handleEvent(evt interface{}) {
 			"media_type": v.Info.MediaType,
 			"timestamp":  v.Info.Timestamp.UTC().Format(time.RFC3339),
 		})
+		// Fire auto-reply hook for incoming (non-self) text messages.
+		if !v.Info.IsFromMe {
+			body := extractBody(v.Message)
+			if body != "" {
+				a.mu.RLock()
+				hook := a.OnIncomingMessage
+				a.mu.RUnlock()
+				if hook != nil {
+					go hook(v.Info.Chat.String(), v.Info.Sender.String(), body)
+				}
+			}
+		}
 	case *events.Receipt:
 		log.Debug().Str("account", a.ID).Str("type", string(v.Type)).Int("count", len(v.MessageIDs)).Msg("receipt")
 		a.dispatchWebhook("receipt", map[string]any{

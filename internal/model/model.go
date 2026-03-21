@@ -598,6 +598,8 @@ type PlanLimits struct {
 	APIAccess     bool `json:"api_access"`
 	MCPAccess     bool `json:"mcp_access"`
 	Webhooks      bool `json:"webhooks"`
+	Copilot       bool `json:"copilot"`
+	Autopilot     bool `json:"autopilot"`
 }
 
 // PlanInfo is the API-facing plan representation.

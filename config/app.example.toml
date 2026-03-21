@@ -18,6 +18,13 @@ registration_enabled = false  # Set to true to allow public user registration
 [logging]
 level = "info"
 
+[llm]
+# enabled = true
+# provider = "openai"       # "openai" or "ollama"
+# api_key = "sk-..."       # required for OpenAI; leave blank for Ollama  (use WALINK_LLM_API_KEY env var in production)
+# base_url = ""            # override API endpoint; blank = provider default
+# model = "gpt-4o-mini"   # default model used by Copilot and Autopilot
+
 [database]
 # path = ""  # Default: ~/.walink/db/walink.db
 
