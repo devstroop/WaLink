@@ -142,6 +142,20 @@ func (tr *ToolRegistry) Tools() []Tool {
 				),
 			},
 		},
+		{
+			Type: "function",
+			Function: ToolSpec{
+				Name:        "check_contacts",
+				Description: "Check if phone numbers are registered on WhatsApp.",
+				Parameters: jsonParam(
+					[]string{"account_id", "phones"},
+					map[string]any{
+						"account_id": strProp("The WhatsApp account ID"),
+						"phones":     map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "List of phone numbers to check (e.g. [\"+15551234567\"])"},
+					},
+				),
+			},
+		},
 	}
 }
 
@@ -174,6 +188,8 @@ func (tr *ToolRegistry) Execute(ctx context.Context, name, args string) (string,
 		return tr.execReactToMessage(ctx, input)
 	case "mark_read":
 		return tr.execMarkRead(ctx, input)
+	case "check_contacts":
+		return tr.execCheckContacts(ctx, input)
 	default:
 		return "", fmt.Errorf("unknown tool: %s", name)
 	}
@@ -220,6 +236,10 @@ func (tr *ToolRegistry) getAccount(accountID string) (*service.Account, error) {
 		if info.UserID != tr.userID {
 			return nil, fmt.Errorf("access denied")
 		}
+	}
+	// Auto-connect sleeping accounts (core WaLink behaviour).
+	if err := acct.EnsureConnected(context.Background()); err != nil {
+		return nil, fmt.Errorf("failed to connect account %s: %w", accountID, err)
 	}
 	if !acct.IsLoggedIn() {
 		return nil, fmt.Errorf("account %s is not connected to WhatsApp", accountID)
@@ -344,6 +364,32 @@ func (tr *ToolRegistry) execMarkRead(ctx context.Context, input map[string]any) 
 		return "", err
 	}
 	return `{"status":"ok"}`, nil
+}
+
+func (tr *ToolRegistry) execCheckContacts(ctx context.Context, input map[string]any) (string, error) {
+	accountID, _ := input["account_id"].(string)
+	acct, err := tr.getAccount(accountID)
+	if err != nil {
+		return "", err
+	}
+
+	var phones []string
+	if raw, ok := input["phones"].([]any); ok {
+		for _, v := range raw {
+			if s, ok := v.(string); ok {
+				phones = append(phones, s)
+			}
+		}
+	}
+	if len(phones) == 0 {
+		return "", fmt.Errorf("phones array is required")
+	}
+
+	result, err := acct.CheckContacts(ctx, phones)
+	if err != nil {
+		return "", err
+	}
+	return toJSON(result)
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

@@ -17,10 +17,12 @@ import (
 	"github.com/devstroop/walink/internal/service"
 	smtpclient "github.com/devstroop/walink/internal/smtp"
 	"github.com/devstroop/walink/internal/web"
+	"github.com/lib/pq"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"go.mau.fi/whatsmeow/proto/waCompanionReg"
 	"go.mau.fi/whatsmeow/store"
+	"go.mau.fi/whatsmeow/store/sqlstore"
 	"google.golang.org/protobuf/proto"
 
 	mcphttp "github.com/mark3labs/mcp-go/server"
@@ -51,12 +53,15 @@ func main() {
 	// Send push name in the handshake payload itself (fastest possible propagation).
 	store.BaseClientPayload.PushName = proto.String("WaLink")
 
+	// Set whatsmeow PostgreSQL array wrapper for session stores
+	sqlstore.PostgresArrayWrapper = pq.Array
+
 	if cfg.Auth.SecretKey == "change-this-secret-key-in-production" {
 		log.Warn().Msg("using default auth secret key — set WALINK_AUTH_SECRET_KEY for production")
 	}
 
 	// Open database
-	db, err := database.Open(cfg.Database.Path)
+	db, err := database.Open(cfg.Database.DSN)
 	if err != nil {
 		log.Fatal().Err(err).Msg("failed to open database")
 	}

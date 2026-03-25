@@ -51,8 +51,8 @@ func (d *DB) migrateBilling() error {
 			price_cents INTEGER NOT NULL DEFAULT 0,
 			interval    TEXT NOT NULL DEFAULT 'month',
 			limits      TEXT NOT NULL DEFAULT '{}',
-			is_default  INTEGER NOT NULL DEFAULT 0,
-			created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+			is_default  BOOLEAN NOT NULL DEFAULT FALSE,
+			created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 		);
 	`)
 	if err != nil {
@@ -62,16 +62,16 @@ func (d *DB) migrateBilling() error {
 	_, err = d.db.Exec(`
 		CREATE TABLE IF NOT EXISTS subscription (
 			id                   TEXT PRIMARY KEY,
-			user_id              TEXT NOT NULL UNIQUE REFERENCES user(id) ON DELETE CASCADE,
+			user_id              TEXT NOT NULL UNIQUE REFERENCES app_user(id) ON DELETE CASCADE,
 			plan_id              TEXT NOT NULL REFERENCES plan(id),
 			status               TEXT NOT NULL DEFAULT 'active',
 			stripe_sub_id        TEXT,
 			stripe_customer_id   TEXT,
 			current_period_start TEXT NOT NULL,
 			current_period_end   TEXT NOT NULL,
-			cancel_at_period_end INTEGER NOT NULL DEFAULT 0,
-			created_at           TEXT NOT NULL DEFAULT (datetime('now')),
-			updated_at           TEXT NOT NULL DEFAULT (datetime('now'))
+			cancel_at_period_end BOOLEAN NOT NULL DEFAULT FALSE,
+			created_at           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			updated_at           TIMESTAMPTZ NOT NULL DEFAULT NOW()
 		);
 	`)
 	if err != nil {
@@ -80,7 +80,7 @@ func (d *DB) migrateBilling() error {
 
 	_, err = d.db.Exec(`
 		CREATE TABLE IF NOT EXISTS usage (
-			user_id  TEXT NOT NULL REFERENCES user(id) ON DELETE CASCADE,
+			user_id  TEXT NOT NULL REFERENCES app_user(id) ON DELETE CASCADE,
 			date     TEXT NOT NULL,
 			messages INTEGER NOT NULL DEFAULT 0,
 			PRIMARY KEY (user_id, date)
@@ -90,8 +90,8 @@ func (d *DB) migrateBilling() error {
 		return err
 	}
 
-	// Migration: add plan_id column to user if missing
-	_, _ = d.db.Exec(`ALTER TABLE user ADD COLUMN plan_id TEXT DEFAULT 'free'`)
+	// Migration: add plan_id column to app_user if missing
+	_, _ = d.db.Exec(`ALTER TABLE app_user ADD COLUMN IF NOT EXISTS plan_id TEXT DEFAULT 'free'`)
 
 	return d.seedPlans()
 }
@@ -135,9 +135,9 @@ func (d *DB) seedPlans() error {
 		limitsJSON, _ := json.Marshal(p.limits)
 		_, err := d.db.Exec(`
 			INSERT INTO plan (id, name, description, price_cents, interval, limits, is_default)
-			VALUES (?, ?, ?, ?, ?, ?, ?)
+			VALUES ($1, $2, $3, $4, $5, $6, $7)
 			ON CONFLICT(id) DO NOTHING
-		`, p.id, p.name, p.desc, p.priceCents, p.interval, string(limitsJSON), boolToInt(p.isDefault))
+		`, p.id, p.name, p.desc, p.priceCents, p.interval, string(limitsJSON), p.isDefault)
 		if err != nil {
 			return err
 		}
@@ -145,22 +145,12 @@ func (d *DB) seedPlans() error {
 	return nil
 }
 
-func boolToInt(b bool) int {
-	if b {
-		return 1
-	}
-	return 0
-}
-
 // ── Plan CRUD ───────────────────────────────────────
 
 // GetPlan returns a plan by ID.
 func (d *DB) GetPlan(id string) (*PlanRecord, error) {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-
 	r := &PlanRecord{}
-	err := d.db.QueryRow(`SELECT id, name, description, price_cents, interval, limits, is_default, created_at FROM plan WHERE id = ?`, id).
+	err := d.db.QueryRow(`SELECT id, name, description, price_cents, interval, limits, is_default, created_at FROM plan WHERE id = $1`, id).
 		Scan(&r.ID, &r.Name, &r.Description, &r.PriceCents, &r.Interval, &r.Limits, &r.IsDefault, &r.CreatedAt)
 	if err != nil {
 		return nil, err
@@ -170,9 +160,6 @@ func (d *DB) GetPlan(id string) (*PlanRecord, error) {
 
 // ListPlans returns all plans.
 func (d *DB) ListPlans() ([]*PlanRecord, error) {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-
 	rows, err := d.db.Query(`SELECT id, name, description, price_cents, interval, limits, is_default, created_at FROM plan ORDER BY price_cents ASC`)
 	if err != nil {
 		return nil, err
@@ -201,14 +188,11 @@ func (r *PlanRecord) PlanLimits() model.PlanLimits {
 
 // GetSubscription returns the subscription for a user.
 func (d *DB) GetSubscription(userID string) (*SubscriptionRecord, error) {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-
 	r := &SubscriptionRecord{}
 	err := d.db.QueryRow(`
 		SELECT id, user_id, plan_id, status, stripe_sub_id, stripe_customer_id,
 		       current_period_start, current_period_end, cancel_at_period_end, created_at, updated_at
-		FROM subscription WHERE user_id = ?
+		FROM subscription WHERE user_id = $1
 	`, userID).Scan(&r.ID, &r.UserID, &r.PlanID, &r.Status, &r.StripeSubID, &r.StripeCustomerID,
 		&r.CurrentPeriodStart, &r.CurrentPeriodEnd, &r.CancelAtPeriodEnd, &r.CreatedAt, &r.UpdatedAt)
 	if err != nil {
@@ -219,14 +203,11 @@ func (d *DB) GetSubscription(userID string) (*SubscriptionRecord, error) {
 
 // GetSubscriptionByStripeID looks up a subscription by its Stripe subscription ID.
 func (d *DB) GetSubscriptionByStripeID(stripeSubID string) (*SubscriptionRecord, error) {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-
 	r := &SubscriptionRecord{}
 	err := d.db.QueryRow(`
 		SELECT id, user_id, plan_id, status, stripe_sub_id, stripe_customer_id,
 		       current_period_start, current_period_end, cancel_at_period_end, created_at, updated_at
-		FROM subscription WHERE stripe_sub_id = ?
+		FROM subscription WHERE stripe_sub_id = $1
 	`, stripeSubID).Scan(&r.ID, &r.UserID, &r.PlanID, &r.Status, &r.StripeSubID, &r.StripeCustomerID,
 		&r.CurrentPeriodStart, &r.CurrentPeriodEnd, &r.CancelAtPeriodEnd, &r.CreatedAt, &r.UpdatedAt)
 	if err != nil {
@@ -237,14 +218,11 @@ func (d *DB) GetSubscriptionByStripeID(stripeSubID string) (*SubscriptionRecord,
 
 // UpsertSubscription creates or updates a user's subscription.
 func (d *DB) UpsertSubscription(rec *SubscriptionRecord) error {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-
 	now := time.Now().UTC().Format(time.RFC3339)
 	_, err := d.db.Exec(`
 		INSERT INTO subscription (id, user_id, plan_id, status, stripe_sub_id, stripe_customer_id,
 		                          current_period_start, current_period_end, cancel_at_period_end, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 		ON CONFLICT(user_id) DO UPDATE SET
 			plan_id              = excluded.plan_id,
 			status               = excluded.status,
@@ -253,23 +231,20 @@ func (d *DB) UpsertSubscription(rec *SubscriptionRecord) error {
 			current_period_start = excluded.current_period_start,
 			current_period_end   = excluded.current_period_end,
 			cancel_at_period_end = excluded.cancel_at_period_end,
-			updated_at           = ?
+			updated_at           = excluded.updated_at
 	`, rec.ID, rec.UserID, rec.PlanID, rec.Status, rec.StripeSubID, rec.StripeCustomerID,
-		rec.CurrentPeriodStart, rec.CurrentPeriodEnd, boolToInt(rec.CancelAtPeriodEnd),
-		rec.CreatedAt, now, now)
+		rec.CurrentPeriodStart, rec.CurrentPeriodEnd, rec.CancelAtPeriodEnd,
+		rec.CreatedAt, now)
 	return err
 }
 
 // GetSubscriptionByStripeCustomer looks up a subscription by Stripe customer ID.
 func (d *DB) GetSubscriptionByStripeCustomer(customerID string) (*SubscriptionRecord, error) {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-
 	r := &SubscriptionRecord{}
 	err := d.db.QueryRow(`
 		SELECT id, user_id, plan_id, status, stripe_sub_id, stripe_customer_id,
 		       current_period_start, current_period_end, cancel_at_period_end, created_at, updated_at
-		FROM subscription WHERE stripe_customer_id = ?
+		FROM subscription WHERE stripe_customer_id = $1
 	`, customerID).Scan(&r.ID, &r.UserID, &r.PlanID, &r.Status, &r.StripeSubID, &r.StripeCustomerID,
 		&r.CurrentPeriodStart, &r.CurrentPeriodEnd, &r.CancelAtPeriodEnd, &r.CreatedAt, &r.UpdatedAt)
 	if err != nil {
@@ -282,13 +257,10 @@ func (d *DB) GetSubscriptionByStripeCustomer(customerID string) (*SubscriptionRe
 
 // IncrementUsage atomically increments the daily message counter and returns the new count.
 func (d *DB) IncrementUsage(userID string) (int, error) {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-
 	today := time.Now().UTC().Format("2006-01-02")
 	var count int
 	err := d.db.QueryRow(`
-		INSERT INTO usage (user_id, date, messages) VALUES (?, ?, 1)
+		INSERT INTO usage (user_id, date, messages) VALUES ($1, $2, 1)
 		ON CONFLICT(user_id, date) DO UPDATE SET messages = messages + 1
 		RETURNING messages
 	`, userID, today).Scan(&count)
@@ -297,12 +269,9 @@ func (d *DB) IncrementUsage(userID string) (int, error) {
 
 // GetDailyUsage returns today's message count for a user.
 func (d *DB) GetDailyUsage(userID string) (int, error) {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-
 	today := time.Now().UTC().Format("2006-01-02")
 	var count int
-	err := d.db.QueryRow(`SELECT messages FROM usage WHERE user_id = ? AND date = ?`, userID, today).Scan(&count)
+	err := d.db.QueryRow(`SELECT messages FROM usage WHERE user_id = $1 AND date = $2`, userID, today).Scan(&count)
 	if err != nil {
 		return 0, nil // no row = 0 usage
 	}
@@ -311,11 +280,8 @@ func (d *DB) GetDailyUsage(userID string) (int, error) {
 
 // CountUserAccounts returns the number of accounts owned by a user.
 func (d *DB) CountUserAccounts(userID string) (int, error) {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-
 	var count int
-	err := d.db.QueryRow(`SELECT COUNT(*) FROM account WHERE user_id = ?`, userID).Scan(&count)
+	err := d.db.QueryRow(`SELECT COUNT(*) FROM account WHERE user_id = $1`, userID).Scan(&count)
 	return count, err
 }
 
@@ -330,11 +296,9 @@ func (d *DB) GetUserPlanLimits(userID string) (model.PlanLimits, string, error) 
 		}
 	}
 
-	// Fallback: check user.plan_id column
-	d.mu.Lock()
+	// Fallback: check app_user.plan_id column
 	var planID string
-	err = d.db.QueryRow(`SELECT COALESCE(plan_id, 'free') FROM user WHERE id = ?`, userID).Scan(&planID)
-	d.mu.Unlock()
+	err = d.db.QueryRow(`SELECT COALESCE(plan_id, 'free') FROM app_user WHERE id = $1`, userID).Scan(&planID)
 	if err != nil {
 		planID = "free"
 	}
@@ -376,29 +340,23 @@ func (d *DB) EnsureUserSubscription(userID, defaultPlan string) error {
 
 // CreatePlan inserts a new plan.
 func (d *DB) CreatePlan(rec *PlanRecord) error {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-
 	if rec.ID == "" {
 		rec.ID = generateID()
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
 	_, err := d.db.Exec(`
 		INSERT INTO plan (id, name, description, price_cents, interval, limits, is_default, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-	`, rec.ID, rec.Name, rec.Description, rec.PriceCents, rec.Interval, rec.Limits, boolToInt(rec.IsDefault), now)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+	`, rec.ID, rec.Name, rec.Description, rec.PriceCents, rec.Interval, rec.Limits, rec.IsDefault, now)
 	return err
 }
 
 // UpdatePlan updates an existing plan by ID.
 func (d *DB) UpdatePlan(rec *PlanRecord) error {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-
 	res, err := d.db.Exec(`
-		UPDATE plan SET name = ?, description = ?, price_cents = ?, interval = ?, limits = ?, is_default = ?
-		WHERE id = ?
-	`, rec.Name, rec.Description, rec.PriceCents, rec.Interval, rec.Limits, boolToInt(rec.IsDefault), rec.ID)
+		UPDATE plan SET name = $1, description = $2, price_cents = $3, interval = $4, limits = $5, is_default = $6
+		WHERE id = $7
+	`, rec.Name, rec.Description, rec.PriceCents, rec.Interval, rec.Limits, rec.IsDefault, rec.ID)
 	if err != nil {
 		return err
 	}
@@ -411,16 +369,13 @@ func (d *DB) UpdatePlan(rec *PlanRecord) error {
 
 // DeletePlan deletes a plan by ID. Fails if subscriptions reference it.
 func (d *DB) DeletePlan(id string) error {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-
 	var count int
-	_ = d.db.QueryRow(`SELECT COUNT(*) FROM subscription WHERE plan_id = ?`, id).Scan(&count)
+	_ = d.db.QueryRow(`SELECT COUNT(*) FROM subscription WHERE plan_id = $1`, id).Scan(&count)
 	if count > 0 {
 		return fmt.Errorf("cannot delete plan with %d active subscriptions", count)
 	}
 
-	res, err := d.db.Exec(`DELETE FROM plan WHERE id = ?`, id)
+	res, err := d.db.Exec(`DELETE FROM plan WHERE id = $1`, id)
 	if err != nil {
 		return err
 	}
@@ -435,9 +390,6 @@ func (d *DB) DeletePlan(id string) error {
 
 // ListSubscriptions returns all subscriptions with user and plan info.
 func (d *DB) ListSubscriptions() ([]*SubscriptionRecord, error) {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-
 	rows, err := d.db.Query(`
 		SELECT id, user_id, plan_id, status, stripe_sub_id, stripe_customer_id,
 		       current_period_start, current_period_end, cancel_at_period_end, created_at, updated_at
@@ -462,10 +414,7 @@ func (d *DB) ListSubscriptions() ([]*SubscriptionRecord, error) {
 
 // DeleteSubscription removes a user's subscription.
 func (d *DB) DeleteSubscription(userID string) error {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-
-	res, err := d.db.Exec(`DELETE FROM subscription WHERE user_id = ?`, userID)
+	res, err := d.db.Exec(`DELETE FROM subscription WHERE user_id = $1`, userID)
 	if err != nil {
 		return err
 	}
@@ -480,12 +429,9 @@ func (d *DB) DeleteSubscription(userID string) error {
 
 // GetUsageRange returns daily usage for a user within a date range.
 func (d *DB) GetUsageRange(userID, startDate, endDate string) ([]UsageRecord, error) {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-
 	rows, err := d.db.Query(`
 		SELECT user_id, date, messages FROM usage
-		WHERE user_id = ? AND date >= ? AND date <= ?
+		WHERE user_id = $1 AND date >= $2 AND date <= $3
 		ORDER BY date ASC
 	`, userID, startDate, endDate)
 	if err != nil {
@@ -506,11 +452,8 @@ func (d *DB) GetUsageRange(userID, startDate, endDate string) ([]UsageRecord, er
 
 // GetAllDailyUsage returns today's usage for all users.
 func (d *DB) GetAllDailyUsage() ([]UsageRecord, error) {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-
 	today := time.Now().UTC().Format("2006-01-02")
-	rows, err := d.db.Query(`SELECT user_id, date, messages FROM usage WHERE date = ? ORDER BY messages DESC`, today)
+	rows, err := d.db.Query(`SELECT user_id, date, messages FROM usage WHERE date = $1 ORDER BY messages DESC`, today)
 	if err != nil {
 		return nil, err
 	}

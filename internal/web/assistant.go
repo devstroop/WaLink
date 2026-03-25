@@ -362,6 +362,11 @@ func normaliseNumberList(raw string) string {
 // Call this once after startup is complete.
 func (h *Handler) InitAutoReply() {
 	h.mgr.SetOnMessage(func(accountID, chatJID, senderJID, body string) {
+		// Guard: skip if body is empty or too short to be meaningful.
+		if len(strings.TrimSpace(body)) < 2 {
+			return
+		}
+
 		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 		defer cancel()
 

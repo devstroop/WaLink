@@ -132,7 +132,8 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	// Admin Configuration
 	inner.HandleFunc("GET /admin/configuration", h.ConfigurationPage)
 
-	// AI Settings (merged into Settings page)
+	// AI Settings (admin — separate page for LLM configuration)
+	inner.HandleFunc("GET /settings/ai", h.AISettingsPage)
 	inner.HandleFunc("POST /settings/ai", h.AISettingsUpdate)
 
 	// AI Assistant (Mode 1 — personal chat)

@@ -48,7 +48,7 @@ func TestNewUUID(t *testing.T) {
 
 func TestNewAccount(t *testing.T) {
 	now := time.Now()
-	acct := NewAccount("test-id", "919876543210", "main", "/tmp/test", "", now, nil)
+	acct := NewAccount("test-id", "919876543210", "main", "/tmp/test", "", "", now, nil)
 
 	if acct.ID != "test-id" {
 		t.Errorf("expected ID test-id, got %s", acct.ID)
@@ -66,7 +66,7 @@ func TestNewAccount(t *testing.T) {
 
 func TestAccountInfo(t *testing.T) {
 	now := time.Now()
-	acct := NewAccount("info-id", "1234567890", "info-acct", "/tmp/info", "", now, nil)
+	acct := NewAccount("info-id", "1234567890", "info-acct", "/tmp/info", "", "", now, nil)
 
 	info := acct.Info()
 	if info.ID != "info-id" {
@@ -84,7 +84,7 @@ func TestAccountInfo(t *testing.T) {
 }
 
 func TestAccountInfoNoPhone(t *testing.T) {
-	acct := NewAccount("no-phone", "", "nophone", "/tmp/np", "", time.Now(), nil)
+	acct := NewAccount("no-phone", "", "nophone", "/tmp/np", "", "", time.Now(), nil)
 	info := acct.Info()
 	if info.PhoneNumber != nil {
 		t.Errorf("expected nil phone, got %v", info.PhoneNumber)
@@ -92,7 +92,7 @@ func TestAccountInfoNoPhone(t *testing.T) {
 }
 
 func TestAccountStatusResponse(t *testing.T) {
-	acct := NewAccount("sr-id", "5551234567", "sr", "/tmp/sr", "", time.Now(), nil)
+	acct := NewAccount("sr-id", "5551234567", "sr", "/tmp/sr", "", "", time.Now(), nil)
 	resp := acct.StatusResponse()
 
 	if resp.AccountID != "sr-id" {
@@ -107,7 +107,7 @@ func TestAccountStatusResponse(t *testing.T) {
 }
 
 func TestAccountDisconnectWhileAlreadySleeping(t *testing.T) {
-	acct := NewAccount("disc-id", "2222222222", "disc", "/tmp/disc", "", time.Now(), nil)
+	acct := NewAccount("disc-id", "2222222222", "disc", "/tmp/disc", "", "", time.Now(), nil)
 	// Should not panic when client is nil
 	acct.Disconnect()
 	// Client should still be nil after disconnect

@@ -115,6 +115,13 @@
       </a>
     </div>
     
+    <!-- AI / LLM -->
+    <a href="/settings/ai" title="LLM Configuration" class="{{$item}} {{if eq .Page "ai-settings"}}{{$active}}{{end}}">
+      <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" viewBox="0 0 24 24"><path d="M12 2a4 4 0 0 0-4 4v2H6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V10a2 2 0 0 0-2-2h-2V6a4 4 0 0 0-4-4z"/><circle cx="12" cy="15" r="2"/></svg>
+      <span x-show="sidebarOpen" x-transition class="flex-1">LLM Configuration</span>
+      <span x-show="!sidebarOpen" class="sidebar-tooltip">LLM Configuration</span>
+    </a>
+
     <!-- Developer -->
     <button x-data="{open: grpTools}" @click="grpTools = !grpTools; open = grpTools" title="Developer"
             class="w-full {{$item}} {{if or (eq .Page "api-keys") (eq .Page "mcp")}}{{$active}}{{end}}">

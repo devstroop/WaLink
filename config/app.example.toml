@@ -26,7 +26,7 @@ level = "info"
 # model = "gpt-4o-mini"   # default model used by Copilot and Autopilot
 
 [database]
-# path = ""  # Default: ~/.walink/db/walink.db
+# dsn = "postgres://localhost:5432/walink?sslmode=disable"  # PostgreSQL connection string
 
 [cors]
 allow_origins = ["*"]

@@ -1,8 +1,27 @@
 services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: walink-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: walink
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-walink}"
+      POSTGRES_DB: walink
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U walink"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
   walink:
     build: .
     container_name: walink
     restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
     ports:
       - "${WALINK_SERVER_PORT:-3000}:${WALINK_SERVER_PORT:-3000}"
     volumes:
@@ -13,7 +32,7 @@ services:
       WALINK_SERVER_PORT: "${WALINK_SERVER_PORT:-3000}"
       WALINK_AUTH_SECRET_KEY: "${WALINK_AUTH_SECRET_KEY:-change-this-secret-key-in-production}"
       WALINK_LOG_LEVEL: "${WALINK_LOG_LEVEL:-info}"
-      WALINK_DATABASE_PATH: "/data/db/walink.db"
+      WALINK_DATABASE_DSN: "postgres://walink:${POSTGRES_PASSWORD:-walink}@postgres:5432/walink?sslmode=disable"
       WALINK_ACCOUNTS_DIR: "/data/accounts"
       WALINK_CORS_ORIGINS: "${WALINK_CORS_ORIGINS:-*}"
       WALINK_AUTH_REGISTRATION_ENABLED: "${WALINK_AUTH_REGISTRATION_ENABLED:-true}"
@@ -23,4 +42,5 @@ services:
       WALINK_BILLING_STRIPE_WEBHOOK_SECRET: "${WALINK_BILLING_STRIPE_WEBHOOK_SECRET:-}"
 
 volumes:
+  pg-data:
   walink-data:

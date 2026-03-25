@@ -53,7 +53,7 @@ type LoggingConfig struct {
 }
 
 type DatabaseConfig struct {
-	Path string `toml:"path"`
+	DSN string `toml:"dsn"`
 }
 
 type CORSConfig struct {
@@ -131,9 +131,9 @@ func Load() (*Config, error) {
 	// Apply environment variable overrides
 	applyEnvOverrides(cfg)
 
-	// Resolve database path
-	if cfg.Database.Path == "" {
-		cfg.Database.Path = filepath.Join(homeDir(), ".walink", "db", "walink.db")
+	// Resolve database DSN
+	if cfg.Database.DSN == "" {
+		cfg.Database.DSN = "postgres://localhost:5432/walink?sslmode=disable"
 	}
 
 	// Resolve accounts base directory
@@ -160,8 +160,8 @@ func applyEnvOverrides(cfg *Config) {
 	if v := os.Getenv("WALINK_LOG_LEVEL"); v != "" {
 		cfg.Logging.Level = v
 	}
-	if v := os.Getenv("WALINK_DATABASE_PATH"); v != "" {
-		cfg.Database.Path = v
+	if v := os.Getenv("WALINK_DATABASE_DSN"); v != "" {
+		cfg.Database.DSN = v
 	}
 	if v := os.Getenv("WALINK_CORS_ORIGINS"); v != "" {
 		cfg.CORS.AllowOrigins = strings.Split(v, ",")
@@ -269,6 +269,11 @@ func applyEnvOverrides(cfg *Config) {
 	}
 	if v := os.Getenv("WALINK_LLM_MODEL"); v != "" {
 		cfg.LLM.Model = v
+	}
+
+	// Auto-enable LLM if credentials are configured but enabled wasn't explicitly set.
+	if !cfg.LLM.Enabled && (cfg.LLM.APIKey != "" || cfg.LLM.Provider == "ollama") {
+		cfg.LLM.Enabled = true
 	}
 }
 

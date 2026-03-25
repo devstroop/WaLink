@@ -10,8 +10,6 @@ import (
 	"fmt"
 	"net"
 	"net/http"
-	"os"
-	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
@@ -43,6 +41,7 @@ type Account struct {
 	AccountName string
 	DataDir     string
 	UserID      string
+	SessionDSN  string // PostgreSQL DSN for whatsmeow session store
 	CreatedAt   time.Time
 
 	Proxy        *ProxyConfig // nil = direct, set via PUT /accounts/{id}/proxy
@@ -101,13 +100,14 @@ func (tb *tokenBucket) allow() bool {
 }
 
 // NewAccount constructs an Account (not yet connected).
-func NewAccount(id, phone, name, dataDir, userID string, createdAt time.Time, db *database.DB) *Account {
+func NewAccount(id, phone, name, dataDir, userID, sessionDSN string, createdAt time.Time, db *database.DB) *Account {
 	return &Account{
 		ID:           id,
 		PhoneNumber:  phone,
 		AccountName:  name,
 		DataDir:      dataDir,
 		UserID:       userID,
+		SessionDSN:   sessionDSN,
 		CreatedAt:    createdAt,
 		db:           db,
 		sendLimiter:  newTokenBucket(30), // 30 messages per minute
@@ -141,13 +141,8 @@ func (a *Account) Connect(ctx context.Context) error {
 // prepareClient creates the WhatsApp client and store without connecting.
 // Must be called with a.mu held.
 func (a *Account) prepareClient(ctx context.Context) error {
-	dbPath := filepath.Join(a.DataDir, "session.db")
-	if err := os.MkdirAll(a.DataDir, 0o755); err != nil {
-		return fmt.Errorf("create data dir: %w", err)
-	}
-
 	logger := waLog.Noop
-	container, err := sqlstore.New(ctx, "sqlite", fmt.Sprintf("file:%s?_pragma=foreign_keys(1)", dbPath), logger)
+	container, err := sqlstore.New(ctx, "postgres", a.SessionDSN, logger)
 	if err != nil {
 		return fmt.Errorf("open session store: %w", err)
 	}
@@ -340,15 +335,8 @@ func (a *Account) Logout() error {
 
 	// Not connected: just wipe local session data so
 	// hasStoredSession() stops returning true.
-	dbPath := filepath.Join(a.DataDir, "session.db")
-	if _, err := os.Stat(dbPath); err != nil {
-		// No stored session at all — nothing to do
-		return nil
-	}
-	// Open the store, grab the device, delete it
 	logger := waLog.Noop
-	container, err := sqlstore.New(context.Background(), "sqlite",
-		fmt.Sprintf("file:%s?_pragma=foreign_keys(1)", dbPath), logger)
+	container, err := sqlstore.New(context.Background(), "postgres", a.SessionDSN, logger)
 	if err != nil {
 		return fmt.Errorf("open store for cleanup: %w", err)
 	}
@@ -578,14 +566,9 @@ func (a *Account) HasStoredCredentials() bool {
 	if a.client != nil {
 		return a.client.Store.ID != nil
 	}
-	// Probe disk
-	dbPath := filepath.Join(a.DataDir, "session.db")
-	if _, err := os.Stat(dbPath); err != nil {
-		return false
-	}
+	// Probe the shared PostgreSQL session store
 	logger := waLog.Noop
-	container, err := sqlstore.New(context.Background(), "sqlite",
-		fmt.Sprintf("file:%s?_pragma=foreign_keys(1)&mode=ro", dbPath), logger)
+	container, err := sqlstore.New(context.Background(), "postgres", a.SessionDSN, logger)
 	if err != nil {
 		return false
 	}
@@ -609,18 +592,37 @@ func (a *Account) hasStoredSession() bool {
 	return false
 }
 
-// Reset clears all session data and re-creates the data directory.
+// Reset clears all session data from the shared PostgreSQL store for this account.
 func (a *Account) Reset() error {
 	a.Disconnect()
 
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
-	if err := os.RemoveAll(a.DataDir); err != nil {
-		return fmt.Errorf("remove data dir: %w", err)
+	// Delete whatsmeow device records from the shared DB
+	if a.container != nil {
+		ctx := context.Background()
+		if devs, err := a.container.GetAllDevices(ctx); err == nil {
+			for _, d := range devs {
+				_ = a.container.DeleteDevice(ctx, d)
+			}
+		}
+		return nil
 	}
-	if err := os.MkdirAll(a.DataDir, 0o755); err != nil {
-		return fmt.Errorf("recreate data dir: %w", err)
+
+	// If no container cached, open a temporary one to clean up
+	logger := waLog.Noop
+	container, err := sqlstore.New(context.Background(), "postgres", a.SessionDSN, logger)
+	if err != nil {
+		return fmt.Errorf("open store for reset: %w", err)
+	}
+	ctx := context.Background()
+	devs, err := container.GetAllDevices(ctx)
+	if err != nil {
+		return fmt.Errorf("list devices for reset: %w", err)
+	}
+	for _, d := range devs {
+		_ = container.DeleteDevice(ctx, d)
 	}
 	return nil
 }

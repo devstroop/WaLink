@@ -139,7 +139,7 @@ func TestEnvOverrides(t *testing.T) {
 	t.Setenv("WALINK_SERVER_PORT", "9090")
 	t.Setenv("WALINK_AUTH_SECRET_KEY", "env-secret")
 	t.Setenv("WALINK_LOG_LEVEL", "debug")
-	t.Setenv("WALINK_DATABASE_PATH", "/data/walink.db")
+	t.Setenv("WALINK_DATABASE_DSN", "postgres://localhost:5432/walink_test?sslmode=disable")
 	t.Setenv("WALINK_ACCOUNTS_DIR", "/data/accounts")
 	t.Setenv("WALINK_CORS_ORIGINS", "https://a.com,https://b.com")
 	t.Setenv("WALINK_SWAGGER_ENABLED", "false")
@@ -163,8 +163,8 @@ func TestEnvOverrides(t *testing.T) {
 	if cfg.Logging.Level != "debug" {
 		t.Errorf("expected log level debug, got %s", cfg.Logging.Level)
 	}
-	if cfg.Database.Path != "/data/walink.db" {
-		t.Errorf("expected db path /data/walink.db, got %s", cfg.Database.Path)
+	if cfg.Database.DSN != "postgres://localhost:5432/walink_test?sslmode=disable" {
+		t.Errorf("expected db dsn postgres://localhost:5432/walink_test?sslmode=disable, got %s", cfg.Database.DSN)
 	}
 	if cfg.Accounts.BaseDirectory != "/data/accounts" {
 		t.Errorf("expected accounts dir /data/accounts, got %s", cfg.Accounts.BaseDirectory)

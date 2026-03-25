@@ -125,6 +125,18 @@ func (c *Client) Chat(ctx context.Context, messages []Message, tools []Tool) (*M
 	}
 	defer func() { _ = resp.Body.Close() }()
 
+	if resp.StatusCode >= 400 {
+		var errBody struct {
+			Error *struct {
+				Message string `json:"message"`
+			} `json:"error"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&errBody); err == nil && errBody.Error != nil {
+			return nil, fmt.Errorf("llm api error %d: %s", resp.StatusCode, errBody.Error.Message)
+		}
+		return nil, fmt.Errorf("llm api error: HTTP %d", resp.StatusCode)
+	}
+
 	var out chatResponse
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
 		return nil, fmt.Errorf("llm decode: %w", err)

@@ -1,18 +1,29 @@
 package database
 
 import (
-	"path/filepath"
+	"os"
 	"testing"
 )
 
 func openTestDB(t *testing.T) *DB {
 	t.Helper()
-	path := filepath.Join(t.TempDir(), "test.db")
-	db, err := Open(path)
+	dsn := os.Getenv("WALINK_TEST_DSN")
+	if dsn == "" {
+		t.Skip("WALINK_TEST_DSN not set, skipping database tests")
+	}
+	db, err := Open(dsn)
 	if err != nil {
-		t.Fatalf("Open(%s): %v", path, err)
+		t.Fatalf("Open(%s): %v", dsn, err)
 	}
 	t.Cleanup(func() { _ = db.Close() })
+	// Clean tables for test isolation
+	for _, table := range []string{
+		"password_reset_token", "api_key", "agent_log", "agent_config", "agent_session",
+		"usage", "subscription", "message", "webhook_config", "proxy_config",
+		"account", "role_permission", "app_user",
+	} {
+		_, _ = db.db.Exec("DELETE FROM " + table + " WHERE TRUE")
+	}
 	return db
 }
 

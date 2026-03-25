@@ -177,18 +177,30 @@ func (a *Agent) streamFinal(ctx context.Context, history []Message, msg *Message
 	// If the model already returned a final text in the non-streaming call, use it.
 	if msg.Content != "" {
 		// Simulate streaming by sending in small chunks for a smooth UX.
-		words := strings.Fields(msg.Content)
+		// Split on newlines first to preserve them, then chunk words within each line.
+		lines := strings.Split(msg.Content, "\n")
+		wordCount := 0
 		var buf strings.Builder
-		for i, w := range words {
-			if i > 0 {
-				buf.WriteString(" ")
+		for li, line := range lines {
+			if li > 0 {
+				buf.WriteString("\n")
 			}
-			buf.WriteString(w)
-			if (i+1)%8 == 0 || i == len(words)-1 {
-				sse.Send(map[string]any{"type": "text", "content": buf.String()})
-				buf.Reset()
-				time.Sleep(20 * time.Millisecond)
+			words := strings.Fields(line)
+			for wi, w := range words {
+				if wi > 0 {
+					buf.WriteString(" ")
+				}
+				buf.WriteString(w)
+				wordCount++
+				if wordCount%8 == 0 {
+					sse.Send(map[string]any{"type": "text", "content": buf.String()})
+					buf.Reset()
+					time.Sleep(20 * time.Millisecond)
+				}
 			}
+		}
+		if buf.Len() > 0 {
+			sse.Send(map[string]any{"type": "text", "content": buf.String()})
 		}
 		sse.Send(map[string]any{"type": "done"})
 		return
@@ -215,13 +227,21 @@ func (a *Agent) streamFinal(ctx context.Context, history []Message, msg *Message
 }
 
 func (a *Agent) saveHistory(userID string, history []Message, finalAssistant *Message) {
-	// Build persisted history: strip system message, add final assistant reply.
+	// Build persisted history: keep only user and assistant (with content) messages.
+	// Strip system, tool, and assistant tool-call messages to avoid orphaned tool results on reload.
 	var persist []Message
 	for _, m := range history {
-		if m.Role == RoleSystem {
+		switch m.Role {
+		case RoleSystem, RoleTool:
 			continue
+		case RoleAssistant:
+			if m.Content == "" {
+				continue // tool-call-only assistant message
+			}
 		}
-		persist = append(persist, m)
+		// Strip tool_calls from persisted assistant messages.
+		clean := Message{Role: m.Role, Content: m.Content}
+		persist = append(persist, clean)
 	}
 	if finalAssistant != nil && finalAssistant.Content != "" {
 		persist = append(persist, Message{Role: RoleAssistant, Content: finalAssistant.Content})
@@ -244,6 +264,11 @@ func (a *Agent) saveHistory(userID string, history []Message, finalAssistant *Me
 // It returns the reply text. The caller is responsible for sending it and logging.
 func AutoReply(ctx context.Context, db *database.DB, mgr *service.AccountManager,
 	accountID, chatJID, senderJID, incomingBody string, cfgOverride LLMConfig) (string, string, error) {
+
+	// Skip group chats — autopilot only replies to 1:1 conversations.
+	if strings.Contains(chatJID, "@g.us") || strings.Contains(chatJID, "@newsletter") {
+		return "", "", nil
+	}
 
 	cfg, err := db.GetAgentConfig(accountID)
 	if err != nil || !cfg.Enabled {

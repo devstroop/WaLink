@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -12,10 +13,13 @@ import (
 
 func setupManager(t *testing.T) *AccountManager {
 	t.Helper()
+	dsn := os.Getenv("WALINK_TEST_DSN")
+	if dsn == "" {
+		t.Skip("WALINK_TEST_DSN not set, skipping manager tests")
+	}
 	dir := t.TempDir()
 
-	dbPath := filepath.Join(dir, "db", "test.db")
-	db, err := database.Open(dbPath)
+	db, err := database.Open(dsn)
 	if err != nil {
 		t.Fatalf("Open DB: %v", err)
 	}
@@ -24,6 +28,9 @@ func setupManager(t *testing.T) *AccountManager {
 	cfg := &config.Config{
 		Accounts: config.AccountsConfig{
 			BaseDirectory: filepath.Join(dir, "accounts"),
+		},
+		Database: config.DatabaseConfig{
+			DSN: dsn,
 		},
 	}
 
@@ -177,9 +184,13 @@ func TestManagerDeleteAccountNotFound(t *testing.T) {
 }
 
 func TestManagerDiscoverAccounts(t *testing.T) {
+	dsn := os.Getenv("WALINK_TEST_DSN")
+	if dsn == "" {
+		t.Skip("WALINK_TEST_DSN not set, skipping manager tests")
+	}
 	dir := t.TempDir()
-	dbPath := filepath.Join(dir, "db", "test.db")
-	db, err := database.Open(dbPath)
+
+	db, err := database.Open(dsn)
 	if err != nil {
 		t.Fatalf("Open DB: %v", err)
 	}
@@ -197,6 +208,9 @@ func TestManagerDiscoverAccounts(t *testing.T) {
 		Accounts: config.AccountsConfig{
 			BaseDirectory: filepath.Join(dir, "accounts"),
 		},
+		Database: config.DatabaseConfig{
+			DSN: dsn,
+		},
 	}
 
 	mgr, _ := NewAccountManager(cfg, db)
@@ -213,5 +227,3 @@ func TestManagerDiscoverAccounts(t *testing.T) {
 		t.Errorf("expected phone 4444444444, got %s", acct.PhoneNumber)
 	}
 }
-
-

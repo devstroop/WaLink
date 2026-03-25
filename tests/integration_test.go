@@ -39,10 +39,13 @@ func testServer(t *testing.T) (*httptest.Server, *service.AccountManager) {
 // tests can verify DB state directly (e.g. RBAC / API key tests).
 func testServerWithDB(t *testing.T) (*httptest.Server, *service.AccountManager, *database.DB) {
 	t.Helper()
+	dsn := os.Getenv("WALINK_TEST_DSN")
+	if dsn == "" {
+		t.Skip("WALINK_TEST_DSN not set, skipping integration tests")
+	}
 	dir := t.TempDir()
 
-	dbPath := filepath.Join(dir, "db", "walink.db")
-	db, err := database.Open(dbPath)
+	db, err := database.Open(dsn)
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
@@ -58,6 +61,7 @@ func testServerWithDB(t *testing.T) (*httptest.Server, *service.AccountManager, 
 			AllowHeaders: []string{"authorization", "content-type"},
 		},
 		Accounts: config.AccountsConfig{BaseDirectory: filepath.Join(dir, "accounts")},
+		Database: config.DatabaseConfig{DSN: dsn},
 	}
 
 	mgr, err := service.NewAccountManager(cfg, db)
@@ -855,9 +859,12 @@ func TestSendEndpointTextInBody(t *testing.T) {
 // ─── Rate Limiting ──────────────────────────────────
 
 func TestRateLimitEnforced(t *testing.T) {
+	dsn := os.Getenv("WALINK_TEST_DSN")
+	if dsn == "" {
+		t.Skip("WALINK_TEST_DSN not set, skipping integration tests")
+	}
 	dir := t.TempDir()
-	dbPath := filepath.Join(dir, "db", "walink.db")
-	db, err := database.Open(dbPath)
+	db, err := database.Open(dsn)
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
@@ -867,6 +874,7 @@ func TestRateLimitEnforced(t *testing.T) {
 		Auth:     config.AuthConfig{SecretKey: testSecret},
 		Limits:   config.LimitsConfig{MaxConcurrentRequests: 2}, // very low limit
 		Accounts: config.AccountsConfig{BaseDirectory: filepath.Join(dir, "accounts")},
+		Database: config.DatabaseConfig{DSN: dsn},
 		CORS: config.CORSConfig{
 			AllowOrigins: []string{"*"},
 			AllowMethods: []string{"GET"},
