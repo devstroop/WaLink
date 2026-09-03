@@ -7,6 +7,7 @@
 package tests
 
 import (
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -24,6 +25,7 @@ import (
 	"github.com/devstroop/walink/internal/handler"
 	"github.com/devstroop/walink/internal/middleware"
 	"github.com/devstroop/walink/internal/service"
+	_ "github.com/lib/pq"
 )
 
 const testSecret = "test-secret-key"
@@ -50,6 +52,19 @@ func testServerWithDB(t *testing.T) (*httptest.Server, *service.AccountManager, 
 		t.Fatalf("open db: %v", err)
 	}
 	t.Cleanup(func() { _ = db.Close() })
+
+	// Clean mutable tables for test isolation (preserve builtin roles/plans).
+	raw, _ := sql.Open("postgres", dsn)
+	if raw != nil {
+		for _, table := range []string{
+			"password_reset_token", "api_key", "agent_log", "agent_config", "agent_session",
+			"usage", "subscription", "message", "webhook_config", "proxy_config",
+			"account", "app_user",
+		} {
+			_, _ = raw.Exec("DELETE FROM " + table + " WHERE TRUE")
+		}
+		_ = raw.Close()
+	}
 
 	cfg := &config.Config{
 		Auth:    config.AuthConfig{SecretKey: testSecret},
