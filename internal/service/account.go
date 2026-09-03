@@ -1236,7 +1236,7 @@ func (a *Account) SetStatusMessage(ctx context.Context, about string) error {
 		return err
 	}
 
-	return client.SetStatusMessage(ctx, about)
+	return client.SetStatusMessage(ctx, types.SetStatusInput{Text: &about})
 }
 
 // ── helpers ─────────────────────────────────────────
