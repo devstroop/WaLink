@@ -261,7 +261,7 @@ func (d *DB) IncrementUsage(userID string) (int, error) {
 	var count int
 	err := d.db.QueryRow(`
 		INSERT INTO usage (user_id, date, messages) VALUES ($1, $2, 1)
-		ON CONFLICT(user_id, date) DO UPDATE SET messages = messages + 1
+		ON CONFLICT(user_id, date) DO UPDATE SET messages = usage.messages + 1
 		RETURNING messages
 	`, userID, today).Scan(&count)
 	return count, err
