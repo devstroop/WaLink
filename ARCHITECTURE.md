@@ -22,12 +22,12 @@ WaLink is an HTTP API server and MCP server implementing WhatsApp's multi-device
                                     │  │  Account            │             │
                                     │  │  (whatsmeow.Client) │             │
                                     │  └────┬────────────────┘             │
-                                    │       │                              │
-                                    │  ┌────▼────┐  ┌──────────┐           │
-                                    │  │ SQLite  │  │ WhatsApp │           │
-                                    │  │ (store) │  │ Servers  │           │
-                                    │  └─────────┘  └──────────┘           │
-                                    └──────────────────────────────────────┘
+                                     │       │                              │
+                                       │  ┌────▼────┐  ┌──────────┐           │
+                                       │  │PostgreSQL│  │ WhatsApp │           │
+                                       │  │ (store) │  │ Servers  │           │
+                                       │  └─────────┘  └──────────┘           │
+                                       └──────────────────────────────────────┘
 ```
 
 ## Project Layout
@@ -39,8 +39,8 @@ walink/
 └── internal/
     ├── config/config.go            Config loading & defaults
     ├── database/
-    │   ├── database.go             Account registry, users, roles, API keys, settings (SQLite)
-    │   └── billing.go              Plans, subscriptions, usage tracking
+       │   ├── database.go             Account registry, users, roles, API keys, settings (PostgreSQL)
+       │   └── billing.go              Plans, subscriptions, usage tracking
     ├── handler/
     │   ├── routes.go               REST API route registration (64 routes)
     │   ├── accounts.go             Account CRUD
@@ -85,7 +85,7 @@ walink/
 
 Owns all accounts. Responsible for:
 - Creating/deleting accounts (DB + in-memory map)
-- Discovering existing accounts at startup from SQLite
+- Discovering existing accounts at startup from PostgreSQL
 - Graceful shutdown of all connections
 
 ### Account (`service/account.go`)
@@ -102,7 +102,7 @@ Wraps a single WhatsApp client connection. Each account has:
 
 ### Database (`database/database.go`)
 
-SQLite database storing:
+PostgreSQL database storing:
 - Account registry (ID, phone, name, data dir, idle timeout, status, user_id)
 - Users (bcrypt passwords, role FK)
 - Roles and permissions (`resource:action` format)
