@@ -26,7 +26,7 @@ registration_enabled = false  # Set to true to allow public user registration
 level = "info"          # trace | debug | info | warn | error
 
 [database]
-path = ""               # SQLite path. Default: ~/.walink/db/walink.db
+# dsn = "postgres://walink:walink@localhost:5432/walink?sslmode=disable"  # PostgreSQL DSN
 
 [cors]
 allow_origins = ["*"]
@@ -77,7 +77,7 @@ All config keys map to environment variables with the `WALINK_` prefix. Nested k
 | `auth.secret_key` | `WALINK_AUTH_SECRET_KEY` | `my-secret` |
 | `auth.registration_enabled` | `WALINK_AUTH_REGISTRATION_ENABLED` | `true` |
 | `logging.level` | `WALINK_LOG_LEVEL` | `debug` |
-| `database.path` | `WALINK_DATABASE_PATH` | `/data/db/walink.db` |
+| `database.dsn` | `WALINK_DATABASE_DSN` | `postgres://walink:walink@localhost:5432/walink?sslmode=disable` |
 | `accounts.base_directory` | `WALINK_ACCOUNTS_DIR` | `/data/accounts` |
 | `cors.allow_origins` | `WALINK_CORS_ORIGINS` | `*` |
 | `swagger.enabled` | `WALINK_SWAGGER_ENABLED` | `true` |
@@ -86,12 +86,12 @@ All config keys map to environment variables with the `WALINK_` prefix. Nested k
 ## Data Layout
 
 ```
-~/.walink/
-├── db/
-│   └── walink.db               # Account registry, users, roles, API keys, settings, billing
-└── accounts/
-    └── {uuid}/
-        └── session.db          # WhatsApp session (Signal keys, device state)
+PostgreSQL:
+- account, app_user, role, api_key, message, webhook_config, proxy_config, subscription, usage, agent_* tables
+- Each account's WhatsApp session stored via whatsmeow PostgreSQL store (sqlstore)
+
+File system:
+~/.walink/accounts/{uuid}/  # WhatsApp session cache (if any)
 ```
 
 ## Docker
@@ -106,7 +106,7 @@ Data is persisted in a named volume (`walink-data`) mounted at `/data`.
 
 ## Notes
 
-- **SQLite**: Uses pure-Go `modernc.org/sqlite` — no CGO or C compiler required.
+- **PostgreSQL**: Uses `github.com/lib/pq` with `whatsmeow` PostgreSQL store — requires PostgreSQL 16+ (see `docker-compose.yml`).
 - **Idle timeout**: A background goroutine polls every 30s. When an account has been idle longer than `idle_timeout`, it disconnects automatically. Any API request to that account reconnects it on demand.
 - **secret_key**: Used for Bearer token auth and JWT signing. All API endpoints under `/api/v1/` require authentication. Health and public auth endpoints are unauthenticated.
 - **MCP runtime toggle**: The MCP endpoint can be enabled/disabled at runtime via the admin UI or `PATCH /api/v1/mcp` without restarting the server.
