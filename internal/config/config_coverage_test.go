@@ -220,9 +220,9 @@ func TestLLMAutoEnable(t *testing.T) {
 	}
 
 	// clean
-	os.Unsetenv("WALINK_LLM_PROVIDER")
-	os.Unsetenv("WALINK_LLM_API_KEY")
-	os.Unsetenv("WALINK_LLM_ENABLED")
+	_ = os.Unsetenv("WALINK_LLM_PROVIDER")
+	_ = os.Unsetenv("WALINK_LLM_API_KEY")
+	_ = os.Unsetenv("WALINK_LLM_ENABLED")
 
 	dir2 := t.TempDir()
 	origDir2, _ := os.Getwd()
@@ -263,7 +263,7 @@ func TestLoadWithDatabaseDSNDefault(t *testing.T) {
 	}
 	defer func() { _ = os.Chdir(origDir) }()
 	// ensure no env
-	os.Unsetenv("WALINK_DATABASE_DSN")
+	_ = os.Unsetenv("WALINK_DATABASE_DSN")
 	cfg, err := Load()
 	if err != nil {
 		t.Fatal(err)
@@ -283,17 +283,23 @@ func TestLoadWithDatabaseDSNDefault(t *testing.T) {
 func TestLoadWithAccountsBaseDirectoryFromFile(t *testing.T) {
 	dir := t.TempDir()
 	configDir := filepath.Join(dir, "config")
-	os.MkdirAll(configDir, 0o755)
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
 	content := `
 [accounts]
 base_directory = "/custom/accounts"
 [accounts.defaults]
 idle_timeout = 999
 `
-	os.WriteFile(filepath.Join(configDir, "app.toml"), []byte(content), 0o644)
+	if err := os.WriteFile(filepath.Join(configDir, "app.toml"), []byte(content), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
 	origDir, _ := os.Getwd()
-	os.Chdir(dir)
-	defer os.Chdir(origDir)
+	if err := os.Chdir(dir); err != nil {
+		t.Fatalf("Chdir: %v", err)
+	}
+	defer func() { _ = os.Chdir(origDir) }()
 	cfg, err := Load()
 	if err != nil {
 		t.Fatal(err)
