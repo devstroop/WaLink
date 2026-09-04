@@ -108,7 +108,8 @@ jobs:
         run: docker compose build
 
       - name: Start services
-        run: docker compose up -d
+        run: |
+          docker compose up -d || (echo "=== compose ps ==="; docker compose ps -a; echo "=== postgres logs ==="; docker compose logs postgres; echo "=== walink logs ==="; docker compose logs walink; exit 1)
 
       - name: Wait for healthy
         run: |

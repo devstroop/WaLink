@@ -10,10 +10,11 @@ services:
     volumes:
       - pg-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U walink"]
-      interval: 5s
-      timeout: 3s
-      retries: 5
+      test: ["CMD-SHELL", "pg_isready -U walink -d walink"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+      start_period: 15s
 
   walink:
     build: .
