@@ -9,13 +9,12 @@
 - **Multi-account** — dozens of numbers on one server, isolated sessions
 - **Phone-first** — `?phone=9198…` auto-resolves to JID (`@s.whatsapp.net` / `@g.us` / LID)
 - **MCP** — 26 tools (`send_message`, `list_chats`, `create_group`, …) via Streamable HTTP at fixed `/mcp`
-- **Web dashboard** — HTMX UI for accounts, chats, admin (users/roles/keys/billing)
+- **Web dashboard** — HTMX UI for accounts, chats, admin (users/roles/keys)
 - **Auth + RBAC** — secret key → JWT → API key (`walink_…`), `resource:action` permissions (`*` for admin)
 - **Browserless** — Noise + Signal + Protobuf over encrypted WebSocket (`whatsmeow`)
 - **Pure Go** — single binary, `CGO_ENABLED=0`, no runtime deps
 - **Resilient** — auto-connect on demand, idle disconnect (`idle_timeout`), crash recovery
 - **Webhooks** — `message`/`receipt` with `X-Webhook-Signature` (HMAC) + retry
-- **Billing (optional)** — Stripe plans, quotas (`daily_messages`, `max_accounts`, `mcp_access`, …)
 
 ## Requirements
 
@@ -76,7 +75,7 @@ All `/api/v1/*` require `Authorization: Bearer <token>`.
 | JWT | `Bearer eyJ…` (`POST /api/v1/auth/login`) | `role.permissions` | User login |
 | API key | `Bearer walink_…` (`POST /api/v1/api-keys`) | `user + optional account_id` + expiry | Programmatic, MCP account-scoping |
 
-**Public (no auth):** `POST /api/v1/auth/login`, `/register` (if enabled), `/forgot-password`, `/reset-password`, `GET /api/health`, `GET /api/v1/billing/plans`.
+**Public (no auth):** `POST /api/v1/auth/login`, `/register` (if enabled), `/forgot-password`, `/reset-password`, `GET /api/health`.
 
 **RBAC:** built-in `admin` (`*`) and `user`. Permissions `resource:action` e.g. `messages:write`, `accounts:read`.
 
@@ -176,7 +175,6 @@ Webhook payload: `event_type`, `account_id`, `timestamp`, `payload` + `X-Webhook
 
 **Admin (requires `*`):** `GET/POST /api/v1/users`, `GET/PATCH/DELETE /api/v1/users/{id}`, `GET/POST /api/v1/roles`, `GET/PATCH/DELETE /api/v1/roles/{id}`, `GET/POST/DELETE /api/v1/api-keys`
 
-**Billing:** `GET /api/v1/billing/plans` (public), `GET /api/v1/billing`, `GET /api/v1/billing/usage`, `GET/PATCH /api/v1/mcp` (toggle `enabled`; path fixed `/mcp`)
 
 Full interactive docs: `http://localhost:3000/api-docs` (Swagger, `internal/handler/openapi.json`).
 
@@ -273,12 +271,11 @@ curl -X POST http://localhost:3000/api/v1/api-keys -H "$AUTH" -H "Content-Type: 
 | `swagger` | `enabled` / `path` | `true` / `/api-docs` | Swagger UI |
 | `web` | `enabled` | `true` | Web dashboard |
 | `mcp` | `enabled` | `true` | MCP at fixed `/mcp` (toggle via `PATCH /api/v1/mcp`) |
-| `billing` | `enabled` / `stripe_secret_key` / `stripe_webhook_secret` / `default_plan` | `false` / — / — / `free` | Stripe billing |
 | `llm` | `enabled` / `provider` / `api_key` / `base_url` / `model` | `false` / `openai` / — | Copilot/Autopilot |
 
 See `CONFIGURATION.md` for full TOML + env table. Docker compose maps these to `WALINK_*`.
 
-**Notes:** `secret_key` signs JWTs; `idle_timeout` polls every 30s; MCP `enabled` toggles without restart via DB `setting` + `PATCH /api/v1/mcp`; billing middleware gates `messages`, `mcp`, `webhooks` (system `secret_key` bypasses).
+**Notes:** `secret_key` signs JWTs; `idle_timeout` polls every 30s; MCP `enabled` toggles without restart via DB `setting` + `PATCH /api/v1/mcp`.
 
 ## Architecture
 
