@@ -23,7 +23,7 @@ func cleanDB(t *testing.T) {
 	if raw == nil {
 		return
 	}
-	defer raw.Close()
+	defer func() { _ = raw.Close() }()
 	for _, table := range []string{
 		"password_reset_token", "api_key", "agent_log", "agent_config", "agent_session",
 		"usage", "subscription", "message", "webhook_config", "proxy_config",
@@ -140,12 +140,10 @@ func TestRateLimit(t *testing.T) {
 	if w.Code != 200 {
 		t.Error("disabled should pass")
 	}
-	// limited
-	h = RateLimit(1, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	// limited - handler that blocks until context done
+	_ = RateLimit(1, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// hold
-		select {
-		case <-r.Context().Done():
-		}
+		<-r.Context().Done()
 	}))
 	// We test the default case (429) via the integration test already; here test the success path
 	h2 := RateLimit(1, okHandler)
@@ -176,7 +174,7 @@ func TestBillingEnforcerSystemBypass(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	h := BillingEnforcer(db, true)(okHandler)
 	// system admin bypass
@@ -207,7 +205,7 @@ func TestBillingEnforcerQuotaAndGates(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	// create user with free plan (20 msgs)
 	uid := "bill-" + database.GenerateID()
 	// create user
@@ -286,7 +284,7 @@ func TestIncrementMessageUsage(t *testing.T) {
 		t.Skip("WALINK_TEST_DSN not set")
 	}
 	db, _ := database.Open(dsn)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	// disabled
 	IncrementMessageUsage(db, false, "user1")
 	// system
@@ -311,7 +309,7 @@ func TestAuthJWTAndAPIKey(t *testing.T) {
 		t.Skip("WALINK_TEST_DSN not set")
 	}
 	db, _ := database.Open(dsn)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	secret := "test-secret-for-jwt"
 	// create user
 	uid := "jwt-" + database.GenerateID()
@@ -372,7 +370,7 @@ func TestMCPScope(t *testing.T) {
 		t.Skip("WALINK_TEST_DSN not set")
 	}
 	db, _ := database.Open(dsn)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	// no identity
 	req := httptest.NewRequest("GET", "/mcp?account_id=acc1", nil)

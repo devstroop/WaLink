@@ -170,7 +170,9 @@ func TestWebhookCRUDCoverage(t *testing.T) {
 		t.Error("mismatch")
 	}
 	rec.URL = "https://other.com/hook"
-	db.UpsertWebhookConfig(rec)
+	if err := db.UpsertWebhookConfig(rec); err != nil {
+		t.Fatalf("UpsertWebhookConfig: %v", err)
+	}
 	got, _ = db.GetWebhookConfig("wh1")
 	if got.URL != "https://other.com/hook" {
 		t.Error("update failed")
@@ -398,7 +400,9 @@ func TestAPIKeyCRUDCoverage(t *testing.T) {
 func TestSettingsCRUD(t *testing.T) {
 	db := openTestDB(t)
 	// clean settings first
-	db.db.Exec("DELETE FROM setting WHERE TRUE")
+	if _, err := db.db.Exec("DELETE FROM setting WHERE TRUE"); err != nil {
+		t.Fatalf("Exec: %v", err)
+	}
 	if got := db.GetSetting("nonexistent", "def"); got != "def" {
 		t.Error("default failed")
 	}
@@ -408,11 +412,15 @@ func TestSettingsCRUD(t *testing.T) {
 	if got := db.GetSetting("k1", ""); got != "v1" {
 		t.Error("get failed")
 	}
-	db.SetSetting("k1", "v2")
+	if err := db.SetSetting("k1", "v2"); err != nil {
+		t.Fatalf("SetSetting: %v", err)
+	}
 	if got := db.GetSetting("k1", ""); got != "v2" {
 		t.Error("update failed")
 	}
-	db.SetSetting("k2", "true")
+	if err := db.SetSetting("k2", "true"); err != nil {
+		t.Fatalf("SetSetting: %v", err)
+	}
 	all, err := db.GetAllSettings()
 	if err != nil || len(all) < 2 {
 		t.Errorf("GetAll %v %d", err, len(all))
@@ -426,7 +434,9 @@ func TestSettingsCRUD(t *testing.T) {
 	if db.GetSettingBool("nonexistent2", false) != false {
 		t.Error("default false failed")
 	}
-	db.SetSetting("k3", "1")
+	if err := db.SetSetting("k3", "1"); err != nil {
+		t.Fatalf("SetSetting: %v", err)
+	}
 	if !db.GetSettingBool("k3", false) {
 		t.Error("1 should be true")
 	}
@@ -457,7 +467,9 @@ func TestResetTokenCRUD(t *testing.T) {
 	}
 	// second token should invalidate first if any left? test creation again
 	rec2 := &ResetTokenRecord{ID: "t2", UserID: "u-reset", TokenHash: "hash2", ExpiresAt: exp}
-	db.CreateResetToken(rec2)
+	if err := db.CreateResetToken(rec2); err != nil {
+		t.Fatalf("CreateResetToken: %v", err)
+	}
 	got, _ = db.GetResetTokenByHash("hash2")
 	if got == nil {
 		t.Error("second token failed")
@@ -525,7 +537,9 @@ func TestBillingPlanCRUD(t *testing.T) {
 	}
 	// create a plan and subscription
 	p := &PlanRecord{ID: "plan-sub", Name: "SubPlan", PriceCents: 50, Interval: "month", Limits: "{}"}
-	db.CreatePlan(p)
+	if err := db.CreatePlan(p); err != nil {
+		t.Fatalf("CreatePlan: %v", err)
+	}
 	now := time.Now().Format(time.RFC3339)
 	later := time.Now().Add(24 * time.Hour).Format(time.RFC3339)
 	sub := &SubscriptionRecord{ID: "sub1", UserID: "u-bill", PlanID: "plan-sub", Status: "active", CurrentPeriodStart: now, CurrentPeriodEnd: later, CreatedAt: now}
@@ -536,8 +550,12 @@ func TestBillingPlanCRUD(t *testing.T) {
 		t.Error("expected error deleting plan with sub")
 	}
 	// cleanup
-	db.DeleteSubscription("u-bill")
-	db.DeletePlan("plan-sub")
+	if err := db.DeleteSubscription("u-bill"); err != nil {
+		t.Fatalf("DeleteSubscription: %v", err)
+	}
+	if err := db.DeletePlan("plan-sub"); err != nil {
+		t.Fatalf("DeletePlan: %v", err)
+	}
 }
 
 func TestBillingSubscriptionAndUsage(t *testing.T) {
@@ -560,7 +578,9 @@ func TestBillingSubscriptionAndUsage(t *testing.T) {
 	// Get by stripe
 	sub.StripeSubID = strPtr("stripe_123")
 	sub.StripeCustomerID = strPtr("cus_123")
-	db.UpsertSubscription(sub)
+	if err := db.UpsertSubscription(sub); err != nil {
+		t.Fatalf("UpsertSubscription: %v", err)
+	}
 	got, _ := db.GetSubscriptionByStripeID("stripe_123")
 	if got == nil || got.UserID != "u-usage" {
 		t.Error("GetByStripeID failed")
@@ -609,7 +629,9 @@ func TestBillingSubscriptionAndUsage(t *testing.T) {
 	if err := db.CreateUser(&UserRecord{ID: "u-free2", Username: "free2", Email: "f2@e.com", PasswordHash: "h", RoleID: "builtin-user", Enabled: true}); err != nil {
 		t.Fatal(err)
 	}
-	db.EnsureUserSubscription("u-free2", "")
+	if err := db.EnsureUserSubscription("u-free2", ""); err != nil {
+		t.Fatalf("EnsureUserSubscription: %v", err)
+	}
 	sub2, _ := db.GetSubscription("u-free2")
 	if sub2.PlanID != "free" {
 		t.Error("empty default should be free")
@@ -661,7 +683,9 @@ func TestAgentCRUD(t *testing.T) {
 	if msg != `["hi"]` {
 		t.Error("Save failed")
 	}
-	db.SaveAgentSession("u-agent", `["hello"]`)
+	if err := db.SaveAgentSession("u-agent", `["hello"]`); err != nil {
+		t.Fatalf("SaveAgentSession: %v", err)
+	}
 	msg, _ = db.GetAgentSession("u-agent")
 	if msg != `["hello"]` {
 		t.Error("update failed")
@@ -688,7 +712,9 @@ func TestAgentCRUD(t *testing.T) {
 	}
 	// update
 	rec.SystemPrompt = "newprompt"
-	db.SetAgentConfig(rec)
+	if err := db.SetAgentConfig(rec); err != nil {
+		t.Fatalf("SetAgentConfig: %v", err)
+	}
 	cfg, _ = db.GetAgentConfig("acc-agent")
 	if cfg.SystemPrompt != "newprompt" {
 		t.Error("update failed")
@@ -714,7 +740,9 @@ func TestAgentCRUD(t *testing.T) {
 	}
 	// disable and check
 	rec.Enabled = false
-	db.SetAgentConfig(rec)
+	if err := db.SetAgentConfig(rec); err != nil {
+		t.Fatalf("SetAgentConfig: %v", err)
+	}
 	enabled, _ = db.ListAllEnabledAgentConfigs()
 	if len(enabled) != 0 {
 		t.Error("expected 0 after disable")
@@ -735,9 +763,15 @@ func TestGenerateID(t *testing.T) {
 
 func TestGetSettingAndAllSettings(t *testing.T) {
 	db := openTestDB(t)
-	db.db.Exec("DELETE FROM setting WHERE TRUE")
-	db.SetSetting("a", "1")
-	db.SetSetting("b", "2")
+	if _, err := db.db.Exec("DELETE FROM setting WHERE TRUE"); err != nil {
+		t.Fatalf("Exec: %v", err)
+	}
+	if err := db.SetSetting("a", "1"); err != nil {
+		t.Fatalf("SetSetting: %v", err)
+	}
+	if err := db.SetSetting("b", "2"); err != nil {
+		t.Fatalf("SetSetting: %v", err)
+	}
 	all, err := db.GetAllSettings()
 	if err != nil || len(all) != 2 {
 		t.Errorf("expected 2 got %d err %v", len(all), err)
