@@ -40,7 +40,6 @@ func TestEnvOverridesFull(t *testing.T) {
 	t.Setenv("WALINK_SWAGGER_PATH", "/docs")
 	t.Setenv("WALINK_WEB_ENABLED", "false")
 	t.Setenv("WALINK_MCP_ENABLED", "false")
-	t.Setenv("WALINK_MCP_PATH", "/custom-mcp")
 	t.Setenv("WALINK_BILLING_ENABLED", "true")
 	t.Setenv("WALINK_BILLING_STRIPE_SECRET_KEY", "sk_test")
 	t.Setenv("WALINK_BILLING_STRIPE_WEBHOOK_SECRET", "whsec_test")
@@ -132,9 +131,6 @@ func TestEnvOverridesFull(t *testing.T) {
 	}
 	if cfg.MCP.Enabled {
 		t.Error("mcp should be false")
-	}
-	if cfg.MCP.Path != "/custom-mcp" {
-		t.Error("mcp path")
 	}
 	if !cfg.Billing.Enabled {
 		t.Error("billing")
@@ -246,9 +242,6 @@ func TestDefaultsAllFields(t *testing.T) {
 	}
 	if !cfg.MCP.Enabled {
 		t.Error("mcp default")
-	}
-	if cfg.MCP.Path != "/mcp" {
-		t.Error("mcp path")
 	}
 	if !cfg.Web.Enabled {
 		t.Error("web default")

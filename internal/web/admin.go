@@ -405,7 +405,6 @@ func (h *Handler) APIKeysDelete(w http.ResponseWriter, r *http.Request) {
 // MCPSettings renders the MCP configuration page.
 func (h *Handler) MCPSettings(w http.ResponseWriter, r *http.Request) {
 	enabled := h.db.GetSettingBool("mcp.enabled", true)
-	path := h.db.GetSetting("mcp.path", "/mcp")
 
 	identity := getIdentity(r)
 	isAdmin := identity != nil && identity.HasPermission("*")
@@ -424,7 +423,7 @@ func (h *Handler) MCPSettings(w http.ResponseWriter, r *http.Request) {
 
 	pd := h.page(w, r, "MCP Server", "mcp", map[string]any{
 		"Enabled":     enabled,
-		"Path":        path,
+		"Path":        "/mcp",
 		"APIKeyCount": keyCount,
 		"IsAdmin":     isAdmin,
 	})

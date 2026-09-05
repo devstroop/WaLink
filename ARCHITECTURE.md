@@ -50,7 +50,7 @@ walink/
     │   ├── roles.go                Role CRUD (admin)
     │   ├── apikeys.go              API key management
     │   ├── billing.go              Plans, subscriptions, usage
-    │   ├── mcp.go                  MCP settings (toggle on/off, change path)
+    │   ├── mcp.go                  MCP settings (toggle on/off)
     │   ├── health.go               Health check
     │   ├── proxy.go                Per-account proxy config
     │   ├── webhook.go              Per-account webhook config
@@ -107,7 +107,7 @@ PostgreSQL database storing:
 - Users (bcrypt passwords, role FK)
 - Roles and permissions (`resource:action` format)
 - API keys (SHA-256 hashed, expiry, account binding)
-- Settings (key-value store for runtime config like MCP path)
+ - Settings (key-value store for runtime config like MCP toggle)
 - Billing: plans, subscriptions, daily usage
 
 ### MCP Server (`mcpserver/server.go`)

@@ -57,7 +57,6 @@ path = "/api-docs"
 
 [mcp]
 enabled = true          # Enable/disable MCP server (can also toggle at runtime via admin UI)
-path = "/mcp"           # MCP endpoint path
 
 [billing]
 enabled = false                        # Set to true to enable plan-based billing

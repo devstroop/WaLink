@@ -20,22 +20,20 @@ func NewMCPHandler(db *database.DB) *MCPHandler {
 // GetMCPSettings returns the current MCP server configuration.
 func (h *MCPHandler) GetMCPSettings(w http.ResponseWriter, r *http.Request) {
 	enabled := h.db.GetSettingBool("mcp.enabled", true)
-	path := h.db.GetSetting("mcp.path", "/mcp")
 
 	resp := map[string]any{
 		"enabled": enabled,
-		"path":    path,
+		"path":    "/mcp",
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(resp)
 }
 
-// UpdateMCPSettings updates MCP server configuration.
+// UpdateMCPSettings updates MCP server configuration (only enabled is mutable; path is fixed at /mcp).
 func (h *MCPHandler) UpdateMCPSettings(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Enabled *bool   `json:"enabled"`
-		Path    *string `json:"path"`
+		Enabled *bool `json:"enabled"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, `{"error":"invalid request body"}`, http.StatusBadRequest)
@@ -48,13 +46,6 @@ func (h *MCPHandler) UpdateMCPSettings(w http.ResponseWriter, r *http.Request) {
 			val = "true"
 		}
 		if err := h.db.SetSetting("mcp.enabled", val); err != nil {
-			http.Error(w, `{"error":"failed to update setting"}`, http.StatusInternalServerError)
-			return
-		}
-	}
-
-	if req.Path != nil {
-		if err := h.db.SetSetting("mcp.path", *req.Path); err != nil {
 			http.Error(w, `{"error":"failed to update setting"}`, http.StatusInternalServerError)
 			return
 		}

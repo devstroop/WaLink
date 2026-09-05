@@ -223,8 +223,8 @@ Webhooks deliver `message` and `receipt` events via POST. Each payload includes 
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/api/v1/mcp` | Get MCP enabled/path settings |
-| PATCH | `/api/v1/mcp` | Toggle MCP on/off, change path (no restart needed) |
+| GET | `/api/v1/mcp` | Get MCP enabled setting |
+| PATCH | `/api/v1/mcp` | Toggle MCP on/off (no restart needed) |
 
 ### Health
 
@@ -388,7 +388,6 @@ Copy `config/app.example.toml` to `config/app.toml` and edit. All settings can b
 | `webhooks` | `retry_count` | `3` | Retry attempts on failure |
 | `swagger` | `enabled` | `true` | Serve Swagger UI at `/api-docs` |
 | `mcp` | `enabled` | `true` | Enable MCP server |
-| `mcp` | `path` | `/mcp` | MCP endpoint path |
 | `billing` | `enabled` | `false` | Enable plan-based billing |
 
 See [CONFIGURATION.md](CONFIGURATION.md) for the full reference.
