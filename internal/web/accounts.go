@@ -26,19 +26,6 @@ type DashboardData struct {
 	TotalUsers    int
 	Accounts      []AccountRow
 
-	// Billing
-	BillingEnabled bool
-	PlanName       string
-	PlanID         string
-	SubStatus      string
-	SubPeriodEnd   string
-	DailyUsage     int
-	DailyLimit     int
-	// Admin-only billing stats
-	ActiveSubs    int
-	TrialSubs     int
-	CanceledSubs  int
-	TotalMessages int
 }
 
 // AccountRow is a simplified account for display.
@@ -70,8 +57,6 @@ func (h *Handler) infoToRow(a model.AccountInfo) AccountRow {
 // Dashboard renders the dashboard page.
 func (h *Handler) Dashboard(w http.ResponseWriter, r *http.Request) {
 	list := h.mgr.ListAccounts()
-	identity := getIdentity(r)
-
 	connected := 0
 	rows := make([]AccountRow, 0, len(list.Accounts))
 	for _, a := range list.Accounts {
@@ -98,45 +83,6 @@ func (h *Handler) Dashboard(w http.ResponseWriter, r *http.Request) {
 	// Only show last 5 on dashboard
 	if len(data.Accounts) > 5 {
 		data.Accounts = data.Accounts[:5]
-	}
-
-	// Billing data
-	data.BillingEnabled = h.db.GetSettingBool("billing.enabled", false)
-	if identity != nil && identity.UserID != "system" {
-		limits, planID, _ := h.db.GetUserPlanLimits(identity.UserID)
-		data.PlanID = planID
-		data.DailyLimit = limits.DailyMessages
-		if usage, err := h.db.GetDailyUsage(identity.UserID); err == nil {
-			data.DailyUsage = usage
-		}
-		if plan, err := h.db.GetPlan(planID); err == nil && plan != nil {
-			data.PlanName = plan.Name
-		}
-		if sub, err := h.db.GetSubscription(identity.UserID); err == nil && sub != nil {
-			data.SubStatus = sub.Status
-			data.SubPeriodEnd = sub.CurrentPeriodEnd
-		}
-
-		// Admin: aggregate billing stats
-		if identity.HasPermission("*") {
-			if subs, err := h.db.ListSubscriptions(); err == nil {
-				for _, s := range subs {
-					switch s.Status {
-					case "active":
-						data.ActiveSubs++
-					case "trialing":
-						data.TrialSubs++
-					case "canceled":
-						data.CanceledSubs++
-					}
-				}
-			}
-			if usage, err := h.db.GetAllDailyUsage(); err == nil {
-				for _, u := range usage {
-					data.TotalMessages += u.Messages
-				}
-			}
-		}
 	}
 
 	pd := h.page(w, r, "Dashboard", "dashboard", data)

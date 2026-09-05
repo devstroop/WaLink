@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/devstroop/walink/internal/database"
-	"github.com/devstroop/walink/internal/model"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"github.com/rs/zerolog/log"
@@ -180,33 +179,7 @@ func (h *Handler) AboutPage(w http.ResponseWriter, r *http.Request) {
 }
 
 // PricingPage renders the public pricing page with plan data from the database.
-func (h *Handler) PricingPage(w http.ResponseWriter, r *http.Request) {
-	recs, _ := h.db.ListPlans()
-	var plans []model.PlanInfo
-	for _, rec := range recs {
-		plans = append(plans, model.PlanInfo{
-			ID:          rec.ID,
-			Name:        rec.Name,
-			Description: rec.Description,
-			PriceCents:  rec.PriceCents,
-			Interval:    rec.Interval,
-			Limits:      rec.PlanLimits(),
-			IsDefault:   rec.IsDefault,
-		})
-	}
-	data := PageData{
-		Title:   "Pricing — WaLink",
-		Page:    "pricing",
-		Version: h.version,
-		Data: map[string]any{
-			"Plans":               plans,
-			"RegistrationEnabled": h.regEnabled,
-		},
-	}
-	h.render.Page(w, http.StatusOK, "pricing", data)
-}
 
-// TermsPage renders the public terms of service page.
 func (h *Handler) TermsPage(w http.ResponseWriter, r *http.Request) {
 	data := PageData{Title: "Terms of Service — WaLink", Page: "terms", Version: h.version,
 		Data: map[string]any{"RegistrationEnabled": h.regEnabled}}

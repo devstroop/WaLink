@@ -55,7 +55,6 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	inner.HandleFunc("POST /login", h.LoginSubmit)
 	inner.HandleFunc("POST /logout", h.Logout)
 	inner.HandleFunc("GET /about", h.AboutPage)
-	inner.HandleFunc("GET /pricing", h.PricingPage)
 	inner.HandleFunc("GET /terms", h.TermsPage)
 	inner.HandleFunc("GET /privacy", h.PrivacyPage)
 	inner.HandleFunc("GET /forgot-password", h.ForgotPasswordPage)
@@ -117,20 +116,8 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	inner.HandleFunc("POST /admin/roles/{id}/update", h.RolesUpdate)
 	inner.HandleFunc("POST /admin/roles/{id}/delete", h.RolesDelete)
 
-	// Admin Billing
-	inner.HandleFunc("GET /admin/billing", h.BillingAdmin)                                            // redirects to /admin/billing/plans
-	inner.HandleFunc("GET /admin/billing/plans", h.BillingPlansPage)
-	inner.HandleFunc("GET /admin/billing/subscriptions", h.BillingSubscriptionsPage)
-	inner.HandleFunc("GET /admin/billing/usage", h.BillingUsagePage)
-	inner.HandleFunc("POST /admin/billing/stripe", h.PaymentGatewayUpdate)                            // legacy
-	inner.HandleFunc("POST /admin/billing/plans", h.BillingPlanCreate)
-	inner.HandleFunc("POST /admin/billing/plans/{id}/update", h.BillingPlanUpdate)
-	inner.HandleFunc("POST /admin/billing/plans/{id}/delete", h.BillingPlanDelete)
-	inner.HandleFunc("POST /admin/billing/subscriptions/{user_id}/assign", h.BillingAssignPlan)
-	inner.HandleFunc("POST /admin/billing/subscriptions/{user_id}/delete", h.BillingDeleteSubscription)
 
 	// Admin Configuration
-	inner.HandleFunc("GET /admin/configuration", h.ConfigurationPage)
 
 	// AI Settings (admin — separate page for LLM configuration)
 	inner.HandleFunc("GET /settings/ai", h.AISettingsPage)
@@ -153,14 +140,12 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	inner.HandleFunc("POST /mcp-server", h.MCPSettingsUpdate)
 
 	// User Subscription
-	inner.HandleFunc("GET /subscription", h.SubscriptionPage)
 
 	// Settings
 	inner.HandleFunc("GET /settings", h.Settings)
 	inner.HandleFunc("POST /settings/password", h.ChangePassword)
 	inner.HandleFunc("POST /settings/appearance", h.AppearanceUpdate)
 	inner.HandleFunc("POST /settings/localization", h.LocalizationUpdate)
-	inner.HandleFunc("POST /settings/payment-gateway", h.PaymentGatewayUpdate)
 
 	// Root redirect
 	inner.HandleFunc("GET /{$}", h.Root)
