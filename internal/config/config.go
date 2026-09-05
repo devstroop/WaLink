@@ -89,8 +89,7 @@ type WebConfig struct {
 }
 
 type MCPConfig struct {
-	Enabled bool   `toml:"enabled"`
-	Path    string `toml:"path"`
+	Enabled bool `toml:"enabled"`
 }
 
 type BillingConfig struct {
@@ -240,9 +239,6 @@ func applyEnvOverrides(cfg *Config) {
 	if v := os.Getenv("WALINK_MCP_ENABLED"); v != "" {
 		cfg.MCP.Enabled = v == "true" || v == "1"
 	}
-	if v := os.Getenv("WALINK_MCP_PATH"); v != "" {
-		cfg.MCP.Path = v
-	}
 	if v := os.Getenv("WALINK_BILLING_ENABLED"); v != "" {
 		cfg.Billing.Enabled = v == "true" || v == "1"
 	}
@@ -301,7 +297,7 @@ func defaults() *Config {
 		},
 		Swagger: SwaggerConfig{Enabled: true, Path: "/api-docs"},
 		Web:     WebConfig{Enabled: true},
-		MCP:     MCPConfig{Enabled: true, Path: "/mcp"},
+		MCP:     MCPConfig{Enabled: true},
 		Billing: BillingConfig{DefaultPlan: "free"},
 	}
 }

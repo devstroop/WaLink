@@ -5,6 +5,6 @@ docker-compose.yml
 .dockerignore
 tests/
 README.md
-ARCHITECTURE.md
+docs/
 CHANGELOG.md
 CONFIGURATION.md
