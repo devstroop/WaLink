@@ -54,8 +54,8 @@
 
 ### Docs debt
 
-- `ARCHITECTURE.md:27` says `SQLite` but `internal/database/database.go:107` uses `postgres` (`lib/pq`), `docker-compose.yml:3` `postgres:16-alpine`. Fix docs to `PostgreSQL`.
-- `ARCHITECTURE.md:42` `database.go` comment `SQLite` outdated.
+- `docs/architecture.md:27` says `SQLite` but `internal/database/database.go:107` uses `postgres` (`lib/pq`), `docker-compose.yml:3` `postgres:16-alpine`. Fix docs to `PostgreSQL`.
+- `docs/architecture.md:42` `database.go` comment `SQLite` outdated.
 - `CONFIGURATION.md:109` says `modernc.org/sqlite` — remove.
 - `ISSUES.md:1` dated March 18, 2026 — update after coverage work (`feat/coverage-improvements` `e1d2a09`).
 
@@ -90,4 +90,4 @@
 
 - `go vet ./...` PASS, `go test -p 1 ./internal/... ./tests` PASS (85%+), `docker compose up -d && curl /api/health` → `{"status":"ok"}`
 - `git submodule status` shows `0fadda7`
-- `go.mod` `go 1.26`, `ARCHITECTURE.md` says PostgreSQL
+- `go.mod` `go 1.26`, `docs/architecture.md` says PostgreSQL

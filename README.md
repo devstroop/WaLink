@@ -1,92 +1,90 @@
 # WaLink
 
-**WhatsApp HTTP API + MCP server for developers.** Connect multiple WhatsApp accounts, send and receive messages, manage groups, and receive webhooks — through a clean REST API, an MCP server for AI agents, or a built-in web dashboard. No browser, no Selenium, no Chrome. Pure protocol-level integration.
+**WhatsApp HTTP API + MCP server.** Multi-account WhatsApp over the native multi-device protocol — REST API, MCP for AI agents, and a web dashboard in a single Go binary. No browser, no Selenium.
+
+> `Go 1.26` · `PostgreSQL 18` · `whatsmeow @ main` · 26 MCP tools · Swagger at `/api-docs`
 
 ## Highlights
 
-- **Multi-account** — run dozens of WhatsApp numbers from one server
-- **Phone-first API** — pass a phone number; WaLink resolves the JID for you
-- **MCP server** — 26 tools for AI agents (Claude, Copilot, etc.) via Streamable HTTP
-- **Web dashboard** — messaging UI, account management, admin panel, all built-in
-- **RBAC** — users, roles, permissions, API keys, and JWT auth
-- **Browserless** — native multi-device protocol over encrypted WebSocket
-- **Pure Go** — single binary, no CGO, no external dependencies at runtime
-- **Auto-connect** — accounts sleep when idle and reconnect on the next request
-- **Webhooks** — real-time message and receipt delivery with HMAC signing and retry
-- **Billing** — optional plan-based metering with Stripe integration
-- **Docker-ready** — multi-stage Dockerfile and docker-compose included
-- **Swagger UI** — interactive API docs at `/api-docs`
+- **Multi-account** — dozens of numbers on one server, isolated sessions
+- **Phone-first** — `?phone=9198…` auto-resolves to JID (`@s.whatsapp.net` / `@g.us` / LID)
+- **MCP** — 26 tools (`send_message`, `list_chats`, `create_group`, …) via Streamable HTTP at fixed `/mcp`
+- **Web dashboard** — HTMX UI for accounts, chats, admin (users/roles/keys/billing)
+- **Auth + RBAC** — secret key → JWT → API key (`walink_…`), `resource:action` permissions (`*` for admin)
+- **Browserless** — Noise + Signal + Protobuf over encrypted WebSocket (`whatsmeow`)
+- **Pure Go** — single binary, `CGO_ENABLED=0`, no runtime deps
+- **Resilient** — auto-connect on demand, idle disconnect (`idle_timeout`), crash recovery
+- **Webhooks** — `message`/`receipt` with `X-Webhook-Signature` (HMAC) + retry
+- **Billing (optional)** — Stripe plans, quotas (`daily_messages`, `max_accounts`, `mcp_access`, …)
+
+## Requirements
+
+- Go `1.26` (`main go 1.26`, `whatsmeow` toolchain `go1.27`)
+- PostgreSQL `16`+ (compose uses `postgres:18-alpine` → mount `pg-data:/var/lib/postgresql` — required for 18+, see `postgres#1259` / `PGDATA` parent)
+- `WALINK_AUTH_SECRET_KEY` set in production
 
 ## Quick Start
 
-### Binary
-
 ```bash
-cp config/app.example.toml config/app.toml   # set your secret_key
+# 1. config
+cp config/app.example.toml config/app.toml   # set secret_key
+# 2. run
 go run ./cmd/walink
+# or
+go build -trimpath -o /tmp/walink ./cmd/walink && \
+  WALINK_DATABASE_DSN=postgres://walink:walink@localhost:5432/walink?sslmode=disable /tmp/walink
 ```
-
-### Docker
 
 ```bash
-docker compose up -d
+# Docker (PostgreSQL + WaLink)
+docker compose up -d          # → http://localhost:3000
+curl -sf http://localhost:3000/api/health  # {"status":"ok"}
+docker compose logs -f
 ```
-
-Server starts on `http://localhost:3000`.
 
 | URL | Description |
 |-----|-------------|
 | `/` | Web dashboard |
 | `/api-docs` | Swagger UI |
-| `/mcp` | MCP endpoint for AI agents |
+| `/mcp` | MCP endpoint (fixed, Bearer auth) |
+| `/api/health` | Health check (no auth) |
+
+Three calls to send a message:
 
 ```bash
-# Create an account, link via QR, send a message — three calls:
-AUTH="Authorization: Bearer <your-secret-key>"
+AUTH="Authorization: Bearer <secret_key>"
 
+# 1. create account
 curl -X POST http://localhost:3000/api/v1/accounts \
   -H "$AUTH" -H "Content-Type: application/json" \
-  -d '{"phone_number": "+919876543210", "account_name": "main"}'
+  -d '{"phone_number":"+919876543210","account_name":"main"}' # → {id}
 
-curl http://localhost:3000/api/v1/accounts/{id}/session/qr \
-  -H "$AUTH" -o qr.png          # scan with WhatsApp
+# 2. link (QR)
+curl http://localhost:3000/api/v1/accounts/{id}/session/qr -H "$AUTH" -o qr.png
 
-curl -X POST "http://localhost:3000/api/v1/accounts/{id}/messages?phone=919876543210&text=Hello!" \
-  -H "$AUTH"
+# 3. send
+curl -X POST "http://localhost:3000/api/v1/accounts/{id}/messages?phone=919876543210&text=Hello!" -H "$AUTH"
 ```
-
----
 
 ## Authentication
 
-WaLink supports three authentication methods. All API endpoints under `/api/v1/` require `Authorization: Bearer <token>`.
+All `/api/v1/*` require `Authorization: Bearer <token>`.
 
-| Method | Token format | Use case |
-|--------|-------------|----------|
-| Static secret key | `Bearer <secret_key>` | System admin — full access, no user context |
-| JWT | `Bearer eyJ...` | User login — scoped by role permissions |
-| API key | `Bearer walink_...` | Programmatic access — supports expiry and account binding |
+| Method | Format | Scope | Use case |
+|--------|--------|-------|----------|
+| Secret key | `Bearer <secret_key>` (`WALINK_AUTH_SECRET_KEY`) | `*` | System admin, no user context |
+| JWT | `Bearer eyJ…` (`POST /api/v1/auth/login`) | `role.permissions` | User login |
+| API key | `Bearer walink_…` (`POST /api/v1/api-keys`) | `user + optional account_id` + expiry | Programmatic, MCP account-scoping |
 
-### Auth Endpoints (public)
+**Public (no auth):** `POST /api/v1/auth/login`, `/register` (if enabled), `/forgot-password`, `/reset-password`, `GET /api/health`, `GET /api/v1/billing/plans`.
 
-| Method | Path | Description |
-|--------|------|-------------|
-| POST | `/api/v1/auth/login` | Login with username + password, returns JWT |
-| POST | `/api/v1/auth/register` | Register new user (when enabled) |
-| POST | `/api/v1/auth/forgot-password` | Request password reset |
-| POST | `/api/v1/auth/reset-password` | Reset password with token |
+**RBAC:** built-in `admin` (`*`) and `user`. Permissions `resource:action` e.g. `messages:write`, `accounts:read`.
 
-### RBAC
+## REST API
 
-Two built-in roles: `admin` (full access) and `user` (restricted). Permissions use `resource:action` format — e.g. `messages:write`, `groups:read`, or `*` for full admin access.
+Base: `http://localhost:3000/api/v1/accounts/{id}` (`{id}` = account UUID). All phone-accepting endpoints also accept `phone` → JID resolved via WhatsApp.
 
----
-
-## REST API Reference
-
-Base path: `/api/v1/accounts/{id}` — `{id}` is the account UUID.
-
-### Accounts
+**Accounts**
 
 | Method | Path | Description |
 |--------|------|-------------|
@@ -96,7 +94,7 @@ Base path: `/api/v1/accounts/{id}` — `{id}` is the account UUID.
 | PATCH | `/api/v1/accounts/{id}` | Update account |
 | DELETE | `/api/v1/accounts/{id}?delete_data=true` | Delete account and optionally wipe data |
 
-### Session
+**Session**
 
 | Method | Path | Description |
 |--------|------|-------------|
@@ -105,7 +103,7 @@ Base path: `/api/v1/accounts/{id}` — `{id}` is the account UUID.
 | POST | `/{id}/session/pair` | Phone-number pairing code |
 | DELETE | `/{id}/session` | Logout and unlink device |
 
-### Messaging
+**Messaging**
 
 | Method | Path | Description |
 |--------|------|-------------|
@@ -116,19 +114,7 @@ Base path: `/api/v1/accounts/{id}` — `{id}` is the account UUID.
 | POST | `/{id}/messages/mark-read` | Mark messages as read |
 | DELETE | `/{id}/messages/{msg_id}?chat=JID` | Revoke / delete for everyone |
 
-> **Phone number support** — `messages`, `react`, `read`, and `revoke` all accept `phone` as an alternative to `chat`/`jid`. WaLink resolves the phone to a JID via WhatsApp automatically.
-
-#### `POST /{id}/messages`
-
-Single-call send — no need to resolve the JID yourself.
-
-| Param | In | Required | Description |
-|-------|------|----------|-------------|
-| `phone` | query | one of | Phone number (e.g. `919876543210`). Auto-resolved to JID. |
-| `jid` | query | one of | WhatsApp JID (e.g. `919876543210@s.whatsapp.net`). |
-| `text` | query or body | yes* | Message text. Query param takes precedence. *Not required when sending a file. |
-| `reply_to` | query or body | no | Message ID to quote-reply. |
-| `file` | multipart | no | File attachment (auto-detects image/video/audio/document). `text` becomes the caption. |
+Single-call send: `phone`/`jid` (one required), `text` (query or multipart), `reply_to`, `file` (multipart, caption = `text`). `text` not required when sending file; query `text` takes precedence over body.
 
 ### Chats & Contacts
 
@@ -186,61 +172,19 @@ Single-call send — no need to resolve the JID yourself.
 | PUT | `/{id}/webhook` | Set webhook URL, events, and HMAC secret |
 | DELETE | `/{id}/webhook` | Remove webhook |
 
-Webhooks deliver `message` and `receipt` events via POST. Each payload includes `event_type`, `account_id`, `timestamp`, and `payload`. When a secret is configured, an HMAC-SHA256 signature is sent in `X-Webhook-Signature`. Failed deliveries retry up to 3 times with exponential back-off.
+Webhook payload: `event_type`, `account_id`, `timestamp`, `payload` + `X-Webhook-Signature` (HMAC-SHA256) on `secret`; retries `retry_count` × backoff.
 
-### Users & Roles (Admin)
+**Admin (requires `*`):** `GET/POST /api/v1/users`, `GET/PATCH/DELETE /api/v1/users/{id}`, `GET/POST /api/v1/roles`, `GET/PATCH/DELETE /api/v1/roles/{id}`, `GET/POST/DELETE /api/v1/api-keys`
 
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/v1/users` | List users |
-| POST | `/api/v1/users` | Create user |
-| GET | `/api/v1/users/{id}` | Get user |
-| PATCH | `/api/v1/users/{id}` | Update user |
-| DELETE | `/api/v1/users/{id}` | Delete user |
-| GET | `/api/v1/roles` | List roles |
-| POST | `/api/v1/roles` | Create role |
-| GET | `/api/v1/roles/{id}` | Get role |
-| PATCH | `/api/v1/roles/{id}` | Update role |
-| DELETE | `/api/v1/roles/{id}` | Delete role |
+**Billing:** `GET /api/v1/billing/plans` (public), `GET /api/v1/billing`, `GET /api/v1/billing/usage`, `GET/PATCH /api/v1/mcp` (toggle `enabled`; path fixed `/mcp`)
 
-### API Keys
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/v1/api-keys` | List API keys |
-| POST | `/api/v1/api-keys` | Create API key (supports expiry and account binding) |
-| DELETE | `/api/v1/api-keys/{id}` | Delete API key |
-
-### Billing
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/v1/billing/plans` | List plans (public) |
-| GET | `/api/v1/billing` | Current subscription |
-| GET | `/api/v1/billing/usage` | Daily usage stats |
-
-### MCP Settings (Admin)
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/v1/mcp` | Get MCP enabled setting |
-| PATCH | `/api/v1/mcp` | Toggle MCP on/off (no restart needed) |
-
-### Health
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/health` | Health check (no auth required) |
-
----
+Full interactive docs: `http://localhost:3000/api-docs` (Swagger, `internal/handler/openapi.json`).
 
 ## MCP Server
 
-WaLink exposes a **Model Context Protocol** server at `/mcp` for AI agents. Uses Streamable HTTP transport with stateful SSE sessions.
+Fixed endpoint `http://localhost:3000/mcp` (Streamable HTTP, stateful SSE, `10m` idle TTL). Auth: `Authorization: Bearer <secret_key>` or `Bearer walink_…` (account-scoped keys auto-bind `account_id`).
 
-### Setup (VS Code / Copilot)
-
-Add to `.vscode/mcp.json`:
+**VS Code / Copilot** `.vscode/mcp.json`:
 
 ```json
 {
@@ -248,153 +192,108 @@ Add to `.vscode/mcp.json`:
     "walink": {
       "type": "http",
       "url": "http://localhost:3000/mcp",
-      "headers": {
-        "Authorization": "Bearer <your-secret-key>"
-      }
+      "headers": { "Authorization": "Bearer <secret_key>" }
     }
   }
 }
 ```
 
-### Tools (26)
+**26 tools:** `list_accounts`, `get_session`, `get_qr`, `pair_phone`, `logout`, `send_message`, `send_media` (base64), `get_messages`, `list_chats`, `react_message`, `mark_read`, `revoke_message`, `list_contacts`, `check_contacts`, `get_contact`, `list_groups`, `get_group`, `create_group`, `update_group`, `leave_group`, `update_participants`, `get_group_invite`, `get_profile`, `update_profile`, `send_presence`, `send_chat_presence`.
 
-| Tool | Description |
-|------|-------------|
-| `list_accounts` | List WhatsApp accounts |
-| `get_session` | Get session status |
-| `get_qr` | Get QR code for linking |
-| `pair_phone` | Pair via phone number |
-| `logout` | Disconnect session |
-| `send_message` | Send text message |
-| `send_media` | Send file (base64) |
-| `get_messages` | Get message history |
-| `list_chats` | List conversations |
-| `react_message` | React to a message |
-| `mark_read` | Mark messages as read |
-| `revoke_message` | Delete message for everyone |
-| `list_contacts` | List contacts |
-| `check_contacts` | Check phone numbers on WhatsApp |
-| `get_contact` | Get contact info |
-| `list_groups` | List groups |
-| `get_group` | Get group info |
-| `create_group` | Create a group |
-| `update_group` | Update group settings |
-| `leave_group` | Leave a group |
-| `update_participants` | Add/remove/promote/demote members |
-| `get_group_invite` | Get group invite link |
-| `get_profile` | Get own profile |
-| `update_profile` | Update about text |
-| `send_presence` | Set online/offline status |
-| `send_chat_presence` | Send typing indicator |
-
-API key account binding works with MCP — create an API key scoped to a specific account and the MCP tools automatically operate on that account without needing `account_id`.
-
----
-
-## Error Responses
-
-All errors return JSON:
-
-```json
-{ "error": "description of the problem" }
-```
-
-| Status | Meaning |
-|--------|---------|
-| 400 | Bad request — missing or invalid parameters |
-| 401 | Unauthorized — missing or wrong Bearer token |
-| 403 | Forbidden — insufficient permissions |
-| 404 | Resource not found |
-| 409 | Conflict — duplicate account or session still linked |
-| 429 | Rate limited — retry after `Retry-After` header value |
-| 500 | Internal server error |
-| 504 | Gateway timeout (e.g. QR generation timed out) |
-
----
+Toggle at runtime: `PATCH /api/v1/mcp {"enabled":false}` or Admin → MCP Server → Enable/Disable (no restart). Path is not configurable — always `/mcp` (see `docs/architecture.md`).
 
 ## Examples
 
 ```bash
 AUTH="Authorization: Bearer change-this-secret-key-in-production"
 
-# ── Accounts ─────────────────────────────────────────
-curl -X POST http://localhost:3000/api/v1/accounts \
-  -H "$AUTH" -H "Content-Type: application/json" \
-  -d '{"phone_number": "+919876543210", "account_name": "main"}'
+# Accounts
+curl -X POST http://localhost:3000/api/v1/accounts -H "$AUTH" -H "Content-Type: application/json" \
+  -d '{"phone_number":"+919876543210","account_name":"main"}'
 
-# ── Session ──────────────────────────────────────────
-# Link via QR
-curl http://localhost:3000/api/v1/accounts/{id}/session/qr \
-  -H "$AUTH" -o qr.png
+# QR / Pair
+curl http://localhost:3000/api/v1/accounts/{id}/session/qr -H "$AUTH" -o qr.png
+curl -X POST http://localhost:3000/api/v1/accounts/{id}/session/pair -H "$AUTH" -d '{"phone":"919876543210"}'
 
-# Link via pairing code
-curl -X POST http://localhost:3000/api/v1/accounts/{id}/session/pair \
-  -H "$AUTH"
+# Send (phone) + media
+curl -X POST "http://localhost:3000/api/v1/accounts/{id}/messages?phone=919876543210&text=Hello!" -H "$AUTH"
+curl -X POST "http://localhost:3000/api/v1/accounts/{id}/messages?phone=919876543210" -H "$AUTH" -F "text=caption" -F "file=@photo.jpg"
 
-# ── Send messages ────────────────────────────────────
-# By phone number (recommended)
-curl -X POST "http://localhost:3000/api/v1/accounts/{id}/messages?phone=919876543210&text=Hello!" \
-  -H "$AUTH"
+# Read / React
+curl -X POST http://localhost:3000/api/v1/accounts/{id}/messages/mark-read -H "$AUTH" -H "Content-Type: application/json" \
+  -d '{"phone":"919876543210","message_ids":["ABCD"]}'
+curl -X POST http://localhost:3000/api/v1/accounts/{id}/messages/reactions -H "$AUTH" -H "Content-Type: application/json" \
+  -d '{"phone":"919876543210","message_id":"ABCD","emoji":"👍"}'
 
-# With file attachment
-curl -X POST "http://localhost:3000/api/v1/accounts/{id}/messages?phone=919876543210" \
-  -H "$AUTH" -F "text=Check this out" -F "file=@photo.jpg"
-
-# ── Read & React ─────────────────────────────────────
-curl -X POST http://localhost:3000/api/v1/accounts/{id}/messages/reactions \
-  -H "$AUTH" -H "Content-Type: application/json" \
-  -d '{"phone": "919876543210", "message_id": "ABCD1234", "emoji": "👍"}'
-
-curl -X POST http://localhost:3000/api/v1/accounts/{id}/messages/mark-read \
-  -H "$AUTH" -H "Content-Type: application/json" \
-  -d '{"phone": "919876543210", "message_ids": ["ABCD1234"]}'
-
-# ── Groups ───────────────────────────────────────────
-curl -X POST http://localhost:3000/api/v1/accounts/{id}/groups \
-  -H "$AUTH" -H "Content-Type: application/json" \
-  -d '{"name": "Project Team", "participants": ["919876543210", "919876543211"]}'
-
-# ── Webhooks ─────────────────────────────────────────
-curl -X PUT http://localhost:3000/api/v1/accounts/{id}/webhook \
-  -H "$AUTH" -H "Content-Type: application/json" \
-  -d '{"url": "https://example.com/webhook", "secret": "mysecret", "events": ["message", "receipt"]}'
-
-# ── Users (admin) ────────────────────────────────────
-curl -X POST http://localhost:3000/api/v1/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"username": "admin", "password": "secret"}'
-
-# ── API Keys ─────────────────────────────────────────
-curl -X POST http://localhost:3000/api/v1/api-keys \
-  -H "$AUTH" -H "Content-Type: application/json" \
-  -d '{"name": "my-bot", "account_id": "{id}"}'
+# Groups / Webhook / Auth
+curl -X POST http://localhost:3000/api/v1/accounts/{id}/groups -H "$AUTH" -H "Content-Type: application/json" \
+  -d '{"name":"Team","participants":["919876543210"]}'
+curl -X PUT http://localhost:3000/api/v1/accounts/{id}/webhook -H "$AUTH" -H "Content-Type: application/json" \
+  -d '{"url":"https://example.com/hook","secret":"s","events":["message","receipt"]}'
+curl -X POST http://localhost:3000/api/v1/auth/login -H "Content-Type: application/json" \
+  -d '{"username":"admin","password":"secret"}' # → JWT
+curl -X POST http://localhost:3000/api/v1/api-keys -H "$AUTH" -H "Content-Type: application/json" \
+  -d '{"name":"bot","account_id":"{id}"}' # → walink_…
 ```
 
----
+## Error Responses
+
+```json
+{ "error": "description" }
+```
+
+| Status | Meaning |
+|--------|---------|
+| 400 | Bad request |
+| 401 | Unauthorized |
+| 403 | Forbidden (RBAC) |
+| 404 | Not found |
+| 409 | Conflict (duplicate / session linked) |
+| 429 | Rate limited (`Retry-After`) |
+| 500 | Internal |
+| 504 | Gateway timeout (QR, WA op) |
 
 ## Configuration
 
-Copy `config/app.example.toml` to `config/app.toml` and edit. All settings can be overridden via environment variables (`WALINK_SECTION_KEY` format).
+`config/app.example.toml` → `config/app.toml` (or `~/.walink/config.toml`). Env overrides `WALINK_*` — see `CONFIGURATION.md` for exact names (`WALINK_SERVER_PORT`, `WALINK_ACCOUNTS_DIR` not `WALINK_ACCOUNTS_BASE_DIRECTORY`, `WALINK_MCP_ENABLED`, `WALINK_CORS_ORIGINS`, `WALINK_WEBHOOKS_*`, etc.).
 
 | Section | Key | Default | Description |
 |---------|-----|---------|-------------|
-| `server` | `port` | `3000` | HTTP listen port |
-| `auth` | `secret_key` | — | Bearer token for API auth (required) |
-| `auth` | `registration_enabled` | `false` | Allow public user registration |
-| `smtp` | `host` | — | SMTP server for password reset emails |
-| `limits` | `max_concurrent_requests` | `50` | Concurrency rate limiter |
-| `accounts.defaults` | `idle_timeout` | `300` | Seconds before idle auto-disconnect (0 = never) |
-| `webhooks` | `timeout_ms` | `5000` | Webhook delivery timeout |
-| `webhooks` | `retry_count` | `3` | Retry attempts on failure |
-| `swagger` | `enabled` | `true` | Serve Swagger UI at `/api-docs` |
-| `mcp` | `enabled` | `true` | Enable MCP server |
-| `billing` | `enabled` | `false` | Enable plan-based billing |
+| `server` | `host` / `port` | `0.0.0.0` / `3000` | HTTP listen |
+| `auth` | `secret_key` | — | Bearer + JWT signing (required) |
+| `auth` | `registration_enabled` | `false` | Public `POST /auth/register` |
+| `smtp` | `host`/`port`/`username`/`password`/`from`/`tls`/`starttls` | — / `587` / `true` | Password reset email |
+| `logging` | `level` | `info` | `trace`/`debug`/`info`/`warn`/`error` |
+| `database` | `dsn` | `postgres://localhost:5432/walink?sslmode=disable` | PostgreSQL DSN |
+| `cors` | `allow_origins` | `["*"]` | CORS |
+| `limits` | `max_concurrent_requests` / `request_timeout_ms` / `max_upload_size` | `50` / `30000` / `10MiB` | Rate limit |
+| `accounts` | `base_directory` | `~/.walink/accounts` | Session cache dir |
+| `accounts.defaults` | `idle_timeout` | `300` | Auto-disconnect (0 = never) |
+| `webhooks` | `enabled` / `timeout_ms` / `retry_count` / `retry_delay_ms` | `false` / `5000` / `3` / `1000` | Webhook |
+| `swagger` | `enabled` / `path` | `true` / `/api-docs` | Swagger UI |
+| `web` | `enabled` | `true` | Web dashboard |
+| `mcp` | `enabled` | `true` | MCP at fixed `/mcp` (toggle via `PATCH /api/v1/mcp`) |
+| `billing` | `enabled` / `stripe_secret_key` / `stripe_webhook_secret` / `default_plan` | `false` / — / — / `free` | Stripe billing |
+| `llm` | `enabled` / `provider` / `api_key` / `base_url` / `model` | `false` / `openai` / — | Copilot/Autopilot |
 
-See [CONFIGURATION.md](CONFIGURATION.md) for the full reference.
+See `CONFIGURATION.md` for full TOML + env table. Docker compose maps these to `WALINK_*`.
+
+**Notes:** `secret_key` signs JWTs; `idle_timeout` polls every 30s; MCP `enabled` toggles without restart via DB `setting` + `PATCH /api/v1/mcp`; billing middleware gates `messages`, `mcp`, `webhooks` (system `secret_key` bypasses).
 
 ## Architecture
 
-See [ARCHITECTURE.md](ARCHITECTURE.md) for internals — component design, request flow, data model, and protocol details.
+See `docs/architecture.md` — Mermaid overview, project layout (`cmd/walink/main.go`, `internal/{config,database,handler,mcpserver,middleware,service,web}`), request flows (HTTP + MCP `sequenceDiagram`), data layout (PostgreSQL `account`, `app_user`, `api_key`, `setting`, `plans` + `~/.walink/accounts/{uuid}/`), and Noise/Signal/Protobuf protocol.
+
+## Development
+
+```bash
+go vet ./...
+go test -race -count=1 -timeout 120s ./...         # unit + integration (needs WALINK_TEST_DSN)
+golangci-lint run --timeout 5m
+docker compose config --quiet && docker compose build && docker compose up -d && curl -sf http://localhost:3000/api/health
+```
+
+CI (`.github/workflows/ci.yml`): `Test` (ubuntu/macos/windows `1.26` + `go test -race`), `Lint` (`golangci-lint`), `Docker` (build → `pg_isready` → `curl /api/health`).
 
 ## License
 
